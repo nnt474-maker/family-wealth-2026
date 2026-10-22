@@ -4,11 +4,29 @@ let pendingEmails = [];
 let quickParseTimer = null;
 let currentQuickParsed = null;
 let enteredPin = "";
+let isVoiceListening = false;
+let voiceRecognition = null;
 
 const STORAGE_DB_KEY = "FAMILY_WEALTH_2026_DB_V2";
 const STORAGE_PIN_KEY = "FAMILY_WEALTH_2026_PIN";
 const STORAGE_UNLOCK_KEY = "FAMILY_WEALTH_2026_UNLOCK_UNTIL";
 const STORAGE_CLOUD_URL_KEY = "FAMILY_WEALTH_2026_GAS_URL";
+const STORAGE_DEFAULT_SOURCE_KEY = "FAMILY_DEFAULT_SOURCE_2026";
+const STORAGE_DEFAULT_PERSON_KEY = "FAMILY_DEFAULT_PERSON_2026";
+const STORAGE_DEFAULT_CAT_KEY = "FAMILY_DEFAULT_CAT_2026";
+const STORAGE_GEMINI_KEY = "FAMILY_GEMINI_API_KEY_2026";
+
+const ALL_PAYMENT_SOURCES = [
+  "Tiền mặt",
+  "Chuyển khoản",
+  "Tiền mặt / Chuyển khoản",
+  "NCB",
+  "VPBank",
+  "BIDV",
+  "UOB",
+  "VPSP",
+  "VPBank Shopee"
+];
 
 const SAMPLE_BANK_EMAILS_DEFAULT = `From: VPBank Online <customercare@vpbank.com.vn>
 Subject: [VPBank] Thông báo biến động số dư tài khoản
@@ -362,6 +380,11 @@ function classifyTransactionTextJS(text) {
   return { cat, person, confidence, reason };
 }
 
+function classifyExpenseJS(text) {
+  const res = classifyTransactionTextJS(text);
+  return { category: res.cat, person: res.person, confidence: res.confidence, reason: res.reason };
+}
+
 function convertVietnameseSpokenNumbers(str) {
   let s = (str || "").toLowerCase();
   // Convert common voice recognition outputs like "570 nghìn", "570 ngàn", "570.000", "năm trăm bảy mươi nghìn"
@@ -398,24 +421,24 @@ function parseQuickInputJS(rawText, defaultMonth = 10) {
   const originalText = (rawText || "").trim();
   const text = convertVietnameseSpokenNumbers(originalText);
 
-  // Default payment source is "Tiền mặt / Chuyển khoản" unless user explicitly types a bank keyword (ncb, vp, bidv, uob, vpsp)
-  let source = localStorage.getItem("FAMILY_DEFAULT_SOURCE_2026") || "Tiền mặt / Chuyển khoản";
-  let matchedBankToken = null;
+  // Use whatever source the user actively selected in #quick-default-source (or saved in localStorage)
+  const uiPresetSource = document.getElementById("quick-default-source")?.value;
+  let source = uiPresetSource || localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt";
 
   const bankRules = [
-    { re: /(?:^|[\s,.;])(vpsp|vp\s*sp|vpbank\s*shopee)(?=$|[\s,.;])/i, name: "VPBank Shopee" },
+    { re: /(?:^|[\s,.;])(vpsp|vp\s*sp|vpbank\s*shopee)(?=$|[\s,.;])/i, name: "VPSP" },
     { re: /(?:^|[\s,.;])(vpbank|vp)(?=$|[\s,.;])/i, name: "VPBank" },
     { re: /(?:^|[\s,.;])(bidv)(?=$|[\s,.;])/i, name: "BIDV" },
     { re: /(?:^|[\s,.;])(ncb)(?=$|[\s,.;])/i, name: "NCB" },
     { re: /(?:^|[\s,.;])(uob)(?=$|[\s,.;])/i, name: "UOB" },
-    { re: /(?:^|[\s,.;])(tiền\s*mặt|tien\s*mat|chuyển\s*khoản|chuyen\s*khoan|tm)(?=$|[\s,.;])/i, name: "Tiền mặt / Chuyển khoản" }
+    { re: /(?:^|[\s,.;])(chuyển\s*khoản|chuyen\s*khoan)(?=$|[\s,.;])/i, name: "Chuyển khoản" },
+    { re: /(?:^|[\s,.;])(tiền\s*mặt|tien\s*mat|tm)(?=$|[\s,.;])/i, name: "Tiền mặt" }
   ];
 
   for (const rule of bankRules) {
     const mB = text.match(rule.re);
     if (mB) {
       source = rule.name;
-      matchedBankToken = mB[1];
       break;
     }
   }
@@ -457,7 +480,18 @@ function parseQuickInputJS(rawText, defaultMonth = 10) {
     .replace(/^[\s\-,.|]+|[\s\-,.|]+$/g, "")
     .trim();
 
-  const { cat, person, confidence, reason } = classifyTransactionTextJS(text);
+  let { cat, person, confidence, reason } = classifyTransactionTextJS(text);
+
+  // Respect user's explicit preset choices if not set to AUTO
+  const uiPresetPerson = document.getElementById("quick-default-person")?.value;
+  if (uiPresetPerson && uiPresetPerson !== "AUTO" && person === "Chung") {
+    person = uiPresetPerson;
+  }
+  const uiPresetCat = document.getElementById("quick-default-cat")?.value;
+  if (uiPresetCat && uiPresetCat !== "AUTO") {
+    cat = uiPresetCat;
+  }
+
   const now = new Date();
   const dayStr = String(now.getDate()).padStart(2, "0");
   const mStr = String(defaultMonth).padStart(2, "0");
@@ -820,14 +854,33 @@ function saveFamilyMailboxes(list) {
   localStorage.setItem("FAMILY_MAILBOXES_2026", JSON.stringify(list));
 }
 
+function getGeminiApiKey() {
+  return (localStorage.getItem(STORAGE_GEMINI_KEY) || (DB && DB.meta && DB.meta.gemini_api_key) || "").trim();
+}
+
+function updateGeminiBadgeUI() {
+  const lbl = document.getElementById("topbar-gemini-label");
+  const pill = document.getElementById("topbar-gemini-pill");
+  const key = getGeminiApiKey();
+  if (lbl) {
+    lbl.textContent = key ? "✨ Gemini AI: Đã Bật (Free)" : "🤖 Bật Gemini AI Free";
+  }
+  if (pill) {
+    pill.style.background = key ? "rgba(16,185,129,0.16)" : "rgba(139,92,246,0.16)";
+    pill.style.borderColor = key ? "rgba(16,185,129,0.45)" : "rgba(139,92,246,0.45)";
+    pill.style.color = key ? "#6ee7b7" : "#c4b5fd";
+  }
+}
+
 function buildCompactCloudState() {
-  // Store custom added transactions, edited transactions, deleted IDs, mailboxes, months income/allocation, and investment state
+  // Store custom added transactions, edited transactions, deleted IDs, mailboxes, gemini key, months income/allocation, and investment state
   const customTxs = (DB.transactions || []).filter(t => t.is_cloud_added || Number((t.id || "").split("-")[1]) > 888);
   const editedTxs = (DB.transactions || []).filter(t => t.is_cloud_edited && !t.is_cloud_added);
   const deletedIds = DB.meta.deleted_tx_ids || [];
   return {
     updated_at: new Date().toISOString(),
     family_pin: getFamilyPin(),
+    gemini_api_key: getGeminiApiKey(),
     mailboxes: getFamilyMailboxes(),
     custom_transactions: customTxs,
     edited_transactions: editedTxs,
@@ -849,6 +902,11 @@ function applyCompactCloudState(cloudState) {
   if (cloudState.family_pin) {
     DB.meta.family_pin = String(cloudState.family_pin);
     localStorage.setItem(STORAGE_PIN_KEY, String(cloudState.family_pin));
+  }
+  if (cloudState.gemini_api_key) {
+    DB.meta.gemini_api_key = String(cloudState.gemini_api_key);
+    localStorage.setItem(STORAGE_GEMINI_KEY, String(cloudState.gemini_api_key));
+    updateGeminiBadgeUI();
   }
   if (Array.isArray(cloudState.mailboxes) && cloudState.mailboxes.length > 0) {
     saveFamilyMailboxes(cloudState.mailboxes);
@@ -1078,11 +1136,32 @@ async function initApp() {
 
   if (!DB.sample_bank_emails) DB.sample_bank_emails = SAMPLE_BANK_EMAILS_DEFAULT;
   DB.apps_script_code = APPS_SCRIPT_CLOUD_CODE;
+  if (DB.meta) {
+    DB.meta.banks = ALL_PAYMENT_SOURCES;
+  }
+
+  // Restore user's preferred Quick Preset selectors on this device
+  const savedSrc = localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY);
+  const srcSelect = document.getElementById("quick-default-source");
+  if (srcSelect && savedSrc && ALL_PAYMENT_SOURCES.includes(savedSrc)) {
+    srcSelect.value = savedSrc;
+  }
+  const savedPerson = localStorage.getItem(STORAGE_DEFAULT_PERSON_KEY);
+  const personSelect = document.getElementById("quick-default-person");
+  if (personSelect && savedPerson) {
+    personSelect.value = savedPerson;
+  }
+  const savedCat = localStorage.getItem(STORAGE_DEFAULT_CAT_KEY);
+  const catSelect = document.getElementById("quick-default-cat");
+  if (catSelect && savedCat) {
+    catSelect.value = savedCat;
+  }
 
   recomputeMonthsJS(DB);
   checkPinLockOnStartup();
   renderAll();
   updateCloudBadgeUI();
+  updateGeminiBadgeUI();
 
   const emailBox = document.getElementById("raw-email-textarea");
   if (emailBox && DB.sample_bank_emails) {
@@ -1103,6 +1182,21 @@ async function initApp() {
   // Pull latest shared state from Google Sheet Cloud if configured
   if (getCloudScriptUrl()) {
     pullFromGoogleSheetCloud(true);
+  }
+}
+
+function onQuickPresetChange() {
+  const src = document.getElementById("quick-default-source")?.value;
+  const person = document.getElementById("quick-default-person")?.value;
+  const cat = document.getElementById("quick-default-cat")?.value;
+  if (src) localStorage.setItem(STORAGE_DEFAULT_SOURCE_KEY, src);
+  if (person) localStorage.setItem(STORAGE_DEFAULT_PERSON_KEY, person);
+  if (cat) localStorage.setItem(STORAGE_DEFAULT_CAT_KEY, cat);
+
+  // If user is currently typing in quick-add-input, immediately update preview
+  const inp = document.getElementById("quick-add-input");
+  if (inp && inp.value.trim()) {
+    onQuickInputChange(inp.value);
   }
 }
 
@@ -1169,11 +1263,11 @@ function renderInteractiveQuickPreview(p) {
   if (!bar || !p) return;
   const cats = (DB && DB.meta && DB.meta.categories) ? DB.meta.categories : ["Ăn uống", "Học tập", "Phí tiện ích", "Đồ dùng GĐ", "Nợ", "Làm đẹp", "Y tế", "Vui chơi", "Event", "Công việc"];
   const members = (DB && DB.meta && DB.meta.members) ? DB.meta.members : ["Chung", "Chồng", "Vợ", "Subo", "Sugi"];
-  const banks = ["Tiền mặt / Chuyển khoản", "NCB", "VPBank", "BIDV", "VPBank Shopee", "UOB"];
+  const banks = ALL_PAYMENT_SOURCES;
 
   bar.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%;">
-      <span style="color:#a5b4fc;font-weight:700;">🤖 Sửa nhanh trước khi lưu:</span>
+      <span style="color:#a5b4fc;font-weight:700;">✏️ Chỉnh trực tiếp trước khi lưu:</span>
       <input type="text" id="qp-content" class="input-control" style="padding:4px 9px;font-size:12.5px;min-width:150px;flex:1;" value="${(p.content || "").replace(/"/g, '&quot;')}" oninput="if(currentQuickParsed) currentQuickParsed.content=this.value" title="Nội dung chi tiêu" />
       <input type="number" id="qp-amount" class="input-control" style="padding:4px 9px;font-size:12.5px;width:115px;color:#34d399;font-weight:700;" value="${p.amount || 0}" oninput="if(currentQuickParsed) currentQuickParsed.amount=Number(this.value)" title="Số tiền (VNĐ)" />
       <select id="qp-category" class="input-control" style="padding:4px 8px;font-size:12px;" onchange="if(currentQuickParsed) currentQuickParsed.category=this.value">
@@ -1182,7 +1276,7 @@ function renderInteractiveQuickPreview(p) {
       <select id="qp-person" class="input-control" style="padding:4px 8px;font-size:12px;" onchange="if(currentQuickParsed) currentQuickParsed.person=this.value">
         ${members.map(m => `<option value="${m}" ${m === p.person ? 'selected' : ''}>👤 ${m}</option>`).join("")}
       </select>
-      <select id="qp-source" class="input-control" style="padding:4px 8px;font-size:12px;border-color:rgba(168,85,247,0.45);color:#e9d5ff;" onchange="if(currentQuickParsed){currentQuickParsed.source=this.value;localStorage.setItem('FAMILY_DEFAULT_SOURCE_2026',this.value);}">
+      <select id="qp-source" class="input-control" style="padding:4px 8px;font-size:12px;border-color:rgba(56,189,248,0.5);color:#38bdf8;font-weight:700;" onchange="if(currentQuickParsed){currentQuickParsed.source=this.value;localStorage.setItem(STORAGE_DEFAULT_SOURCE_KEY,this.value);const ds=document.getElementById('quick-default-source');if(ds)ds.value=this.value;}">
         ${banks.map(b => `<option value="${b}" ${b === p.source ? 'selected' : ''}>🏦 ${b}</option>`).join("")}
       </select>
     </div>
@@ -1194,7 +1288,7 @@ function onQuickInputChange(val) {
   const bar = document.getElementById("quick-preview-bar");
   if (!val || !val.trim()) {
     currentQuickParsed = null;
-    bar.innerHTML = `<span>💡 <b>Nhập gõ chữ, 🎙️ Giọng nói hoặc 📸 Chụp Bill siêu thị:</b> Mặc định <b>Tiền mặt / Chuyển khoản</b> (gõ kèm <code>ncb</code>, <code>vp</code>, <code>bidv</code> nếu quẹt thẻ/bank). Chỉnh sửa trực tiếp bên dưới trước hoặc sau khi lưu!</span>`;
+    bar.innerHTML = `<span>💡 <b>Mẹo:</b> Chọn sẵn <b>Nguồn tiền / Người chi</b> ở thanh trên (App sẽ tự nhớ lựa chọn của bạn), hoặc sửa trực tiếp tại đây và trong bảng <b>Sổ Chi Tiêu</b> bất cứ lúc nào!</span>`;
     return;
   }
   quickParseTimer = setTimeout(() => {
@@ -1216,7 +1310,7 @@ async function addTransactionToState(payload) {
     category: payload.category || "Ăn uống",
     person: payload.person || "Chung",
     amount: Number(payload.amount || 0),
-    source: payload.source || "Tiền mặt / Chuyển khoản",
+    source: payload.source || localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt",
     was_unmatched_in_excel: false,
     issue_note: null,
     is_cloud_added: true
@@ -1240,8 +1334,6 @@ async function submitQuickAdd() {
   if (!val) return;
 
   const targetM = selectedMonth === 0 ? 10 : selectedMonth;
-  // Always parse fresh from `val` first so fast typing + Enter never uses stale text,
-  // then merge any user edits from the interactive preview bar if present
   const freshParsed = parseQuickInputJS(val, targetM);
   const qpContent = document.getElementById("qp-content")?.value?.trim();
   const qpAmount = Number(document.getElementById("qp-amount")?.value || 0);
@@ -1259,16 +1351,33 @@ async function submitQuickAdd() {
   };
 
   if (!payload || !payload.amount || payload.amount <= 0) {
-    alert("Vui lòng nhập kèm số tiền (ví dụ: 'cá, ốc 570k' hoặc 'bỉm sugi 420k ncb')!");
+    alert("Vui lòng nhập kèm số tiền (ví dụ: 'cá, ốc 570k' hoặc bấm nút '🤖 AI Tách Món')!");
     return;
   }
 
   const tx = await addTransactionToState(payload);
   inp.value = "";
   currentQuickParsed = null;
+
+  // Render live editable confirmation bar so user can still change source/person/category/content right after saving!
+  const cats = (DB && DB.meta && DB.meta.categories) ? DB.meta.categories : ["Ăn uống", "Học tập", "Phí tiện ích", "Đồ dùng GĐ", "Nợ", "Làm đẹp", "Y tế", "Vui chơi", "Event", "Công việc"];
+  const members = (DB && DB.meta && DB.meta.members) ? DB.meta.members : ["Chung", "Chồng", "Vợ", "Subo", "Sugi"];
   document.getElementById("quick-preview-bar").innerHTML = `
-    <span style="color:#34d399;font-weight:700;">✅ Đã lưu '${tx.content}' (${fmtVND(tx.amount)} • ${tx.category} • ${tx.person} • ${tx.source}) vào Tháng ${tx.month}!</span>
-    <button class="btn btn-ghost" style="padding:3px 9px;font-size:11.5px;margin-left:8px;" onclick="openEditTransactionModal('${tx.id}')">✏️ Sửa lại</button>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%;">
+      <span style="color:#34d399;font-weight:700;">✅ Đã lưu (Đổi nhanh nếu cần):</span>
+      <input type="text" class="input-control" style="padding:3px 8px;font-size:12px;min-width:130px;" value="${String(tx.content).replace(/"/g, '&quot;')}" onchange="inlineUpdateTx('${tx.id}', 'content', this.value)" />
+      <input type="number" class="input-control" style="padding:3px 8px;font-size:12px;width:105px;color:#34d399;font-weight:700;" value="${tx.amount}" onchange="inlineUpdateTx('${tx.id}', 'amount', Number(this.value))" />
+      <select class="input-control" style="padding:3px 7px;font-size:12px;" onchange="inlineUpdateTx('${tx.id}', 'category', this.value)">
+        ${cats.map(c => `<option value="${c}" ${c === tx.category ? 'selected' : ''}>${c}</option>`).join("")}
+      </select>
+      <select class="input-control" style="padding:3px 7px;font-size:12px;" onchange="inlineUpdateTx('${tx.id}', 'person', this.value)">
+        ${members.map(m => `<option value="${m}" ${m === tx.person ? 'selected' : ''}>${m}</option>`).join("")}
+      </select>
+      <select class="input-control" style="padding:3px 7px;font-size:12px;color:#38bdf8;font-weight:700;" onchange="inlineUpdateTx('${tx.id}', 'source', this.value)">
+        ${ALL_PAYMENT_SOURCES.map(b => `<option value="${b}" ${b === tx.source ? 'selected' : ''}>${b}</option>`).join("")}
+      </select>
+      <button class="btn btn-ghost" style="padding:3px 9px;font-size:11.5px;" onclick="openEditTransactionModal('${tx.id}')">✏️ Chi tiết</button>
+    </div>
   `;
 }
 
@@ -1554,30 +1663,107 @@ function renderTransactionsTab() {
   document.getElementById("filtered-tx-count").textContent = filtered.length;
   document.getElementById("filtered-tx-sum").textContent = fmtVND(filteredSum);
 
-  document.getElementById("tx-table-body").innerHTML = filtered.slice(0, 250).map(t => `
+  const bankList = ALL_PAYMENT_SOURCES;
+
+  document.getElementById("tx-table-body").innerHTML = filtered.slice(0, 250).map(t => {
+    const rowSources = bankList.includes(t.source) ? bankList : [t.source, ...bankList];
+    return `
     <tr>
-      <td style="white-space:nowrap;color:var(--text-secondary);font-size:12.5px;">${t.date} <span style="opacity:0.6;">(T${t.month})</span></td>
+      <td style="white-space:nowrap;color:var(--text-secondary);font-size:12px;">${t.date} <span style="opacity:0.6;">(T${t.month})</span></td>
       <td>
-        <div style="font-weight:600;cursor:pointer;" onclick="openEditTransactionModal('${t.id}')" title="Bấm để chỉnh sửa giao dịch này">${t.content}</div>
-        ${t.was_unmatched_in_excel ? `<div style="font-size:11px;color:#fbbf24;">🔧 Đã khôi phục từ dòng sót trong Excel</div>` : ''}
+        <input
+          type="text"
+          class="input-control"
+          style="width:100%;min-width:170px;padding:4px 8px;font-size:13px;font-weight:600;background:rgba(15,23,42,0.55);border-color:transparent;"
+          onfocus="this.style.borderColor='var(--primary)'"
+          onblur="this.style.borderColor='transparent'"
+          value="${String(t.content || '').replace(/"/g, '&quot;')}"
+          onchange="inlineUpdateTx('${t.id}', 'content', this.value)"
+          title="Gõ để sửa trực tiếp nội dung (Nhấn Enter để lưu)"
+        />
+        ${t.was_unmatched_in_excel ? `<div style="font-size:11px;color:#fbbf24;margin-top:2px;">🔧 Đã khôi phục từ dòng sót trong Excel</div>` : ''}
       </td>
-      <td><span class="chip chip-cat" style="cursor:pointer;" onclick="openEditTransactionModal('${t.id}')">${t.category}</span></td>
-      <td><span class="chip chip-${t.person}" style="cursor:pointer;" onclick="openEditTransactionModal('${t.id}')">${t.person}</span></td>
-      <td><span class="chip chip-bank" style="cursor:pointer;" onclick="openEditTransactionModal('${t.id}')">${t.source}</span></td>
-      <td class="num" style="color:#f8fafc;cursor:pointer;" onclick="openEditTransactionModal('${t.id}')">${fmtVND(t.amount)}</td>
+      <td>
+        <select
+          class="input-control"
+          style="padding:4px 6px;font-size:12px;background:rgba(99,102,241,0.12);border-color:rgba(99,102,241,0.28);color:#c7d2fe;font-weight:600;"
+          onchange="inlineUpdateTx('${t.id}', 'category', this.value)"
+        >
+          ${categories.map(c => `<option value="${c}" ${c === t.category ? 'selected' : ''}>${c}</option>`).join("")}
+        </select>
+      </td>
+      <td>
+        <select
+          class="input-control"
+          style="padding:4px 6px;font-size:12px;font-weight:700;"
+          onchange="inlineUpdateTx('${t.id}', 'person', this.value)"
+        >
+          ${members.map(p => `<option value="${p}" ${p === t.person ? 'selected' : ''}>${p}</option>`).join("")}
+        </select>
+      </td>
+      <td>
+        <select
+          class="input-control"
+          style="padding:4px 6px;font-size:12px;background:rgba(14,165,233,0.12);border-color:rgba(14,165,233,0.3);color:#38bdf8;font-weight:700;"
+          onchange="inlineUpdateTx('${t.id}', 'source', this.value)"
+          title="Đổi nguồn tiền / ngân hàng trực tiếp"
+        >
+          ${rowSources.map(b => `<option value="${b}" ${b === t.source ? 'selected' : ''}>${b}</option>`).join("")}
+        </select>
+      </td>
+      <td class="num">
+        <input
+          type="number"
+          class="input-control"
+          style="width:110px;text-align:right;padding:4px 8px;font-size:13px;font-weight:700;color:#34d399;background:rgba(15,23,42,0.55);border-color:transparent;"
+          onfocus="this.style.borderColor='var(--primary)'"
+          onblur="this.style.borderColor='transparent'"
+          value="${t.amount}"
+          onchange="inlineUpdateTx('${t.id}', 'amount', Number(this.value))"
+          title="Gõ để sửa trực tiếp số tiền"
+        />
+      </td>
       <td class="num" style="white-space:nowrap;">
-        <button class="btn btn-ghost" style="padding:4px 8px;font-size:11.5px;color:#38bdf8;margin-right:4px;" onclick="openEditTransactionModal('${t.id}')" title="Sửa giao dịch">✏️ Sửa</button>
+        <button class="btn btn-ghost" style="padding:4px 8px;font-size:11.5px;color:#38bdf8;margin-right:4px;" onclick="openEditTransactionModal('${t.id}')" title="Mở cửa sổ sửa đầy đủ (Ngày/Tháng)">✏️</button>
         <button class="btn btn-ghost" style="padding:4px 8px;font-size:11.5px;color:#fb7185;" onclick="deleteTransaction('${t.id}')" title="Xóa">✕</button>
       </td>
     </tr>
-  `).join("");
+  `}).join("");
+}
+
+async function inlineUpdateTx(txId, field, newValue) {
+  const tx = DB.transactions.find(t => t.id === txId);
+  if (!tx) return;
+
+  if (field === "amount") {
+    const num = Number(newValue);
+    if (!num || num <= 0) {
+      renderTransactionsTab();
+      return;
+    }
+    tx.amount = num;
+  } else if (field === "content") {
+    const str = String(newValue || "").trim();
+    if (!str) {
+      renderTransactionsTab();
+      return;
+    }
+    tx.content = str;
+  } else {
+    tx[field] = newValue;
+  }
+
+  tx.is_cloud_edited = true;
+  recomputeMonthsJS(DB);
+  renderAll();
+  await persistAndSync({ action: "edit_tx", transaction: tx });
 }
 
 function openEditTransactionModal(txId) {
   const tx = DB.transactions.find(t => t.id === txId);
   if (!tx) return;
 
-  const bankOptions = DB.meta.banks || ["Tiền mặt / Chuyển khoản", "VPBank", "BIDV", "NCB", "UOB", "VPSP"];
+  const bankOptions = ALL_PAYMENT_SOURCES.includes(tx.source) ? ALL_PAYMENT_SOURCES : [tx.source, ...ALL_PAYMENT_SOURCES];
   const modal = document.getElementById("modal-overlay");
   const content = document.getElementById("modal-content");
   content.innerHTML = `
@@ -1659,6 +1845,8 @@ async function submitEditTransactionModal(txId) {
 
   if (saveDefaultSrc && source) {
     localStorage.setItem(STORAGE_DEFAULT_SOURCE_KEY, source);
+    const ds = document.getElementById("quick-default-source");
+    if (ds) ds.value = source;
   }
 
   tx.content = content;
@@ -1668,20 +1856,10 @@ async function submitEditTransactionModal(txId) {
   tx.category = category;
   tx.person = person;
   tx.source = source;
-
-  if (!DB.meta.edited_transactions) DB.meta.edited_transactions = {};
-  DB.meta.edited_transactions[tx.id] = {
-    content,
-    amount,
-    date,
-    month,
-    category,
-    person,
-    source,
-    updated_at: new Date().toISOString()
-  };
+  tx.is_cloud_edited = true;
 
   closeModal();
+  recomputeMonthsJS(DB);
   renderAll();
   await persistAndSync({ action: "edit_tx", transaction: tx });
 }
@@ -2278,13 +2456,48 @@ function initAiGreeting() {
   `;
 }
 
-function askAiQuestion(qText) {
+async function askAiQuestion(qText) {
   switchTab("ai");
   const box = document.getElementById("ai-chat-messages");
   box.innerHTML += `<div class="chat-bubble user">${qText}</div>`;
-  const answer = answerFamilyQuestionJS(qText, DB);
-  box.innerHTML += `<div class="chat-bubble ai">${formatMarkdownSimple(answer)}</div>`;
+
+  // 1. Instant local calculation from exact 2026 Family DB
+  const localAnswer = answerFamilyQuestionJS(qText, DB);
+  const bubbleId = "ai-ans-" + Date.now();
+  box.innerHTML += `<div class="chat-bubble ai" id="${bubbleId}">${formatMarkdownSimple(localAnswer)}</div>`;
   box.scrollTop = box.scrollHeight;
+
+  // 2. If Gemini Free API is enabled, enrich with deep Gemini AI financial analysis!
+  const geminiKey = getGeminiApiKey();
+  if (geminiKey) {
+    const bubbleEl = document.getElementById(bubbleId);
+    if (bubbleEl) {
+      bubbleEl.innerHTML += `<div id="${bubbleId}-gemini" style="margin-top:10px;padding-top:10px;border-top:1px dashed rgba(139,92,246,0.35);color:#c4b5fd;font-size:12.5px;">🤖 <i>Gemini AI đang phân tích sâu dữ liệu gia đình...</i></div>`;
+    }
+    try {
+      const activeMonths = DB.months.filter(m => m.income.total > 0 || m.actual_total_expense > 0);
+      const totInc = activeMonths.reduce((s, m) => s + m.income.total, 0);
+      const totExp = activeMonths.reduce((s, m) => s + m.actual_total_expense, 0);
+      const recentTxs = DB.transactions.slice(0, 25).map(t => `${t.date}: ${t.content} (${t.amount}đ, ${t.category}, ${t.person}, ${t.source})`).join("; ");
+      const sysPrompt = `Bạn là Cố vấn Tài chính Gia đình (Chồng, Vợ, 2 con Subo & Sugi) năm 2026.
+Dữ liệu thực tế 10 tháng 2026: Tổng thu = ${fmtVND(totInc)}, Tổng thực chi = ${fmtVND(totExp)}, Thặng dư = ${fmtVND(totInc - totExp)}.
+Danh mục quỹ ETF/Mở DCA (12tr/tháng): FUEVFVND (30%), DCDS (25%), VESAF (45%).
+25 giao dịch gần nhất: ${recentTxs}.
+Hãy trả lời câu hỏi sau của gia đình một cách ngắn gọn, sắc sảo, ấm áp và thực tế (dùng tiếng Việt): "${qText}"`;
+
+      const aiText = await callGeminiFreeAPI(sysPrompt);
+      const gDiv = document.getElementById(`${bubbleId}-gemini`);
+      if (gDiv && aiText) {
+        gDiv.innerHTML = `<div style="font-weight:700;color:#a78bfa;margin-bottom:4px;">✨ Phân tích chuyên sâu từ Gemini AI:</div>` + formatMarkdownSimple(aiText);
+        box.scrollTop = box.scrollHeight;
+      } else if (gDiv) {
+        gDiv.remove();
+      }
+    } catch (e) {
+      const gDiv = document.getElementById(`${bubbleId}-gemini`);
+      if (gDiv) gDiv.remove();
+    }
+  }
 }
 
 function sendAiChat() {
@@ -2293,6 +2506,242 @@ function sendAiChat() {
   if (!q) return;
   inp.value = "";
   askAiQuestion(q);
+}
+
+// ============================================================================
+// GEMINI FREE API ENGINE (DÙNG CHUNG 2 VỢ CHỒNG QUA CLOUD)
+// ============================================================================
+async function callGeminiFreeAPI(promptText, imageBase64 = null, mimeType = "image/jpeg") {
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) return null;
+
+  const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+  const parts = [{ text: promptText }];
+  if (imageBase64) {
+    parts.push({ inline_data: { mime_type: mimeType, data: imageBase64 } });
+  }
+
+  for (const model of models) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts }],
+          generationConfig: { temperature: 0.2 }
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) return text;
+      }
+    } catch (e) {}
+  }
+  return null;
+}
+
+function openGeminiSettingsModal() {
+  const currentKey = getGeminiApiKey();
+  const modal = document.getElementById("modal-overlay");
+  const content = document.getElementById("modal-content");
+
+  content.innerHTML = `
+    <div class="card-header">
+      <div class="card-title">🤖 Kích Hoạt Gemini AI Miễn Phí (Google AI Studio Free Tier)</div>
+      <button class="btn btn-ghost" style="padding:4px 10px;" onclick="closeModal()">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;">
+      <div style="background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.35);border-radius:12px;padding:12px;line-height:1.55;">
+        <div style="font-weight:700;color:#c4b5fd;margin-bottom:4px;">✨ Tại sao nên dùng Gemini API Free của chính Gmail bạn?</div>
+        <div style="color:var(--text-secondary);font-size:12px;">
+          • Google cung cấp gói <b>Gemini Flash Free Tier hoàn toàn miễn phí (0đ)</b> với <b>1.500 lượt gọi/ngày</b> — dư sức dùng gấp 100 lần nhu cầu chi tiêu gia đình!<br/>
+          • <b>Lý do bảo mật:</b> Nếu gắn cứng mã API công khai lên mã nguồn GitHub, Google sẽ tự động khóa mã đó sau vài giây. Khi bạn dán mã vào ô dưới đây, mã được <b>lưu kín trong Google Sheet Cloud của riêng gia đình bạn</b> và <b>tự động đồng bộ sang máy của Vợ</b> (Vợ không cần cài đặt gì thêm!).
+        </div>
+      </div>
+
+      <div style="background:rgba(15,23,42,0.8);border:1px solid var(--border-subtle);border-radius:12px;padding:12px;">
+        <div style="font-weight:700;color:#38bdf8;margin-bottom:6px;">🚀 Cách lấy mã Gemini API Free trong 10 giây:</div>
+        <ol style="margin:0;padding-left:18px;color:var(--text-secondary);font-size:12px;line-height:1.6;">
+          <li>Bấm vào trang chính thức của Google: <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:#34d399;font-weight:700;text-decoration:underline;">👉 Mở Google AI Studio (aistudio.google.com/app/apikey)</a></li>
+          <li>Bấm nút màu xanh <b>"Create API key"</b> → Copy đoạn mã bắt đầu bằng chữ <code>AIzaSy...</code></li>
+          <li>Dán vào ô bên dưới và bấm <b>"💾 Lưu & Đồng Bộ Cho Cả 2 Vợ Chồng"</b>.</li>
+        </ol>
+      </div>
+
+      <div>
+        <label style="font-weight:700;display:block;margin-bottom:4px;">🔑 Mã Gemini API Key (Miễn phí):</label>
+        <input type="password" id="modal-gemini-key-input" class="input-control" style="width:100%;font-family:monospace;" value="${currentKey}" placeholder="AIzaSy..." />
+      </div>
+
+      <div id="gemini-test-status" style="font-size:12px;color:var(--text-secondary);"></div>
+
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" style="flex:1;" onclick="testAndSaveGeminiKey()">💾 Lưu & Đồng Bộ Cho Cả 2 Vợ Chồng</button>
+        <button class="btn btn-ghost" onclick="closeModal()">Đóng</button>
+      </div>
+    </div>
+  `;
+  modal.style.display = "flex";
+}
+
+async function testAndSaveGeminiKey() {
+  const val = (document.getElementById("modal-gemini-key-input")?.value || "").trim();
+  const statusEl = document.getElementById("gemini-test-status");
+
+  localStorage.setItem(STORAGE_GEMINI_KEY, val);
+  if (DB && DB.meta) DB.meta.gemini_api_key = val;
+  updateGeminiBadgeUI();
+
+  if (!val) {
+    await persistAndSync({ action: "update_gemini_key", gemini_api_key: "" });
+    closeModal();
+    return;
+  }
+
+  if (statusEl) {
+    statusEl.innerHTML = `<span style="color:#38bdf8;">⏳ Đang kiểm tra kết nối với Google Gemini AI...</span>`;
+  }
+
+  const testReply = await callGeminiFreeAPI("Trả lời đúng 1 từ: OK");
+  if (testReply) {
+    if (statusEl) {
+      statusEl.innerHTML = `<span style="color:#34d399;font-weight:700;">✅ Kết nối Gemini AI thành công! Đang đồng bộ sang Cloud cho cả 2 vợ chồng...</span>`;
+    }
+    await persistAndSync({ action: "update_gemini_key", gemini_api_key: val });
+    setTimeout(() => {
+      closeModal();
+      alert("🎉 Đã kích hoạt Gemini AI Free thành công! Giờ bạn và vợ có thể dùng AI để quét ảnh Bill siêu thị, tách câu phức tạp, đọc Email ngân hàng và hỏi đáp AI.");
+    }, 400);
+  } else {
+    if (statusEl) {
+      statusEl.innerHTML = `<span style="color:#fb7185;font-weight:700;">⚠️ Mã API chưa hợp lệ hoặc chưa bật. Hãy kiểm tra lại mã bắt đầu bằng AIzaSy... từ aistudio.google.com/app/apikey nhé!</span>`;
+    }
+  }
+}
+
+async function analyzeQuickInputWithGemini() {
+  const inp = document.getElementById("quick-add-input");
+  const raw = (inp?.value || "").trim();
+  if (!raw) {
+    alert("Hãy gõ hoặc bấm 🎙️ Ghi âm câu chi tiêu vào ô nhập (VD: 'Đi chợ mua cá 200k, ốc 370k bằng tiền mặt, mua bỉm Sugi 420k NCB') rồi bấm nút này nhé!");
+    return;
+  }
+
+  const key = getGeminiApiKey();
+  if (!key) {
+    openGeminiSettingsModal();
+    return;
+  }
+
+  const bar = document.getElementById("quick-preview-bar");
+  if (bar) {
+    bar.innerHTML = `<span style="color:#c4b5fd;font-weight:700;">🤖 Gemini AI đang phân tích câu: "${raw}"...</span>`;
+  }
+
+  const defaultSrc = document.getElementById("quick-default-source")?.value || localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt";
+  const defaultPerson = document.getElementById("quick-default-person")?.value || "AUTO";
+
+  const prompt = `Phân tích câu ghi chép chi tiêu gia đình sau thành danh sách các giao dịch JSON thuần (không dùng markdown \`\`\`):
+Câu: "${raw}"
+Quy tắc:
+- Nếu câu có nhiều món cùng 1 lần mua và chỉ có 1 tổng tiền (VD: "cá, ốc 570k") -> Trả về 1 giao dịch có content="cá, ốc", amount=570000.
+- Nếu câu liệt kê nhiều khoản có số tiền riêng hoặc nguồn tiền khác nhau (VD: "mua cá 200k tiền mặt, bỉm sugi 420k ncb") -> Tách thành nhiều giao dịch.
+- category chỉ chọn 1 trong: ["Ăn uống", "Học tập", "Phí tiện ích", "Đồ dùng GĐ", "Nợ", "Làm đẹp", "Y tế", "Vui chơi", "Event", "Công việc"].
+- person chỉ chọn 1 trong: ["Chung", "Chồng", "Vợ", "Subo", "Sugi"] (nếu không rõ thì dùng "${defaultPerson !== 'AUTO' ? defaultPerson : 'Chung'}").
+- source chỉ chọn 1 trong: ["Tiền mặt", "Chuyển khoản", "Tiền mặt / Chuyển khoản", "NCB", "VPBank", "BIDV", "UOB", "VPSP"] (nếu câu không nhắc tên ngân hàng/nguồn tiền thì dùng "${defaultSrc}").
+Định dạng trả về bắt buộc:
+{"items": [{"content": "...", "amount": 570000, "category": "Ăn uống", "person": "Vợ", "source": "${defaultSrc}"}]}`;
+
+  const aiResp = await callGeminiFreeAPI(prompt);
+  if (!aiResp) {
+    onQuickInputChange(raw);
+    return;
+  }
+
+  try {
+    const clean = aiResp.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(clean);
+    const list = parsed.items || (Array.isArray(parsed) ? parsed : []);
+    if (list.length === 1) {
+      const targetM = selectedMonth === 0 ? 10 : selectedMonth;
+      const now = new Date();
+      currentQuickParsed = {
+        date: `2026-${String(targetM).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`,
+        month: targetM,
+        content: list[0].content || raw,
+        amount: Number(list[0].amount || 0),
+        category: list[0].category || "Ăn uống",
+        person: list[0].person || "Chung",
+        source: list[0].source || defaultSrc
+      };
+      renderInteractiveQuickPreview(currentQuickParsed);
+    } else if (list.length > 1) {
+      // Open multi-item preview in Receipt Scanner modal so user can review & save all at once!
+      openReceiptScannerModal();
+      const previewArea = document.getElementById("receipt-preview-area");
+      if (previewArea) previewArea.style.display = "none";
+      applyParsedReceiptResult({
+        storeName: "AI Tách Giao Dịch",
+        source: list[0].source || defaultSrc,
+        totalAmount: list.reduce((s, i) => s + Number(i.amount || 0), 0),
+        items: list.map(i => ({
+          name: i.content,
+          amount: Number(i.amount || 0),
+          category: i.category || "Ăn uống",
+          checked: true
+        }))
+      });
+      scannedReceiptData.saveMode = "items";
+      renderScannedReceiptUI();
+    }
+  } catch (e) {
+    onQuickInputChange(raw);
+  }
+}
+
+async function parseEmailWithGeminiAI() {
+  const raw = (document.getElementById("raw-email-textarea")?.value || "").trim();
+  if (!raw) {
+    alert("Vui lòng dán nội dung Email hoặc tin nhắn SMS biến động số dư vào ô trống trước!");
+    return;
+  }
+  const key = getGeminiApiKey();
+  if (!key) {
+    openGeminiSettingsModal();
+    return;
+  }
+
+  const prompt = `Trích xuất tất cả các giao dịch trừ tiền/chi tiêu từ nội dung email/SMS ngân hàng sau sang JSON thuần (không markdown):
+Nội dung:
+${raw}
+
+Trả về JSON theo cấu trúc:
+{"items": [{"bank": "NCB|VPBank|BIDV|UOB|Tiền mặt|Chuyển khoản", "date": "2026-10-22", "month": 10, "amount": 485000, "content": "Nội dung rút gọn dễ hiểu", "raw_content": "Nội dung gốc", "category": "Ăn uống|Học tập|Phí tiện ích|Đồ dùng GĐ|Nợ|Làm đẹp|Y tế|Vui chơi|Event|Công việc", "person": "Chung|Chồng|Vợ|Subo|Sugi", "confidence": 0.98, "reason": "Gemini AI phân tích"}]}`;
+
+  const aiResp = await callGeminiFreeAPI(prompt);
+  if (!aiResp) {
+    parseEmailContent();
+    return;
+  }
+  try {
+    const clean = aiResp.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(clean);
+    if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
+      pendingEmails = parsed.items.map(it => ({
+        ...it,
+        source: it.bank || "NCB",
+        amount: Number(it.amount || 0),
+        month: Number(it.month || 10),
+        confidence: it.confidence || 0.98,
+        reason: it.reason || "Gemini AI"
+      }));
+      renderPendingEmailList();
+      return;
+    }
+  } catch (e) {}
+  parseEmailContent();
 }
 
 // ============================================================================
@@ -2460,6 +2909,7 @@ async function saveNewFamilyPin() {
 
 function openManualAddModal() {
   const m = selectedMonth === 0 ? 10 : selectedMonth;
+  const defaultSrc = document.getElementById("quick-default-source")?.value || localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt";
   const modal = document.getElementById("modal-overlay");
   const content = document.getElementById("modal-content");
   content.innerHTML = `
@@ -2470,12 +2920,12 @@ function openManualAddModal() {
     <div style="display:flex;flex-direction:column;gap:12px;">
       <div>
         <label style="font-size:12.5px;color:var(--text-secondary);">Nội dung chi tiêu</label>
-        <input type="text" id="m-tx-content" class="input-control" style="width:100%;margin-top:4px;" placeholder="VD: Siêu thị Emart, Bỉm Sugi, Đổ xăng..." />
+        <input type="text" id="m-tx-content" class="input-control" style="width:100%;margin-top:4px;" placeholder="VD: Cá, ốc, Siêu thị Emart, Bỉm Sugi..." />
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div>
           <label style="font-size:12.5px;color:var(--text-secondary);">Số tiền (VNĐ)</label>
-          <input type="number" id="m-tx-amount" class="input-control" style="width:100%;margin-top:4px;" placeholder="VD: 350000" />
+          <input type="number" id="m-tx-amount" class="input-control" style="width:100%;margin-top:4px;" placeholder="VD: 570000" />
         </div>
         <div>
           <label style="font-size:12.5px;color:var(--text-secondary);">Ngày (Tháng ${m})</label>
@@ -2498,7 +2948,7 @@ function openManualAddModal() {
         <div>
           <label style="font-size:12.5px;color:var(--text-secondary);">Nguồn tiền</label>
           <select id="m-tx-src" class="input-control" style="width:100%;margin-top:4px;">
-            ${DB.meta.banks.map(b => `<option value="${b}">${b}</option>`).join("")}
+            ${ALL_PAYMENT_SOURCES.map(b => `<option value="${b}" ${b === defaultSrc ? 'selected' : ''}>${b}</option>`).join("")}
           </select>
         </div>
       </div>
@@ -2589,7 +3039,7 @@ async function submitIncomeModal(m) {
 function toggleVoiceInput() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const btn = document.getElementById("btn-voice-input");
-  const inp = document.getElementById("quick-input");
+  const inp = document.getElementById("quick-add-input");
 
   if (!SpeechRecognition) {
     alert("Trình duyệt hiện tại chưa hỗ trợ nhận diện giọng nói trực tiếp. Bạn có thể bấm biểu tượng Micro 🎙️ trên bàn phím điện thoại (iPhone / Android) hoặc mở bằng Chrome / Safari nhé!");
@@ -2657,7 +3107,7 @@ function toggleVoiceInput() {
       btn.style.borderColor = "rgba(236,72,153,0.4)";
     }
     if (inp) {
-      inp.placeholder = "⚡ Nhập nhanh hoặc bấm 🎙️ Ghi âm: 'cá, ốc 570k' hoặc 'bỉm sugi 420k ncb'...";
+      inp.placeholder = "Gõ hoặc bấm 🎙️ nói: 'cá, ốc 570k', 'winmart 385k', 'bỉm sugi 420k ncb'...";
       if (inp.value.trim()) {
         onQuickInputChange(inp.value);
       }
@@ -2681,7 +3131,7 @@ let scannedReceiptData = {
   totalContent: "",
   category: "Ăn uống",
   person: "Vợ",
-  source: "Tiền mặt / Chuyển khoản",
+  source: "Tiền mặt",
   date: "",
   items: []
 };
@@ -2689,8 +3139,8 @@ let scannedReceiptData = {
 function openReceiptScannerModal() {
   const m = selectedMonth === 0 ? 10 : selectedMonth;
   const todayStr = `2026-${String(m).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`;
-  const defaultSrc = localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt / Chuyển khoản";
-  const geminiKey = localStorage.getItem(STORAGE_GEMINI_KEY) || "";
+  const defaultSrc = document.getElementById("quick-default-source")?.value || localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt";
+  const geminiKey = getGeminiApiKey();
 
   scannedReceiptData = {
     storeName: "Siêu thị",
@@ -2718,7 +3168,9 @@ function openReceiptScannerModal() {
           🛒 Chụp ảnh Bill Siêu Thị (Co.opmart, WinMart, Bách Hóa Xanh, Emart...) hoặc Ảnh Bill Ngân Hàng
         </div>
         <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">
-          Hỗ trợ tự động đọc tên món hàng, giá tiền từng món và tổng hóa đơn. Bạn cũng có thể bấm <b>Ctrl+V</b> để dán ảnh chụp màn hình.
+          ${geminiKey
+            ? `<span style="color:#34d399;font-weight:700;">✨ Đã bật Gemini Vision AI:</span> Tự động đọc siêu chuẩn từng món hàng, giá tiền và tổng hóa đơn chỉ trong 2 giây!`
+            : `Hỗ trợ đọc hóa đơn bằng OCR hoặc bấm <a href="javascript:void(0)" onclick="openGeminiSettingsModal()" style="color:#c4b5fd;font-weight:700;text-decoration:underline;">🤖 Bật Gemini AI Free (Miễn phí)</a> để đọc Bill siêu thị mờ/nhăn chuẩn 99%!`}
         </div>
         <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
           <label class="btn btn-primary" style="cursor:pointer;padding:9px 14px;font-size:12.5px;">
@@ -2729,14 +3181,6 @@ function openReceiptScannerModal() {
             🧾 Thử Bill Siêu Thị Mẫu (Cá, ốc, rau...)
           </button>
         </div>
-
-        <details style="margin-top:10px;text-align:left;font-size:11.5px;color:var(--text-secondary);">
-          <summary style="cursor:pointer;color:#a5b4fc;font-weight:600;">✨ Nâng cao: Cài Gemini AI Key miễn phí để đọc Bill chữ mờ / viết tay siêu chuẩn (Tùy chọn)</summary>
-          <div style="margin-top:6px;display:flex;gap:6px;">
-            <input type="password" id="gemini-api-key-input" class="input-control" style="flex:1;padding:6px 10px;font-size:11.5px;" value="${geminiKey}" placeholder="Dán Gemini API Key (AIzaSy...) từ aistudio.google.com" onchange="saveGeminiKey(this.value)" />
-            <button class="btn btn-ghost" style="padding:6px 10px;font-size:11.5px;" onclick="saveGeminiKey(document.getElementById('gemini-api-key-input').value)">Lưu Key</button>
-          </div>
-        </details>
       </div>
 
       <div id="receipt-preview-area" style="display:none;gap:12px;align-items:flex-start;background:rgba(15,23,42,0.75);padding:10px;border-radius:12px;border:1px solid var(--border-subtle);">
@@ -2747,7 +3191,7 @@ function openReceiptScannerModal() {
             <div id="receipt-ocr-bar" style="width:15%;height:100%;background:linear-gradient(90deg,#06b6d4,#6366f1);transition:width 0.25s;"></div>
           </div>
           <div style="font-size:11.5px;color:var(--text-secondary);margin-top:6px;">
-            Bạn có thể chỉnh sửa trực tiếp các món hoặc Tổng tiền bên dưới trước khi bấm Lưu vào sổ.
+            Bạn có thể chỉnh sửa trực tiếp các món, Nguồn tiền, Người chi hoặc Tổng tiền bên dưới trước khi bấm Lưu vào sổ.
           </div>
         </div>
       </div>
@@ -2756,12 +3200,6 @@ function openReceiptScannerModal() {
     </div>
   `;
   modal.style.display = "flex";
-}
-
-function saveGeminiKey(val) {
-  const k = (val || "").trim();
-  localStorage.setItem(STORAGE_GEMINI_KEY, k);
-  alert(k ? "✅ Đã lưu Gemini Vision AI Key! Khi chọn ảnh Bill, App sẽ ưu tiên dùng AI để đọc chính xác từng món hàng." : "Đã xóa Gemini Key (App sẽ dùng bộ đọc OCR tích hợp sẵn).");
 }
 
 function loadTesseractScript() {
@@ -2795,38 +3233,32 @@ async function handleReceiptImageSelected(file) {
   const dataUrl = await fileToBase64(file);
   if (imgEl) imgEl.src = dataUrl;
 
-  const geminiKey = (localStorage.getItem(STORAGE_GEMINI_KEY) || "").trim();
+  const geminiKey = getGeminiApiKey();
+  const defaultSrc = document.getElementById("quick-default-source")?.value || localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt";
 
-  // 1. Try Gemini Vision AI if key is configured
+  // 1. Try Gemini Vision AI (gemini-2.5-flash / gemini-2.0-flash / gemini-1.5-flash) if key is configured
   if (geminiKey) {
     try {
-      if (statusEl) statusEl.textContent = "✨ Đang dùng Gemini Vision AI bóc tách hóa đơn siêu thị...";
-      if (barEl) barEl.style.width = "60%";
+      if (statusEl) statusEl.textContent = "✨ Đang dùng Gemini Vision AI đọc hóa đơn siêu thị / bill...";
+      if (barEl) barEl.style.width = "65%";
       const base64Raw = dataUrl.split(",")[1];
       const mimeType = file.type || "image/jpeg";
-      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(geminiKey)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              {
-                text: `Đây là hóa đơn siêu thị hoặc bill thanh toán tại Việt Nam. Hãy trích xuất chính xác sang JSON thuần (không có markdown):
-{"storeName": "Tên siêu thị/cửa hàng", "source": "Tiền mặt / Chuyển khoản hoặc NCB/VPBank/BIDV", "totalAmount": số_nguyên_VNĐ, "items": [{"name": "Tên món hàng", "amount": số_nguyên_VNĐ, "category": "Ăn uống|Cho con|Hóa đơn|Gia đình|Mặc|Đi lại|Khác"}]}`
-              },
-              { inline_data: { mime_type: mimeType, data: base64Raw } }
-            ]
-          }]
-        })
-      });
-      if (resp.ok) {
-        const json = await resp.json();
-        const rawTxt = json?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const visionPrompt = `Đây là ảnh chụp hóa đơn siêu thị hoặc bill chuyển khoản tại Việt Nam. Hãy trích xuất chính xác sang JSON thuần (không dùng markdown \`\`\`):
+{
+  "storeName": "Tên siêu thị/cửa hàng hoặc ngân hàng",
+  "source": "Chọn 1 trong: Tiền mặt, Chuyển khoản, NCB, VPBank, BIDV, UOB, VPSP (nếu trên bill không ghi ngân hàng thì để '${defaultSrc}')",
+  "totalAmount": số_nguyên_VNĐ_tổng_thanh_toán,
+  "items": [
+    {"name": "Tên món hàng (tiếng Việt có dấu rõ ràng)", "amount": thành_tiền_số_nguyên_VNĐ, "category": "Chọn 1 trong: Ăn uống, Đồ dùng GĐ, Phí tiện ích, Học tập, Y tế, Vui chơi, Làm đẹp, Công việc, Event, Nợ"}
+  ]
+}`;
+      const rawTxt = await callGeminiFreeAPI(visionPrompt, base64Raw, mimeType);
+      if (rawTxt) {
         const cleanJson = rawTxt.replace(/```json|```/g, "").trim();
         const parsedAi = JSON.parse(cleanJson);
         if (parsedAi && (parsedAi.totalAmount || (parsedAi.items && parsedAi.items.length > 0))) {
           if (barEl) barEl.style.width = "100%";
-          if (statusEl) statusEl.textContent = "✅ Đã bóc tách hóa đơn bằng AI thành công!";
+          if (statusEl) statusEl.textContent = "✅ Gemini Vision AI đã bóc tách hóa đơn thành công!";
           applyParsedReceiptResult(parsedAi);
           return;
         }
@@ -2884,7 +3316,7 @@ function parseReceiptOcrTextJS(rawText) {
   else if (fullFold.includes("con cung") || fullFold.includes("concung")) storeName = "Con Cưng";
   else if (fullFold.includes("pharmacity") || fullFold.includes("long chau") || fullFold.includes("guardian")) storeName = "Nhà thuốc";
 
-  let detectedSource = localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt / Chuyển khoản";
+  let detectedSource = document.getElementById("quick-default-source")?.value || localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt";
   if (fullFold.includes("ncb") || fullFold.includes("quoc dan")) detectedSource = "NCB";
   else if (fullFold.includes("vpbank")) detectedSource = "VPBank";
   else if (fullFold.includes("bidv")) detectedSource = "BIDV";
@@ -2906,7 +3338,6 @@ function parseReceiptOcrTextJS(rawText) {
 
   for (const line of lines) {
     const lf = foldVN(line);
-    // Tìm số tiền ở cuối dòng (VD: 185,000 hoặc 185.000 hoặc 570k)
     const priceMatches = [...line.matchAll(/(\d{1,3}(?:[.,]\d{3})+|\d+\s*k)\b/gi)];
     if (priceMatches.length === 0) continue;
 
@@ -2920,7 +3351,6 @@ function parseReceiptOcrTextJS(rawText) {
 
     if (!val || val < 1000 || val > 500000000) continue;
 
-    // Kiểm tra có phải dòng Tổng tiền không
     if (totalKeywords.some(tk => lf.includes(tk))) {
       if (val > totalAmount) totalAmount = val;
       continue;
@@ -2928,7 +3358,6 @@ function parseReceiptOcrTextJS(rawText) {
 
     if (ignoreKeywords.some(ik => lf.includes(ik))) continue;
 
-    // Lấy tên món hàng phía trước số tiền
     const firstMatchIdx = line.indexOf(priceMatches[0][0]);
     let itemName = line.slice(0, firstMatchIdx)
       .replace(/^[\d\s.\-*#]+/, "")
@@ -2974,13 +3403,13 @@ function loadSampleSupermarketBill() {
 
   applyParsedReceiptResult({
     storeName: "Siêu thị Co.opmart",
-    source: localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt / Chuyển khoản",
+    source: document.getElementById("quick-default-source")?.value || localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt",
     totalAmount: 570000,
     items: [
       { name: "Cá điêu hồng làm sạch", amount: 185000, category: "Ăn uống", checked: true },
       { name: "Ốc hương tươi", amount: 245000, category: "Ăn uống", checked: true },
       { name: "Rau cải ngọt & hành ngò", amount: 35000, category: "Ăn uống", checked: true },
-      { name: "Sữa tươi cho Subo & Sugi", amount: 105000, category: "Cho con", checked: true }
+      { name: "Sữa tươi cho Subo & Sugi", amount: 105000, category: "Đồ dùng GĐ", checked: true }
     ]
   });
 }
@@ -2992,7 +3421,7 @@ function applyParsedReceiptResult(parsed) {
   const items = (parsed.items || []).map(it => ({
     name: it.name || "Món hàng",
     amount: Number(it.amount || 0),
-    category: it.category || classifyExpenseJS(it.name || "").category || "Ăn uống",
+    category: (DB.meta.categories.includes(it.category) ? it.category : classifyExpenseJS(it.name || "").category) || "Ăn uống",
     checked: it.checked !== false
   }));
 
@@ -3008,7 +3437,7 @@ function applyParsedReceiptResult(parsed) {
     totalContent: itemSummaryNames ? `${storePrefix}: ${itemSummaryNames}` : `Đi ${storePrefix}`,
     category: "Ăn uống",
     person: "Vợ",
-    source: parsed.source || localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt / Chuyển khoản",
+    source: parsed.source || document.getElementById("quick-default-source")?.value || localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt",
     date: todayStr,
     items
   };
@@ -3021,7 +3450,7 @@ function renderScannedReceiptUI() {
   if (!container) return;
   container.style.display = "flex";
 
-  const bankOptions = DB.meta.banks || ["Tiền mặt / Chuyển khoản", "VPBank", "BIDV", "NCB", "UOB", "VPSP"];
+  const bankOptions = ALL_PAYMENT_SOURCES;
   const selectedItemsCount = scannedReceiptData.items.filter(i => i.checked).length;
   const selectedItemsSum = scannedReceiptData.items.filter(i => i.checked).reduce((s, i) => s + Number(i.amount || 0), 0);
 
@@ -3135,7 +3564,7 @@ async function saveScannedReceiptToTransactions() {
       category: scannedReceiptData.category || "Ăn uống",
       person: scannedReceiptData.person || "Vợ",
       amount,
-      source: scannedReceiptData.source || "Tiền mặt / Chuyển khoản"
+      source: scannedReceiptData.source || "Tiền mặt"
     });
   } else {
     const chosen = scannedReceiptData.items.filter(i => i.checked && i.name.trim() && Number(i.amount) > 0);
@@ -3155,7 +3584,7 @@ async function saveScannedReceiptToTransactions() {
         category: it.category || "Ăn uống",
         person: scannedReceiptData.person || "Vợ",
         amount: Number(it.amount),
-        source: scannedReceiptData.source || "Tiền mặt / Chuyển khoản",
+        source: scannedReceiptData.source || "Tiền mặt",
         was_unmatched_in_excel: false,
         issue_note: null,
         is_cloud_added: true

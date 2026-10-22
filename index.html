@@ -134,11 +134,15 @@
               <span class="pulse-dot" style="width:7px;height:7px;"></span>
               <span id="topbar-cloud-label">☁️ Cloud 24/7</span>
             </button>
+            <button class="cloud-pill" onclick="openGeminiSettingsModal()" id="topbar-gemini-pill" style="background:rgba(139,92,246,0.16);border-color:rgba(139,92,246,0.45);color:#c4b5fd;">
+              <span>🤖</span>
+              <span id="topbar-gemini-label">Gemini AI Free</span>
+            </button>
             <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px;border-radius:99px;" onclick="lockAppNow()" title="Khóa màn hình bằng mã PIN">
               🔒 Khóa PIN
             </button>
           </div>
-          <p id="page-subheading">Chạy độc lập trên Cloud 24/7 • Tự động bóc tách Email VPBank, BIDV, NCB & Đồng bộ Google Sheet 2 vợ chồng</p>
+          <p id="page-subheading">Chạy độc lập trên Cloud 24/7 • Tích hợp Gemini AI Free • Tự động đọc Bill siêu thị, Email NCB/VPBank/BIDV & Cho phép sửa mọi nơi</p>
         </div>
         <div class="topbar-actions">
           <div class="month-pills" id="month-selector">
@@ -155,7 +159,7 @@
             <input
               type="text"
               id="quick-add-input"
-              placeholder="Gõ hoặc bấm 🎙️ nói: 'cá, ốc 570k', 'winmart 385k', 'bỉm sugi 420k ncb', 'xăng ck 95k vp'..."
+              placeholder="Gõ hoặc bấm 🎙️ nói: 'cá, ốc 570k', 'winmart 385k', 'bỉm sugi 420k ncb'..."
               oninput="onQuickInputChange(this.value)"
               onkeydown="if(event.key==='Enter') submitQuickAdd()"
             />
@@ -163,15 +167,65 @@
           <button class="btn btn-ghost" id="btn-voice-input" onclick="toggleVoiceInput()" title="Ghi âm giọng nói tiếng Việt" style="border-color:rgba(244,63,94,0.4);color:#fda4af;">
             🎙️ Ghi âm
           </button>
-          <button class="btn btn-ghost" onclick="openReceiptScannerModal()" title="Chụp ảnh hoặc tải ảnh hóa đơn siêu thị / bill chuyển khoản" style="border-color:rgba(16,185,129,0.4);color:#6ee7b7;">
+          <button class="btn btn-ghost" onclick="openReceiptScannerModal()" title="Chụp ảnh hoặc tải ảnh hóa đơn siêu thị / bill chuyển khoản (Có Gemini Vision AI)" style="border-color:rgba(16,185,129,0.4);color:#6ee7b7;">
             📸 Quét Bill / Ảnh
+          </button>
+          <button class="btn btn-ghost" onclick="analyzeQuickInputWithGemini()" title="Dùng Gemini AI tách câu phức tạp hoặc nhiều món" style="border-color:rgba(139,92,246,0.45);color:#c4b5fd;">
+            🤖 AI Tách Món
           </button>
           <button class="btn btn-primary" onclick="submitQuickAdd()">
             ➕ Lưu Ngay
           </button>
         </div>
-        <div class="quick-preview" id="quick-preview-bar">
-          <span>💡 <b>Nhập gõ chữ, 🎙️ Giọng nói hoặc 📸 Chụp Bill siêu thị:</b> Mặc định <b>Tiền mặt / Chuyển khoản</b> (gõ kèm <code>ncb</code>, <code>vp</code>, <code>bidv</code> nếu quẹt thẻ/bank). Chỉnh sửa trực tiếp bên dưới trước hoặc sau khi lưu!</span>
+
+        <!-- Thanh chọn chủ động Nguồn tiền, Người chi, Hạng mục ngay trước khi nhập -->
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid rgba(148,163,184,0.14);font-size:12px;">
+          <span style="color:var(--text-secondary);font-weight:600;">🎛️ Chọn sẵn khi nhập:</span>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="color:var(--text-secondary);">Nguồn tiền:</span>
+            <select id="quick-default-source" class="input-control" style="padding:4px 8px;font-size:12px;font-weight:700;color:#38bdf8;" onchange="onQuickPresetChange()">
+              <option value="Tiền mặt">💵 Tiền mặt</option>
+              <option value="Chuyển khoản">📲 Chuyển khoản</option>
+              <option value="Tiền mặt / Chuyển khoản">💵 Tiền mặt / CK</option>
+              <option value="NCB">🏦 NCB</option>
+              <option value="VPBank">🏦 VPBank</option>
+              <option value="BIDV">🏦 BIDV</option>
+              <option value="UOB">🏦 UOB</option>
+              <option value="VPSP">💳 VPSP</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="color:var(--text-secondary);">Người chi:</span>
+            <select id="quick-default-person" class="input-control" style="padding:4px 8px;font-size:12px;font-weight:700;" onchange="onQuickPresetChange()">
+              <option value="AUTO">✨ Tự nhận diện (hoặc Chung)</option>
+              <option value="Vợ">👩 Vợ</option>
+              <option value="Chồng">👨 Chồng</option>
+              <option value="Chung">👨‍👩‍👧‍👦 Chung</option>
+              <option value="Subo">👦 Subo</option>
+              <option value="Sugi">👶 Sugi</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="color:var(--text-secondary);">Hạng mục:</span>
+            <select id="quick-default-cat" class="input-control" style="padding:4px 8px;font-size:12px;" onchange="onQuickPresetChange()">
+              <option value="AUTO">✨ Tự động phân loại AI</option>
+              <option value="Ăn uống">Ăn uống</option>
+              <option value="Đồ dùng GĐ">Đồ dùng GĐ</option>
+              <option value="Phí tiện ích">Phí tiện ích</option>
+              <option value="Học tập">Học tập</option>
+              <option value="Y tế">Y tế</option>
+              <option value="Vui chơi">Vui chơi</option>
+              <option value="Làm đẹp">Làm đẹp</option>
+              <option value="Công việc">Công việc</option>
+              <option value="Event">Event</option>
+              <option value="Nợ">Nợ</option>
+            </select>
+          </div>
+          <span style="color:var(--text-muted);font-size:11.5px;margin-left:auto;">💡 Mọi giao dịch sau khi lưu đều sửa trực tiếp được ngay trên bảng Sổ Chi Tiêu!</span>
+        </div>
+
+        <div class="quick-preview" id="quick-preview-bar" style="margin-top:8px;">
+          <span>💡 <b>Mẹo:</b> Chọn sẵn <b>Nguồn tiền / Người chi</b> ở thanh trên (App sẽ tự nhớ lựa chọn của bạn), hoặc sửa trực tiếp tại đây và trong bảng <b>Sổ Chi Tiêu</b> bất cứ lúc nào!</span>
         </div>
       </section>
 
@@ -289,12 +343,14 @@
             </select>
             <select id="filter-source" class="input-control" onchange="renderTransactionsTab()">
               <option value="ALL">🏦 Tất cả nguồn tiền</option>
-              <option value="VPBank">VPBank</option>
-              <option value="BIDV">BIDV</option>
-              <option value="NCB">NCB</option>
-              <option value="VPBank Shopee">VPBank Shopee</option>
-              <option value="UOB">UOB</option>
-              <option value="Tiền mặt / Chuyển khoản">Tiền mặt / CK</option>
+              <option value="Tiền mặt">💵 Tiền mặt</option>
+              <option value="Chuyển khoản">📲 Chuyển khoản</option>
+              <option value="Tiền mặt / Chuyển khoản">💵 Tiền mặt / CK</option>
+              <option value="NCB">🏦 NCB</option>
+              <option value="VPBank">🏦 VPBank</option>
+              <option value="BIDV">🏦 BIDV</option>
+              <option value="UOB">🏦 UOB</option>
+              <option value="VPSP">💳 VPSP</option>
             </select>
           </div>
 
@@ -370,9 +426,14 @@
               </div>
             </div>
             <textarea id="raw-email-textarea" class="input-control" rows="7" style="width:100%;font-family:monospace;font-size:12.5px;margin-bottom:12px;" placeholder="Dán nội dung email hoặc thông báo biến động số dư từ NCB, VPBank, BIDV vào đây..."></textarea>
-            <button class="btn btn-primary" style="width:100%;" onclick="parseEmailContent()">
-              🤖 AI Bóc Tách & Tự Động Phân Loại Hạng Mục Ngay
-            </button>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <button class="btn btn-primary" onclick="parseEmailContent()">
+                ⚡ Bóc Tách Tức Thì (0ms)
+              </button>
+              <button class="btn btn-ghost" style="border-color:rgba(139,92,246,0.45);color:#c4b5fd;" onclick="parseEmailWithGeminiAI()">
+                🤖 Dùng Gemini AI Bóc Tách Sâu
+              </button>
+            </div>
           </div>
 
           <!-- Right: Parsed Pending Inbox -->
@@ -599,6 +660,6 @@
     <div class="card" style="width:100%;max-width:620px;border-color:var(--border-glow);max-height:92vh;overflow-y:auto;" id="modal-content"></div>
   </div>
 
-  <script src="./app.js?v=2.2"></script>
+  <script src="./app.js?v=2.3"></script>
 </body>
 </html>
