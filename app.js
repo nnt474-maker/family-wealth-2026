@@ -205,6 +205,16 @@ const fmtShortVND = (n) => {
   return Math.round(v) + "đ";
 };
 
+function foldVN(str) {
+  return String(str || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase()
+    .trim();
+}
+
 // ============================================================================
 // 1. PIN SECURITY SCREEN (MÃ PIN BẢO VỆ DỮ LIỆU GIA ĐÌNH TRÊN CLOUD)
 // ============================================================================
@@ -1205,7 +1215,7 @@ async function pullFromGoogleSheetCloud(silent = true) {
 async function initApp() {
   // Register PWA Service Worker if supported
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("./sw.js?v=2.4").then(reg => { try { reg.update(); } catch (e) {} }).catch(() => {});
+    navigator.serviceWorker.register("./sw.js?v=2.5").then(reg => { try { reg.update(); } catch (e) {} }).catch(() => {});
   }
 
   // Check if URL has ?cloud=https://script.google.com/... auto-configuration link for spouse
@@ -1223,7 +1233,7 @@ async function initApp() {
   // Load initial database (try static ./data/family_db.json first, fallback to /api/data)
   let baseDb = null;
   try {
-    const res = await fetch("./data/family_db.json?v=2.4");
+    const res = await fetch("./data/family_db.json?v=2.5");
     if (res.ok) baseDb = await res.json();
   } catch (e) {}
 
@@ -1234,12 +1244,18 @@ async function initApp() {
     } catch (e) {}
   }
 
-  // Restore local cached modifications if present
+  // Restore local cached modifications if present and valid
   const cachedRaw = localStorage.getItem(STORAGE_DB_KEY);
   if (cachedRaw) {
     try {
       const cachedDb = JSON.parse(cachedRaw);
-      if (cachedDb && cachedDb.transactions && cachedDb.months) {
+      if (
+        cachedDb &&
+        Array.isArray(cachedDb.transactions) &&
+        cachedDb.transactions.length > 0 &&
+        Array.isArray(cachedDb.months) &&
+        cachedDb.months.length > 0
+      ) {
         DB = cachedDb;
       }
     } catch (e) {}
@@ -1269,13 +1285,13 @@ async function initApp() {
     catSelect.value = savedCat;
   }
 
-  ensureT10EtfAndDeduplicateDB(DB);
-  recomputeMonthsJS(DB);
-  checkPinLockOnStartup();
-  renderAll();
-  renderPendingEmailList();
-  updateCloudBadgeUI();
-  updateGeminiBadgeUI();
+  try { ensureT10EtfAndDeduplicateDB(DB); } catch (e) { console.error("Deduplicate err:", e); }
+  try { recomputeMonthsJS(DB); } catch (e) { console.error("Recompute err:", e); }
+  try { checkPinLockOnStartup(); } catch (e) {}
+  try { renderAll(); } catch (e) { console.error("RenderAll err:", e); }
+  try { renderPendingEmailList(); } catch (e) {}
+  try { updateCloudBadgeUI(); } catch (e) {}
+  try { updateGeminiBadgeUI(); } catch (e) {}
 
   const scriptBox = document.getElementById("apps-script-box");
   if (scriptBox) {
@@ -2662,13 +2678,79 @@ function sendAiChat() {
 }
 
 // ============================================================================
-// GEMINI FREE API ENGINE (DÙNG CHUNG 2 VỢ CHỒNG QUA CLOUD)
+// MULTI-PROVIDER AI ENGINE (GEMINI / VERTEX / OPENAI / GROQ / OPENROUTER / DEEPSEEK)
 // ============================================================================
-async function callGeminiFreeAPI(promptText, imageBase64 = null, mimeType = "image/jpeg") {
-  const apiKey = getGeminiApiKey();
-  if (!apiKey) return null;
+function cleanApiKeyInput(raw) {
+  let s = String(raw || "").trim();
+  if (!s) return "";
+  // If user pasted a curl command or code snippet containing x-goog-api-key or key=... or Authorization: Bearer ...
+  const mHeader = s.match(/x-goog-api-key\s*[:=]\s*['"]?([A-Za-z0-9._\-]+)['"]?/i);
+  if (mHeader) return mHeader[1].trim();
+  const mQuery = s.match(/[?&]key=([A-Za-z0-9._\-]+)/i);
+  if (mQuery) return mQuery[1].trim();
+  const mBearer = s.match(/Bearer\s+([A-Za-z0-9._\-]+)/i);
+  if (mBearer) return mBearer[1].trim();
+  const mEnv = s.match(/(?:API_KEY|GEMINI_API_KEY|OPENAI_API_KEY)\s*=\s*['"]?([A-Za-z0-9._\-]+)['"]?/i);
+  if (mEnv) return mEnv[1].trim();
+  // Strip surrounding quotes or spaces
+  return s.replace(/^['"`\s]+|['"`\s]+$/g, "").trim();
+}
 
-  const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+async function callAIWithDiagnostics(promptText, imageBase64 = null, mimeType = "image/jpeg", overrideKey = null) {
+  const apiKey = cleanApiKeyInput(overrideKey !== null ? overrideKey : getGeminiApiKey());
+  if (!apiKey) return { text: null, error: "Chưa nhập API Key" };
+
+  let lastError = "";
+
+  // 1. Check if key is OpenAI / Groq / OpenRouter / DeepSeek style (starts with sk- or gsk_)
+  if ((apiKey.startsWith("sk-") || apiKey.startsWith("gsk_")) && !imageBase64) {
+    const endpoints = [];
+    if (apiKey.startsWith("gsk_")) {
+      endpoints.push({ url: "https://api.groq.com/openai/v1/chat/completions", model: "llama-3.3-70b-versatile" });
+    } else if (apiKey.startsWith("sk-or-")) {
+      endpoints.push({ url: "https://openrouter.ai/api/v1/chat/completions", model: "google/gemini-2.0-flash-001" });
+    } else {
+      endpoints.push({ url: "https://api.openai.com/v1/chat/completions", model: "gpt-4o-mini" });
+      endpoints.push({ url: "https://api.deepseek.com/chat/completions", model: "deepseek-chat" });
+    }
+    for (const ep of endpoints) {
+      try {
+        const res = await fetch(ep.url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: ep.model,
+            messages: [{ role: "user", content: promptText }],
+            temperature: 0.2
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          const text = data?.choices?.[0]?.message?.content;
+          if (text) return { text, model: ep.model, error: null };
+        } else {
+          lastError = data?.error?.message || `HTTP ${res.status}`;
+        }
+      } catch (e) {
+        lastError = String(e.message || e);
+      }
+    }
+  }
+
+  // 2. Google Gemini / Google AI Studio / Vertex Express API (accepts ANY key format)
+  const models = [
+    "gemini-2.0-flash",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-2.5-flash-lite",
+    "gemini-flash-latest",
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-flash",
+    "gemini-pro"
+  ];
   const parts = [{ text: promptText }];
   if (imageBase64) {
     parts.push({ inline_data: { mime_type: mimeType, data: imageBase64 } });
@@ -2685,14 +2767,32 @@ async function callGeminiFreeAPI(promptText, imageBase64 = null, mimeType = "ima
           generationConfig: { temperature: 0.2 }
         })
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const data = await res.json();
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) return text;
+        const partsArr = data?.candidates?.[0]?.content?.parts || [];
+        const text =
+          partsArr.filter(p => !p.thought && p.text).map(p => p.text).join("\n") ||
+          partsArr.map(p => p.text || "").join("\n");
+        if (text) return { text, model, error: null };
+      } else {
+        const errMsg = data?.error?.message || `HTTP ${res.status}`;
+        lastError = errMsg;
+        // If key itself is rejected by Google (400 API_KEY_INVALID), no need to loop all 8 models
+        if (res.status === 400 && /API_KEY_INVALID|API key not valid/i.test(errMsg)) {
+          break;
+        }
       }
-    } catch (e) {}
+    } catch (e) {
+      lastError = String(e.message || e);
+    }
   }
-  return null;
+
+  return { text: null, model: null, error: lastError || "Không nhận được phản hồi" };
+}
+
+async function callGeminiFreeAPI(promptText, imageBase64 = null, mimeType = "image/jpeg") {
+  const res = await callAIWithDiagnostics(promptText, imageBase64, mimeType);
+  return res.text;
 }
 
 function openGeminiSettingsModal() {
@@ -2702,36 +2802,35 @@ function openGeminiSettingsModal() {
 
   content.innerHTML = `
     <div class="card-header">
-      <div class="card-title">🤖 Kích Hoạt Gemini AI Miễn Phí (Google AI Studio Free Tier)</div>
+      <div class="card-title">🤖 Cài Đặt & Kích Hoạt AI (Google Gemini / OpenAI / Groq)</div>
       <button class="btn btn-ghost" style="padding:4px 10px;" onclick="closeModal()">✕</button>
     </div>
     <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;">
       <div style="background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.35);border-radius:12px;padding:12px;line-height:1.55;">
-        <div style="font-weight:700;color:#c4b5fd;margin-bottom:4px;">✨ Tại sao nên dùng Gemini API Free của chính Gmail bạn?</div>
+        <div style="font-weight:700;color:#c4b5fd;margin-bottom:4px;">✨ Hỗ trợ mọi định dạng API Key (Không giới hạn định dạng):</div>
         <div style="color:var(--text-secondary);font-size:12px;">
-          • Google cung cấp gói <b>Gemini Flash Free Tier hoàn toàn miễn phí (0đ)</b> với <b>1.500 lượt gọi/ngày</b> — dư sức dùng gấp 100 lần nhu cầu chi tiêu gia đình!<br/>
-          • <b>Lý do bảo mật:</b> Nếu gắn cứng mã API công khai lên mã nguồn GitHub, Google sẽ tự động khóa mã đó sau vài giây. Khi bạn dán mã vào ô dưới đây, mã được <b>lưu kín trong Google Sheet Cloud của riêng gia đình bạn</b> và <b>tự động đồng bộ sang máy của Vợ</b> (Vợ không cần cài đặt gì thêm!).
+          • Bạn có thể dán <b>bất kỳ mã API Key nào</b> từ <b>Google AI Studio (Gemini Free)</b>, <b>Google Cloud / Vertex</b>, hoặc cả <b>OpenAI / Groq / OpenRouter / DeepSeek</b>.<br/>
+          • Mã sau khi lưu sẽ được <b>đồng bộ tự động qua Google Sheet Cloud sang máy của Vợ</b> (chỉ cần 1 người nhập).
         </div>
       </div>
 
       <div style="background:rgba(15,23,42,0.8);border:1px solid var(--border-subtle);border-radius:12px;padding:12px;">
-        <div style="font-weight:700;color:#38bdf8;margin-bottom:6px;">🚀 Cách lấy mã Gemini API Free trong 10 giây:</div>
+        <div style="font-weight:700;color:#38bdf8;margin-bottom:6px;">🚀 Nếu lấy mã từ Google AI Studio (Miễn phí):</div>
         <ol style="margin:0;padding-left:18px;color:var(--text-secondary);font-size:12px;line-height:1.6;">
-          <li>Bấm vào trang chính thức của Google: <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:#34d399;font-weight:700;text-decoration:underline;">👉 Mở Google AI Studio (aistudio.google.com/app/apikey)</a></li>
-          <li>Bấm nút màu xanh <b>"Create API key"</b> → Copy đoạn mã bắt đầu bằng chữ <code>AIzaSy...</code></li>
-          <li>Dán vào ô bên dưới và bấm <b>"💾 Lưu & Đồng Bộ Cho Cả 2 Vợ Chồng"</b>.</li>
+          <li>Mở trang: <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:#34d399;font-weight:700;text-decoration:underline;">👉 aistudio.google.com/app/apikey</a></li>
+          <li>Bấm vào nút <b>Copy API key</b> (hoặc <b>Create API key</b>) rồi dán trực tiếp vào ô bên dưới (App hiển thị rõ chữ để bạn dễ kiểm tra).</li>
         </ol>
       </div>
 
       <div>
-        <label style="font-weight:700;display:block;margin-bottom:4px;">🔑 Mã Gemini API Key (Miễn phí):</label>
-        <input type="password" id="modal-gemini-key-input" class="input-control" style="width:100%;font-family:monospace;" value="${currentKey}" placeholder="AIzaSy..." />
+        <label style="font-weight:700;display:block;margin-bottom:4px;">🔑 Dán Mã API Key của bạn vào đây:</label>
+        <input type="text" id="modal-gemini-key-input" class="input-control" style="width:100%;font-family:monospace;font-size:13px;" value="${currentKey}" placeholder="Dán mã API Key bất kỳ vào đây..." />
       </div>
 
       <div id="gemini-test-status" style="font-size:12px;color:var(--text-secondary);"></div>
 
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-primary" style="flex:1;" onclick="testAndSaveGeminiKey()">💾 Lưu & Đồng Bộ Cho Cả 2 Vợ Chồng</button>
+        <button class="btn btn-primary" style="flex:1;" onclick="testAndSaveGeminiKey()">💾 Lưu Mã API & Đồng Bộ Cloud</button>
         <button class="btn btn-ghost" onclick="closeModal()">Đóng</button>
       </div>
     </div>
@@ -2740,9 +2839,13 @@ function openGeminiSettingsModal() {
 }
 
 async function testAndSaveGeminiKey() {
-  const val = (document.getElementById("modal-gemini-key-input")?.value || "").trim();
+  const rawInput = (document.getElementById("modal-gemini-key-input")?.value || "").trim();
+  const val = cleanApiKeyInput(rawInput);
+  const inpEl = document.getElementById("modal-gemini-key-input");
+  if (inpEl && val) inpEl.value = val;
   const statusEl = document.getElementById("gemini-test-status");
 
+  // Always save immediately without rejecting any key format!
   localStorage.setItem(STORAGE_GEMINI_KEY, val);
   if (DB && DB.meta) DB.meta.gemini_api_key = val;
   updateGeminiBadgeUI();
@@ -2754,22 +2857,31 @@ async function testAndSaveGeminiKey() {
   }
 
   if (statusEl) {
-    statusEl.innerHTML = `<span style="color:#38bdf8;">⏳ Đang kiểm tra kết nối với Google Gemini AI...</span>`;
+    statusEl.innerHTML = `<span style="color:#38bdf8;">⏳ Đã lưu mã API! Đang thử kết nối tới máy chủ AI...</span>`;
   }
 
-  const testReply = await callGeminiFreeAPI("Trả lời đúng 1 từ: OK");
-  if (testReply) {
+  await persistAndSync({ action: "update_gemini_key", gemini_api_key: val });
+  const diag = await callAIWithDiagnostics("Trả lời đúng 1 từ: OK", null, "image/jpeg", val);
+
+  if (diag.text) {
     if (statusEl) {
-      statusEl.innerHTML = `<span style="color:#34d399;font-weight:700;">✅ Kết nối Gemini AI thành công! Đang đồng bộ sang Cloud cho cả 2 vợ chồng...</span>`;
+      statusEl.innerHTML = `<span style="color:#34d399;font-weight:700;">✅ Kết nối AI thành công (Model: ${diag.model})! Đã đồng bộ sang Cloud cho cả 2 vợ chồng.</span>`;
     }
-    await persistAndSync({ action: "update_gemini_key", gemini_api_key: val });
     setTimeout(() => {
       closeModal();
-      alert("🎉 Đã kích hoạt Gemini AI Free thành công! Giờ bạn và vợ có thể dùng AI để quét ảnh Bill siêu thị, tách câu phức tạp, đọc Email ngân hàng và hỏi đáp AI.");
-    }, 400);
+      alert(`🎉 Đã kích hoạt AI thành công (${diag.model})! Giờ bạn và vợ có thể dùng AI để quét ảnh Bill siêu thị, tách câu phức tạp, đọc Email ngân hàng và hỏi đáp AI.`);
+    }, 350);
   } else {
     if (statusEl) {
-      statusEl.innerHTML = `<span style="color:#fb7185;font-weight:700;">⚠️ Mã API chưa hợp lệ hoặc chưa bật. Hãy kiểm tra lại mã bắt đầu bằng AIzaSy... từ aistudio.google.com/app/apikey nhé!</span>`;
+      statusEl.innerHTML = `
+        <div style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.4);border-radius:10px;padding:10px;color:#fcd34d;">
+          ✅ <b>Đã lưu mã API của bạn vào hệ thống!</b><br/>
+          <span style="font-size:11.5px;color:var(--text-secondary);">
+            Phản hồi kiểm tra thử từ máy chủ Google/AI: <code>${diag.error}</code>.<br/>
+            <i>(Lưu ý: Ở bảng danh sách trên trang Google AI Studio, cột "Project" có mã dạng <code>gen-lang-client-...</code> là Mã Dự Án, còn bấm vào biểu tượng Copy ở cột <b>"API key"</b> mới là Mã Key thực tế).</i>
+          </span>
+        </div>
+      `;
     }
   }
 }
