@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#090d16" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="FamilyNote 2026" />
+  <title>2026 Family Wealth & Notebook OS — Chồng • Vợ • Subo • Sugi</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+  <link rel="apple-touch-icon" href="./icon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <!-- FAMILY PIN LOCK SCREEN OVERLAY -->
+  <div id="pin-lock-overlay" class="pin-overlay" style="display:none;">
+    <div class="pin-card">
+      <div style="width:56px;height:56px;border-radius:16px;background:linear-gradient(135deg,#6366f1,#ec4899);display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 12px auto;box-shadow:0 10px 25px -5px rgba(99,102,241,0.6);">
+        🔐
+      </div>
+      <div style="font-weight:800;font-size:19px;letter-spacing:-0.02em;">FAMILY WEALTH OS 2026</div>
+      <div style="font-size:12.5px;color:var(--text-secondary);margin-top:4px;">
+        Chồng • Vợ • Subo • Sugi — Nhập mã PIN gia đình để mở sổ
+      </div>
+
+      <div class="pin-dots" id="pin-dots-box">
+        <div class="pin-dot"></div>
+        <div class="pin-dot"></div>
+        <div class="pin-dot"></div>
+        <div class="pin-dot"></div>
+      </div>
+
+      <div id="pin-status-msg" style="font-size:12px;color:#818cf8;min-height:18px;font-weight:600;">
+        Mã PIN mặc định lần đầu: <b>2026</b> (Có thể đổi sau khi mở)
+      </div>
+
+      <label style="display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text-secondary);margin-top:8px;cursor:pointer;">
+        <input type="checkbox" id="pin-remember-device" checked style="accent-color:#10b981;width:15px;height:15px;" />
+        <span>Ghi nhớ thiết bị này của Chồng / Vợ (30 ngày)</span>
+      </label>
+
+      <div class="pin-keypad">
+        <button class="pin-key" onclick="pressPinDigit('1')">1</button>
+        <button class="pin-key" onclick="pressPinDigit('2')">2</button>
+        <button class="pin-key" onclick="pressPinDigit('3')">3</button>
+        <button class="pin-key" onclick="pressPinDigit('4')">4</button>
+        <button class="pin-key" onclick="pressPinDigit('5')">5</button>
+        <button class="pin-key" onclick="pressPinDigit('6')">6</button>
+        <button class="pin-key" onclick="pressPinDigit('7')">7</button>
+        <button class="pin-key" onclick="pressPinDigit('8')">8</button>
+        <button class="pin-key" onclick="pressPinDigit('9')">9</button>
+        <button class="pin-key fn-key" onclick="clearPinDigits()">Xóa</button>
+        <button class="pin-key" onclick="pressPinDigit('0')">0</button>
+        <button class="pin-key fn-key" onclick="backspacePinDigit()">⌫</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="app-shell">
+    <!-- SIDEBAR (Desktop) -->
+    <aside class="sidebar">
+      <div class="brand-box">
+        <div class="brand-logo">🏡</div>
+        <div>
+          <div class="brand-title">FAMILY WEALTH 2026</div>
+          <div class="brand-sub">Chồng • Vợ • Subo • Sugi</div>
+        </div>
+      </div>
+
+      <nav class="nav-menu">
+        <button class="nav-btn active" onclick="switchTab('dashboard')" id="nav-dashboard">
+          <span>📊</span> Tổng Quan & Cảnh Báo
+        </button>
+        <button class="nav-btn" onclick="switchTab('transactions')" id="nav-transactions">
+          <span>⚡</span> Sổ Chi Tiêu (<span id="nav-tx-count">888</span>)
+        </button>
+        <button class="nav-btn" onclick="switchTab('email')" id="nav-email">
+          <span>📧</span> Tự Động Đọc Email Bank
+          <span class="nav-badge" style="background:rgba(16,185,129,0.18);color:#34d399;border-color:rgba(16,185,129,0.35);">AI</span>
+        </button>
+        <button class="nav-btn" onclick="switchTab('investment')" id="nav-investment">
+          <span>📈</span> Đầu Tư ETF / Quỹ & Nợ
+        </button>
+        <button class="nav-btn" onclick="switchTab('ai')" id="nav-ai">
+          <span>🤖</span> Hỏi Đáp AI Gia Đình
+        </button>
+        <button class="nav-btn" onclick="switchTab('audit')" id="nav-audit">
+          <span>🔍</span> Kiểm Toán & Cloud Sync
+          <span class="nav-badge" id="nav-audit-badge">7 lỗi</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="sync-status" id="sidebar-sync-status" onclick="openCloudSettingsModal()" style="cursor:pointer;">
+          <span class="pulse-dot" id="sidebar-sync-dot"></span>
+          <span id="sidebar-sync-text">☁️ Cloud Active (24/7)</span>
+        </div>
+        <div style="font-size:11.5px;color:var(--text-secondary);">
+          VPBank • BIDV • NCB • UOB • Shopee
+        </div>
+        <button class="btn btn-primary" style="width:100%;font-size:12.5px;padding:8px 10px;" onclick="openCloudSettingsModal()">
+          ☁️ Đồng Bộ Cloud 2 Vợ Chồng
+        </button>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+          <button class="btn btn-ghost" style="font-size:12px;padding:7px 8px;" onclick="openPinSettingsModal()">
+            🔑 Đổi PIN
+          </button>
+          <button class="btn btn-ghost" style="font-size:12px;padding:7px 8px;" onclick="lockAppNow()">
+            🔒 Khóa Sổ
+          </button>
+        </div>
+        <a href="./data/2026_FAMILY_NOTEBOOK_CHUAN_HOA.xlsx" download="2026_FAMILY_NOTEBOOK_CHUAN_HOA.xlsx" class="btn btn-ghost" style="width:100%;font-size:12.5px;padding:8px 10px;">
+          📥 Tải Excel Đã Chuẩn Hóa
+        </a>
+        <a href="https://docs.google.com/spreadsheets/d/1FtjpyD-DP4HS8z7uJoYDw9TKwBh3qSCwdXqy1eaQEEk/edit" target="_blank" class="btn btn-ghost" style="width:100%;font-size:12.5px;padding:8px 10px;">
+          🔗 Mở Google Sheet Gốc
+        </a>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main-area">
+      <!-- TOP BAR -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <h1 id="page-heading">🏡 Bảng Điều Khiển Tài Chính Gia Đình 2026</h1>
+            <button class="cloud-pill" onclick="openCloudSettingsModal()" id="topbar-cloud-pill">
+              <span class="pulse-dot" style="width:7px;height:7px;"></span>
+              <span id="topbar-cloud-label">☁️ Cloud 24/7</span>
+            </button>
+            <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px;border-radius:99px;" onclick="lockAppNow()" title="Khóa màn hình bằng mã PIN">
+              🔒 Khóa PIN
+            </button>
+          </div>
+          <p id="page-subheading">Chạy độc lập trên Cloud 24/7 • Tự động bóc tách Email VPBank, BIDV, NCB & Đồng bộ Google Sheet 2 vợ chồng</p>
+        </div>
+        <div class="topbar-actions">
+          <div class="month-pills" id="month-selector">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </header>
+
+      <!-- ZERO-FRICTION 1-LINE AI QUICK INPUT (Always accessible on top) -->
+      <section class="quick-hero">
+        <div class="quick-hero-top">
+          <div class="quick-input-wrap">
+            <span class="quick-icon">✨</span>
+            <input
+              type="text"
+              id="quick-add-input"
+              placeholder="Nhập siêu tốc 1 dòng (VD: 'winmart 385k', 'bỉm sugi 420k bidv', 'xăng ck 95k ncb', 'học phí subo 9.35tr vp')..."
+              oninput="onQuickInputChange(this.value)"
+              onkeydown="if(event.key==='Enter') submitQuickAdd()"
+            />
+          </div>
+          <button class="btn btn-primary" onclick="submitQuickAdd()">
+            ➕ Lưu Ngay (1 Chạm)
+          </button>
+          <button class="btn btn-ghost" onclick="switchTab('email')">
+            📧 Quét Email Bank
+          </button>
+        </div>
+        <div class="quick-preview" id="quick-preview-bar">
+          <span>💡 <b>Gõ tự nhiên như nhắn Zalo:</b> AI tự nhận diện Số tiền, Hạng mục, Thành viên (Chung/Chồng/Vợ/Subo/Sugi) & Ngân hàng (VPBank/BIDV/NCB) rồi ghi thẳng vào Sheet!</span>
+        </div>
+      </section>
+
+      <!-- ==================================================================== -->
+      <!-- TAB 1: DASHBOARD & EARLY WARNINGS                                    -->
+      <!-- ==================================================================== -->
+      <div class="tab-pane active" id="tab-dashboard">
+        <div class="kpi-grid" id="dashboard-kpis">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="grid-2">
+          <!-- Left: Monthly Cashflow Chart & Member Breakdown -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📊 Dòng Tiền Thu Nhập vs Chi Tiêu Thực Tế (T1 – T12/2026)</div>
+              <div style="display:flex;gap:12px;font-size:12px;color:var(--text-secondary);">
+                <span><b style="color:#34d399;">●</b> Thu nhập</span>
+                <span><b style="color:#818cf8;">●</b> Thực chi</span>
+              </div>
+            </div>
+            <div class="bar-chart-grid" id="yearly-bar-chart"></div>
+            <div style="margin-top:18px;">
+              <div class="card-title" style="font-size:14.5px;margin-bottom:12px;">👨‍👩‍👧‍👦 Phân Bổ Chi Tiêu Theo 5 Thành Viên (<span class="selected-period-label">Cả năm</span>)</div>
+              <div id="member-breakdown-bars"></div>
+            </div>
+          </div>
+
+          <!-- Right: Early Warning System (Cảnh Báo Sớm) -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🚨 Hệ Thống Cảnh Báo Sớm & Nhắc Lịch Gia Đình</div>
+              <span class="chip chip-Chung">AI Radar</span>
+            </div>
+            <div class="alert-list" id="early-warnings-list">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-equal">
+          <!-- Category Breakdown -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🗂️ Cơ Cấu 10 Hạng Mục Chi Tiêu (<span class="selected-period-label">Cả năm</span>)</div>
+            </div>
+            <div id="category-breakdown-bars"></div>
+          </div>
+
+          <!-- Monthly Master Summary Table -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📅 Bảng Tổng Hợp MASTER - YEARLY (Đã Chuẩn Hóa)</div>
+              <button class="btn btn-ghost" style="padding:6px 11px;font-size:12px;" onclick="openIncomeModal()">✏️ Cập nhật Thu nhập</button>
+            </div>
+            <div class="table-wrap" style="max-height:370px;overflow-y:auto;">
+              <table id="yearly-master-table">
+                <thead>
+                  <tr>
+                    <th>Tháng</th>
+                    <th class="num">Tổng Thu</th>
+                    <th class="num">Thực Chi</th>
+                    <th class="num">Thặng Dư</th>
+                    <th class="num">Tỷ Lệ TK</th>
+                    <th class="num">DCA 3 Quỹ</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================================================================== -->
+      <!-- TAB 2: TRANSACTIONS & MATRIX                                         -->
+      <!-- ==================================================================== -->
+      <div class="tab-pane" id="tab-transactions">
+        <div class="card" style="margin-bottom:20px;">
+          <div class="card-header">
+            <div class="card-title">🧮 Ma Trận Tổng Hợp Thành Viên × Hạng Mục (<span class="selected-period-label">Tháng 10</span>)</div>
+            <span style="font-size:12.5px;color:var(--emerald);">✔ Không bao giờ bị sót dòng hay lỗi #DIV/0! như SUMIFS cũ</span>
+          </div>
+          <div class="table-wrap" id="matrix-table-container"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">📝 Danh Sách Giao Dịch Chi Tiết (<span id="filtered-tx-count">0</span> khoản — Tổng: <span id="filtered-tx-sum" style="color:#34d399;">0 đ</span>)</div>
+            <button class="btn btn-primary" style="padding:8px 14px;font-size:12.5px;" onclick="openManualAddModal()">➕ Thêm Giao Dịch Chi Tiết</button>
+          </div>
+
+          <div class="filter-bar">
+            <input type="text" id="filter-search" class="input-control" placeholder="🔎 Tìm nội dung (VD: coop, bỉm, xăng, học phí...)" oninput="renderTransactionsTab()" style="flex:1;min-width:220px;" />
+            <select id="filter-person" class="input-control" onchange="renderTransactionsTab()">
+              <option value="ALL">👨‍👩‍👧‍👦 Tất cả thành viên</option>
+              <option value="Chung">🏡 Chung gia đình</option>
+              <option value="Chồng">👨 Chồng (CK)</option>
+              <option value="Vợ">👩 Vợ (VK)</option>
+              <option value="Subo">👦 Subo</option>
+              <option value="Sugi">👶 Sugi</option>
+            </select>
+            <select id="filter-category" class="input-control" onchange="renderTransactionsTab()">
+              <option value="ALL">🗂️ Tất cả hạng mục</option>
+              <option value="Ăn uống">Ăn uống</option>
+              <option value="Học tập">Học tập</option>
+              <option value="Phí tiện ích">Phí tiện ích</option>
+              <option value="Đồ dùng GĐ">Đồ dùng GĐ</option>
+              <option value="Nợ">Nợ</option>
+              <option value="Làm đẹp">Làm đẹp</option>
+              <option value="Y tế">Y tế</option>
+              <option value="Vui chơi">Vui chơi</option>
+              <option value="Event">Event</option>
+              <option value="Công việc">Công việc</option>
+            </select>
+            <select id="filter-source" class="input-control" onchange="renderTransactionsTab()">
+              <option value="ALL">🏦 Tất cả nguồn tiền</option>
+              <option value="VPBank">VPBank</option>
+              <option value="BIDV">BIDV</option>
+              <option value="NCB">NCB</option>
+              <option value="VPBank Shopee">VPBank Shopee</option>
+              <option value="UOB">UOB</option>
+              <option value="Tiền mặt / Chuyển khoản">Tiền mặt / CK</option>
+            </select>
+          </div>
+
+          <div class="table-wrap" style="max-height:540px;overflow-y:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Ngày</th>
+                  <th>Nội dung chi tiêu</th>
+                  <th>Hạng mục</th>
+                  <th>Thành viên</th>
+                  <th>Nguồn / Bank</th>
+                  <th class="num">Số tiền</th>
+                  <th style="width:50px;"></th>
+                </tr>
+              </thead>
+              <tbody id="tx-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================================================================== -->
+      <!-- TAB 3: AUTO EMAIL & BANK PARSER (VPBank, BIDV, NCB)                  -->
+      <!-- ==================================================================== -->
+      <div class="tab-pane" id="tab-email">
+        <div class="grid-2">
+          <!-- Left: Email Parser & Gmail IMAP Connection -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📧 Tự Động Lấy Giao Dịch Từ Email & Thông Báo Ngân Hàng</div>
+              <span class="chip chip-bank">VPBank • BIDV • NCB</span>
+            </div>
+            <p style="font-size:13.5px;color:var(--text-secondary);margin-bottom:14px;">
+              Kết nối trực tiếp hộp thư Gmail để tự động quét email thông báo biến động số dư / sao kê từ <b>VPBank, BIDV, NCB, UOB, Shopee</b> hoặc dán nhanh tin nhắn/email vào ô bên dưới để AI tự phân loại.
+            </p>
+
+            <!-- Cloud Google Apps Script Gmail Box + Local IMAP Box -->
+            <div style="background:rgba(15,23,42,0.8);border:1px solid var(--border-subtle);border-radius:14px;padding:14px;margin-bottom:16px;">
+              <div style="font-weight:700;font-size:13.5px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+                <span>☁️ Quét Gmail Tự Động Trên Cloud (Google Apps Script / IMAP)</span>
+                <button class="btn btn-emerald" style="padding:5px 12px;font-size:12px;" onclick="scanGmailViaCloud()">
+                  ☁️ Quét Gmail Qua Google Cloud (Không cần App Password)
+                </button>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:center;">
+                <input type="email" id="imap-email" class="input-control" placeholder="Địa chỉ Gmail (nếu dùng IMAP)..." />
+                <input type="password" id="imap-password" class="input-control" placeholder="App Password Gmail (16 ký tự)..." />
+                <button class="btn btn-primary" onclick="syncGmailImap()">🔄 Quét IMAP</button>
+              </div>
+              <div style="font-size:11.5px;color:var(--text-muted);margin-top:8px;">
+                💡 Trên Cloud: Bấm <b>"☁️ Quét Gmail Qua Google Cloud"</b> để đọc thẳng email VPBank, BIDV, NCB từ chính tài khoản Google của bạn mà không cần nhập mật khẩu.
+              </div>
+            </div>
+
+            <!-- Smart Paste / Sample Simulator -->
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <label style="font-weight:700;font-size:13.5px;">📋 Hoặc Dán Email / Biến Động Số Dư Ngân Hàng (VPBank, BIDV, NCB):</label>
+              <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px;" onclick="loadSampleBankEmails()">
+                ⚡ Nạp 5 Email Mẫu (VPBank • BIDV • NCB)
+              </button>
+            </div>
+            <textarea id="raw-email-textarea" class="input-control" rows="8" style="width:100%;font-family:monospace;font-size:12.5px;margin-bottom:12px;" placeholder="Dán nội dung email hoặc thông báo biến động số dư từ VPBank, BIDV, NCB vào đây..."></textarea>
+            <button class="btn btn-primary" style="width:100%;" onclick="parseEmailContent()">
+              🤖 AI Bóc Tách & Tự Động Phân Loại Hạng Mục Ngay
+            </button>
+          </div>
+
+          <!-- Right: Parsed Pending Inbox -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📥 Hộp Thư Giao Dịch Chờ Duyệt (<span id="pending-email-count">0</span> khoản)</div>
+              <button class="btn btn-emerald" id="btn-approve-all" style="padding:8px 14px;font-size:12.5px;" onclick="approveAllEmailItems()">
+                ✅ Duyệt Tất Cả Vào Sổ & Excel
+              </button>
+            </div>
+            <div id="parsed-email-list" style="display:flex;flex-direction:column;gap:12px;max-height:520px;overflow-y:auto;">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================================================================== -->
+      <!-- TAB 4: INVESTMENT (ETF & OPEN FUND DCA) & DEBTS                      -->
+      <!-- ==================================================================== -->
+      <div class="tab-pane" id="tab-investment">
+        <div class="kpi-grid" id="investment-kpis"></div>
+
+        <div class="grid-2">
+          <!-- Portfolio DCA Table (FUEVFVND, DCDS, VESAF) -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">📈 Danh Mục Đầu Tư Định Kỳ (DCA ETF & Open Fund)</div>
+                <div style="font-size:12.5px;color:var(--text-secondary);margin-top:2px;">
+                  Kỷ luật giải ngân <b>12,000,000 đ/tháng</b>: 30% FUEVFVND (3.6tr) • 25% DCDS (3.0tr) • 45% VESAF (5.4tr)
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button class="btn btn-emerald" style="padding:8px 13px;font-size:12.5px;" onclick="recordMonthlyDcaOrder()">
+                  ➕ Khớp Lệnh DCA Tháng Này (12tr)
+                </button>
+              </div>
+            </div>
+
+            <div class="table-wrap" style="margin-bottom:18px;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Mã Quỹ</th>
+                    <th>Phân Loại</th>
+                    <th class="num">Tỷ Trọng (TT / MT)</th>
+                    <th class="num">Số CCQ</th>
+                    <th class="num">Giá Vốn BQ</th>
+                    <th class="num">NAV Hiện Tại (Sửa)</th>
+                    <th class="num">Giá Trị Thị Trường</th>
+                    <th class="num">Lãi / Lỗ</th>
+                  </tr>
+                </thead>
+                <tbody id="portfolio-table-body"></tbody>
+              </table>
+            </div>
+
+            <div class="card-title" style="font-size:14.5px;margin-bottom:10px;">🛡️ Quy Tắc Giải Ngân Quỹ Tiền Mặt Bắt Đáy (<span id="dip-fund-title-val">32,576,000 đ</span>)</div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Mức giảm VN-Index từ đỉnh</th>
+                    <th class="num">Tỷ lệ giải ngân</th>
+                    <th class="num">Số tiền giải ngân ngay</th>
+                    <th>Phân bổ vào 3 quỹ (30/25/45)</th>
+                  </tr>
+                </thead>
+                <tbody id="dip-rules-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Compounding Projection & Debts -->
+          <div style="display:flex;flex-direction:column;gap:20px;">
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <div class="card-title">🚀 Dự Phóng Tài Sản Dài Hạn (Góp 12tr/tháng, tăng 5%/năm)</div>
+                  <div style="font-size:12px;color:var(--emerald);margin-top:2px;">
+                    ✔ Đã sửa lỗi công thức Excel (tính chuẩn ghép lãi DCA hàng tháng thay vì đóng cuối năm)
+                  </div>
+                </div>
+              </div>
+              <div class="table-wrap" style="max-height:280px;overflow-y:auto;">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Năm</th>
+                      <th class="num">Thận trọng (7%)</th>
+                      <th class="num">Cơ sở (10%)</th>
+                      <th class="num">Lạc quan (13%)</th>
+                      <th class="num">Sức mua thực (Lạm phát 4%)</th>
+                    </tr>
+                  </thead>
+                  <tbody id="projection-table-body"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Debts & Special Kids Funds -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">💳 Theo Dõi Công Nợ & Quỹ Của Subo • Sugi</div>
+              </div>
+              <div id="debts-and-funds-box"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================================================================== -->
+      <!-- TAB 5: AI FAMILY ASSISTANT                                           -->
+      <!-- ==================================================================== -->
+      <div class="tab-pane" id="tab-ai">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🤖 Trợ Lý AI Tài Chính Gia Đình (Hỏi Đáp Tức Thì Trên Dữ Liệu Thật)</div>
+              <div style="font-size:13px;color:var(--text-secondary);">
+                Đã nạp toàn bộ 888 giao dịch (T1–T10/2026), bảng lương CK/VK, quỹ Subo/Sugi, dư nợ thuế & danh mục 3 quỹ ETF/Open Fund.
+              </div>
+            </div>
+          </div>
+
+          <div class="prompt-chips">
+            <button class="prompt-chip" onclick="askAiQuestion('Tổng quan sức khỏe tài chính gia đình 10 tháng năm 2026')">🏆 Sức khỏe tài chính 2026</button>
+            <button class="prompt-chip" onclick="askAiQuestion('Báo cáo chi tiết thu chi Tháng 10')">📊 Báo cáo Tháng 10</button>
+            <button class="prompt-chip" onclick="askAiQuestion('Phân tích chi tiêu Ăn uống 10 tháng qua và trung bình mỗi ngày')">🍲 Tiền ăn uống mỗi ngày</button>
+            <button class="prompt-chip" onclick="askAiQuestion('So sánh chi phí của 2 bé Subo và Sugi từ đầu năm')">👶 Chi phí nuôi Subo & Sugi</button>
+            <button class="prompt-chip" onclick="askAiQuestion('Hiệu quả danh mục đầu tư DCA 3 quỹ FUEVFVND, DCDS, VESAF hiện tại?')">📈 Danh mục DCA 3 quỹ</button>
+            <button class="prompt-chip" onclick="askAiQuestion('Kiểm tra tiến độ trả nợ thuế của Chồng và trả góp ĐT của Vợ')">💳 Tiến độ trả nợ CK & VK</button>
+            <button class="prompt-chip" onclick="askAiQuestion('Các lỗi công thức và logic tìm thấy trong 2 file Excel gốc là gì?')">🔍 Các lỗi logic trong Excel cũ</button>
+          </div>
+
+          <div class="chat-container">
+            <div class="chat-messages" id="ai-chat-messages">
+              <!-- Initial greeting populated by JS -->
+            </div>
+            <div class="chat-input-bar">
+              <input
+                type="text"
+                id="ai-question-input"
+                class="input-control"
+                style="flex:1;"
+                placeholder="Hỏi bất cứ điều gì về thu chi, đầu tư, ngân sách gia đình (VD: 'Tháng 9 tiêu gì nhiều nhất?')..."
+                onkeydown="if(event.key==='Enter') sendAiChat()"
+              />
+              <button class="btn btn-primary" onclick="sendAiChat()">Gửi Câu Hỏi 🚀</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================================================================== -->
+      <!-- TAB 6: EXCEL LOGIC AUDIT & GOOGLE SHEET SYNC                         -->
+      <!-- ==================================================================== -->
+      <div class="tab-pane" id="tab-audit">
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">🔍 7 Lỗi Công Thức & Logic Phát Hiện Trong 2 File Excel Gốc</div>
+              <a href="./data/2026_FAMILY_NOTEBOOK_CHUAN_HOA.xlsx" download="2026_FAMILY_NOTEBOOK_CHUAN_HOA.xlsx" class="btn btn-emerald" style="padding:8px 14px;font-size:12.5px;">
+                📥 Tải File Excel Đã Vá Toàn Bộ Lỗi
+              </a>
+            </div>
+            <div id="audit-bugs-list" style="display:flex;flex-direction:column;gap:12px;"></div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:20px;">
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">☁️ Đồng Bộ Cloud 2 Chiều Giữa 2 Vợ Chồng & Google Sheet</div>
+                <button class="btn btn-ghost" style="padding:6px 12px;font-size:12px;" onclick="copyAppsScript()">📋 Copy Mã Apps Script</button>
+              </div>
+              <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px;">
+                1️⃣ Mở Google Sheet <a href="https://docs.google.com/spreadsheets/d/1FtjpyD-DP4HS8z7uJoYDw9TKwBh3qSCwdXqy1eaQEEk/edit" target="_blank" style="color:#818cf8;font-weight:700;">[2026 - FAMILY NOTE BOOK]</a> → <b>Extensions → Apps Script</b> → Dán mã bên dưới và chọn <b>Deploy → New deployment → Web App (Anyone)</b>.<br/>
+                2️⃣ Dán link Web App (`https://script.google.com/macros/s/.../exec`) vào ô dưới đây để điện thoại Chồng & Vợ tự động đồng bộ 2 chiều:
+              </p>
+              <div style="display:flex;gap:8px;margin-bottom:10px;">
+                <input type="url" id="audit-cloud-url-input" class="input-control" style="flex:1;" placeholder="Dán Web App URL (https://script.google.com/macros/s/.../exec)" />
+                <button class="btn btn-primary" onclick="saveCloudUrlFromAuditTab()">💾 Kết Nối Cloud</button>
+              </div>
+              <textarea id="apps-script-box" class="input-control" rows="8" readonly style="width:100%;font-family:monospace;font-size:11.5px;"></textarea>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">⚠️ 11 Dòng Giao Dịch Bị Thiếu Trường / Chưa Điền Tiền</div>
+              </div>
+              <div id="audit-rows-list" style="display:flex;flex-direction:column;gap:10px;max-height:320px;overflow-y:auto;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- MOBILE BOTTOM NAVIGATION -->
+    <nav class="mobile-nav">
+      <button class="mobile-nav-btn active" onclick="switchTab('dashboard')" id="mnav-dashboard">
+        <span style="font-size:18px;">📊</span><span>Tổng quan</span>
+      </button>
+      <button class="mobile-nav-btn" onclick="switchTab('transactions')" id="mnav-transactions">
+        <span style="font-size:18px;">⚡</span><span>Sổ chi tiêu</span>
+      </button>
+      <button class="mobile-nav-btn" onclick="switchTab('email')" id="mnav-email">
+        <span style="font-size:18px;">📧</span><span>Email Bank</span>
+      </button>
+      <button class="mobile-nav-btn" onclick="switchTab('investment')" id="mnav-investment">
+        <span style="font-size:18px;">📈</span><span>Đầu tư</span>
+      </button>
+      <button class="mobile-nav-btn" onclick="switchTab('ai')" id="mnav-ai">
+        <span style="font-size:18px;">🤖</span><span>Hỏi AI</span>
+      </button>
+      <button class="mobile-nav-btn" onclick="switchTab('audit')" id="mnav-audit">
+        <span style="font-size:18px;">☁️</span><span>Cloud/Audit</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- MODAL: ADD TRANSACTION / UPDATE INCOME / CLOUD SETTINGS / PIN -->
+  <div id="modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);backdrop-filter:blur(6px);z-index:100;align-items:center;justify-content:center;padding:16px;">
+    <div class="card" style="width:100%;max-width:540px;border-color:var(--border-glow);max-height:90vh;overflow-y:auto;" id="modal-content"></div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

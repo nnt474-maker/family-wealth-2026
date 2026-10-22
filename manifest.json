@@ -1,0 +1,19 @@
+{
+  "name": "2026 Family Wealth & Notebook OS",
+  "short_name": "FamilyNote 2026",
+  "description": "Ứng dụng quản lý chi tiêu & đầu tư DCA gia đình Chồng • Vợ • Subo • Sugi (Cloud Edition)",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#090d16",
+  "theme_color": "#6366f1",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
