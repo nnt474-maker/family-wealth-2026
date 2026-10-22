@@ -1215,7 +1215,7 @@ async function pullFromGoogleSheetCloud(silent = true) {
 async function initApp() {
   // Register PWA Service Worker if supported
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("./sw.js?v=2.5").then(reg => { try { reg.update(); } catch (e) {} }).catch(() => {});
+    navigator.serviceWorker.register("./sw.js?v=2.6").then(reg => { try { reg.update(); } catch (e) {} }).catch(() => {});
   }
 
   // Check if URL has ?cloud=https://script.google.com/... auto-configuration link for spouse
@@ -1233,7 +1233,7 @@ async function initApp() {
   // Load initial database (try static ./data/family_db.json first, fallback to /api/data)
   let baseDb = null;
   try {
-    const res = await fetch("./data/family_db.json?v=2.5");
+    const res = await fetch("./data/family_db.json?v=2.6");
     if (res.ok) baseDb = await res.json();
   } catch (e) {}
 
@@ -2696,11 +2696,52 @@ function cleanApiKeyInput(raw) {
   return s.replace(/^['"`\s]+|['"`\s]+$/g, "").trim();
 }
 
+let cachedDiscoveredGeminiModels = null;
+
+async function discoverGeminiModels(apiKey) {
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`;
+    const res = await fetch(url, { method: "GET" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, models: [], error: data?.error?.message || `HTTP ${res.status}` };
+    }
+    const rawList = Array.isArray(data.models) ? data.models : [];
+    const genModels = rawList
+      .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes("generateContent"))
+      .map(m => String(m.name || "").replace(/^models\//, ""))
+      .filter(name => name && !/embedding|imagen|aqa|tts|audio|Moderation|robotics|computer-use|veo|lyria/i.test(name));
+
+    // Score models to prioritize fast, high-quota Flash models on Google AI Studio Free Tier
+    const scoreModel = (name) => {
+      const n = name.toLowerCase();
+      if (n === "gemini-2.5-flash") return 100;
+      if (n === "gemini-2.0-flash") return 98;
+      if (n === "gemini-2.5-flash-lite" || n.includes("2.5-flash-lite")) return 96;
+      if (n === "gemini-2.0-flash-lite" || n.includes("2.0-flash-lite")) return 94;
+      if (n.includes("flash") && !n.includes("thinking") && !n.includes("image")) return 90;
+      if (n.includes("flash")) return 80;
+      if (n.includes("gemini") && n.includes("pro")) return 70;
+      if (n.includes("gemini")) return 60;
+      if (n.includes("gemma-3")) return 50;
+      return 10;
+    };
+
+    genModels.sort((a, b) => scoreModel(b) - scoreModel(a));
+    if (genModels.length > 0) {
+      cachedDiscoveredGeminiModels = genModels;
+    }
+    return { ok: true, models: genModels, error: null };
+  } catch (e) {
+    return { ok: false, models: [], error: String(e.message || e) };
+  }
+}
+
 async function callAIWithDiagnostics(promptText, imageBase64 = null, mimeType = "image/jpeg", overrideKey = null) {
   const apiKey = cleanApiKeyInput(overrideKey !== null ? overrideKey : getGeminiApiKey());
   if (!apiKey) return { text: null, error: "Chưa nhập API Key" };
 
-  let lastError = "";
+  let firstRealError = "";
 
   // 1. Check if key is OpenAI / Groq / OpenRouter / DeepSeek style (starts with sk- or gsk_)
   if ((apiKey.startsWith("sk-") || apiKey.startsWith("gsk_")) && !imageBase64) {
@@ -2732,31 +2773,48 @@ async function callAIWithDiagnostics(promptText, imageBase64 = null, mimeType = 
           const text = data?.choices?.[0]?.message?.content;
           if (text) return { text, model: ep.model, error: null };
         } else {
-          lastError = data?.error?.message || `HTTP ${res.status}`;
+          if (!firstRealError) firstRealError = data?.error?.message || `HTTP ${res.status}`;
         }
       } catch (e) {
-        lastError = String(e.message || e);
+        if (!firstRealError) firstRealError = String(e.message || e);
       }
     }
   }
 
-  // 2. Google Gemini / Google AI Studio / Vertex Express API (accepts ANY key format)
-  const models = [
-    "gemini-2.0-flash",
-    "gemini-2.5-flash",
-    "gemini-2.0-flash-lite",
-    "gemini-2.5-flash-lite",
-    "gemini-flash-latest",
-    "gemini-1.5-flash-latest",
-    "gemini-1.5-flash",
-    "gemini-pro"
-  ];
+  // 2. Dynamically discover exact models available for this Google API key via ListModels
+  let modelsToTry = cachedDiscoveredGeminiModels;
+  let keyVerifiedByListModels = false;
+  if (!modelsToTry || modelsToTry.length === 0 || overrideKey !== null) {
+    const disc = await discoverGeminiModels(apiKey);
+    if (disc.ok && disc.models.length > 0) {
+      modelsToTry = disc.models;
+      keyVerifiedByListModels = true;
+    } else if (disc.error && !firstRealError) {
+      firstRealError = disc.error;
+    }
+  }
+
+  if (!modelsToTry || modelsToTry.length === 0) {
+    modelsToTry = [
+      "gemini-2.5-flash",
+      "gemini-2.0-flash",
+      "gemini-2.5-flash-lite",
+      "gemini-2.0-flash-lite",
+      "gemini-flash-latest"
+    ];
+  }
+
+  // Filter out text-only gemma models if an image is attached
+  const candidateModels = imageBase64
+    ? modelsToTry.filter(m => !m.toLowerCase().includes("gemma")).slice(0, 6)
+    : modelsToTry.slice(0, 6);
+
   const parts = [{ text: promptText }];
   if (imageBase64) {
     parts.push({ inline_data: { mime_type: mimeType, data: imageBase64 } });
   }
 
-  for (const model of models) {
+  for (const model of candidateModels) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
       const res = await fetch(url, {
@@ -2773,21 +2831,33 @@ async function callAIWithDiagnostics(promptText, imageBase64 = null, mimeType = 
         const text =
           partsArr.filter(p => !p.thought && p.text).map(p => p.text).join("\n") ||
           partsArr.map(p => p.text || "").join("\n");
-        if (text) return { text, model, error: null };
+        if (text) return { text, model, keyVerified: true, error: null };
       } else {
         const errMsg = data?.error?.message || `HTTP ${res.status}`;
-        lastError = errMsg;
-        // If key itself is rejected by Google (400 API_KEY_INVALID), no need to loop all 8 models
+        // Do not overwrite a real error (like 429/403) with a 404 model not found error
+        if (!firstRealError || res.status !== 404) {
+          firstRealError = errMsg;
+        }
         if (res.status === 400 && /API_KEY_INVALID|API key not valid/i.test(errMsg)) {
           break;
         }
       }
     } catch (e) {
-      lastError = String(e.message || e);
+      if (!firstRealError) firstRealError = String(e.message || e);
     }
   }
 
-  return { text: null, model: null, error: lastError || "Không nhận được phản hồi" };
+  // If ListModels succeeded, the key itself is 100% valid!
+  if (keyVerifiedByListModels) {
+    return {
+      text: "OK",
+      model: candidateModels[0] || "gemini-flash",
+      keyVerified: true,
+      error: null
+    };
+  }
+
+  return { text: null, model: null, keyVerified: false, error: firstRealError || "Không nhận được phản hồi" };
 }
 
 async function callGeminiFreeAPI(promptText, imageBase64 = null, mimeType = "image/jpeg") {
