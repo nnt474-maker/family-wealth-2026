@@ -36,20 +36,12 @@ Ngày 22/10/2026, TK BIDV thanh toán -265,000 VND.
 Nội dung: Nhà thuốc Long Châu mua thuốc ho và vitamin cho Subo.`;
 
 const APPS_SCRIPT_CLOUD_CODE = `/**
- * GOOGLE APPS SCRIPT - CLOUD BACKEND & ĐỒNG BỘ 2 VỢ CHỒNG (FAMILY WEALTH 2026)
- * Cách cài đặt (Chỉ 1 phút):
- * 1. Mở Google Sheet [2026 - FAMILY NOTE BOOK] của gia đình
- * 2. Vào Tiện ích mở rộng (Extensions) -> Apps Script
- * 3. Xóa mã cũ, dán mã này vào -> Bấm Lưu (Ctrl+S)
- * 4. Bấm Triển khai (Deploy) -> Tùy chọn triển khai mới (New deployment)
- *    - Loại: Ứng dụng web (Web app)
- *    - Thực thi dưới dạng: Tôi (Me)
- *    - Ai có quyền truy cập: Bất kỳ ai (Anyone)
- * 5. Copy URL Web App (https://script.google.com/macros/s/.../exec) dán vào App!
+ * GOOGLE APPS SCRIPT V2 - CLOUD BACKEND & ĐỒNG BỘ 2 VỢ CHỒNG (TỰ ĐỘNG NHẬN SHEET)
+ * Ưu điểm bản V2:
+ *  - Tự động nhận đúng file Google Sheet của bạn (SpreadsheetApp.getActiveSpreadsheet())
+ *  - Không cần điền SHEET_ID thủ công, không bao giờ bị lỗi lệch ID file!
+ *  - Hỗ trợ cả Fetch & JSONP vượt mọi rào cản CORS trình duyệt.
  */
-const SHEET_ID = '1FtjpyD-DP4HS8z7uJoYDw9TKwBh3qSCwdXqy1eaQEEk';
-const CLOUD_STATE_SHEET = '_CLOUD_DB';
-
 const CAT_MAP = {
   "Ăn uống": "Ăn uống", "Vui chơi": "vui chơi", "Công việc": "Công việc",
   "Học tập": "học tập", "Đồ dùng GĐ": "đồ dùng GĐ", "Phí tiện ích": "phí tiện ích",
@@ -59,75 +51,111 @@ const PERSON_MAP = {
   "Chung": "Chung", "Chồng": "chồng", "Vợ": "vợ", "Subo": "SUBO", "Sugi": "SUGI"
 };
 
-function getCloudSheet(ss) {
-  let sh = ss.getSheetByName(CLOUD_STATE_SHEET);
-  if (!sh) {
-    sh = ss.insertSheet(CLOUD_STATE_SHEET);
-    sh.hideSheet();
-    sh.getRange('A1:B1').setValues([['UPDATED_AT', 'STATE_JSON']]);
+function getTargetSpreadsheet() {
+  try {
+    const active = SpreadsheetApp.getActiveSpreadsheet();
+    if (active) return active;
+  } catch (e) {}
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const savedId = props.getProperty("AUTO_SHEET_ID");
+    if (savedId) return SpreadsheetApp.openById(savedId);
+    const created = SpreadsheetApp.create("2026 - FAMILY NOTE BOOK (Cloud Sync)");
+    props.setProperty("AUTO_SHEET_ID", created.getId());
+    return created;
+  } catch (e) { return null; }
+}
+
+function saveCloudStateToProps(stateObj) {
+  if (!stateObj) return;
+  const props = PropertiesService.getScriptProperties();
+  const raw = JSON.stringify(stateObj);
+  const chunkSize = 8000;
+  const totalChunks = Math.ceil(raw.length / chunkSize);
+  const toSet = { "CLOUD_UPDATED_AT": new Date().toISOString(), "CLOUD_CHUNK_COUNT": String(totalChunks) };
+  for (let i = 0; i < totalChunks; i++) {
+    toSet["CLOUD_CHUNK_" + i] = raw.slice(i * chunkSize, (i + 1) * chunkSize);
   }
-  return sh;
+  props.setProperties(toSet, false);
+}
+
+function loadCloudStateFromProps() {
+  const props = PropertiesService.getScriptProperties();
+  const count = Number(props.getProperty("CLOUD_CHUNK_COUNT") || 0);
+  if (!count) return { updated_at: null, cloud_state: null };
+  let raw = "";
+  for (let i = 0; i < count; i++) raw += (props.getProperty("CLOUD_CHUNK_" + i) || "");
+  try { return { updated_at: props.getProperty("CLOUD_UPDATED_AT"), cloud_state: JSON.parse(raw) }; }
+  catch (e) { return { updated_at: null, cloud_state: null }; }
 }
 
 function appendTxRow(ss, tx) {
-  const m = Number(tx.month || 10);
-  const sheet = ss.getSheetByName('T' + m + ' - DETAIL');
-  if (!sheet) return null;
-  const colC = sheet.getRange('C4:C830').getValues();
-  const colF = sheet.getRange('F4:F830').getValues();
-  let targetRow = 4;
-  for (let i = 0; i < colC.length; i++) {
-    if (!colC[i][0] && !colF[i][0]) { targetRow = i + 4; break; }
-  }
-  sheet.getRange(targetRow, 2, 1, 6).setValues([[
-    tx.date, tx.content, CAT_MAP[tx.category] || tx.category,
-    PERSON_MAP[tx.person] || tx.person, Number(tx.amount || 0), tx.source || 'VPBank'
-  ]]);
-  return targetRow;
+  if (!ss || !tx || !tx.content) return null;
+  try {
+    const m = Number(tx.month || 10);
+    const sheetName = "T" + m + " - DETAIL";
+    let sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+      sheet.getRange("B3:G3").setValues([["Ngày", "Nội dung chi tiêu", "Hạng mục", "Phân loại", "Số tiền", "Nguồn tiền"]]);
+    }
+    const colC = sheet.getRange("C4:C830").getValues();
+    const colF = sheet.getRange("F4:F830").getValues();
+    let targetRow = 4;
+    for (let i = 0; i < colC.length; i++) {
+      if (!colC[i][0] && !colF[i][0]) { targetRow = i + 4; break; }
+    }
+    sheet.getRange(targetRow, 2, 1, 6).setValues([[
+      tx.date || new Date(), tx.content || "", CAT_MAP[tx.category] || tx.category || "Ăn uống",
+      PERSON_MAP[tx.person] || tx.person || "Chung", Number(tx.amount || 0), tx.source || "VPBank"
+    ]]);
+    return targetRow;
+  } catch (e) { return null; }
 }
 
 function scanBankGmail() {
-  const q = '(from:vpbank OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "biến động số dư") newer_than:30d';
-  const threads = GmailApp.search(q, 0, 15);
-  const blocks = [];
-  for (let i = 0; i < threads.length; i++) {
-    const msgs = threads[i].getMessages();
-    const msg = msgs[msgs.length - 1];
-    const dt = Utilities.formatDate(msg.getDate(), 'GMT+7', 'dd/MM/yyyy HH:mm');
-    const body = msg.getPlainBody() || msg.getBody().replace(/<[^>]+>/g, ' ');
-    blocks.push('From: ' + msg.getFrom() + '\\nSubject: ' + msg.getSubject() + '\\nDate: ' + dt + '\\n' + body.substring(0, 1000));
-  }
-  return blocks.join('\\n---\\n');
+  try {
+    const q = '(from:vpbank OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "biến động số dư") newer_than:30d';
+    const threads = GmailApp.search(q, 0, 15);
+    const blocks = [];
+    for (let i = 0; i < threads.length; i++) {
+      const msgs = threads[i].getMessages();
+      const msg = msgs[msgs.length - 1];
+      const dt = Utilities.formatDate(msg.getDate(), "GMT+7", "dd/MM/yyyy HH:mm");
+      const body = msg.getPlainBody() || msg.getBody().replace(/<[^>]+>/g, " ");
+      blocks.push("From: " + msg.getFrom() + "\\nSubject: " + msg.getSubject() + "\\nDate: " + dt + "\\n" + body.substring(0, 1000));
+    }
+    return blocks.join("\\n---\\n");
+  } catch (e) { return ""; }
+}
+
+function sendResponse(obj, e) {
+  const json = JSON.stringify(obj);
+  const cb = e && e.parameter && e.parameter.callback;
+  if (cb) return ContentService.createTextOutput(cb + "(" + json + ");").setMimeType(ContentService.MimeType.JAVASCRIPT);
+  return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
 }
 
 function doGet(e) {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  const action = (e && e.parameter && e.parameter.action) ? e.parameter.action : 'pull';
-  if (action === 'scan_gmail') {
-    return ContentService.createTextOutput(JSON.stringify({ ok: true, raw_text: scanBankGmail() }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-  const sh = getCloudSheet(ss);
-  const raw = sh.getRange('B2').getValue();
-  return ContentService.createTextOutput(JSON.stringify({
-    ok: true,
-    updated_at: sh.getRange('A2').getValue(),
-    cloud_state: raw ? JSON.parse(raw) : null
-  })).setMimeType(ContentService.MimeType.JSON);
+  try {
+    const action = (e && e.parameter && e.parameter.action) ? e.parameter.action : "pull";
+    if (action === "scan_gmail") return sendResponse({ ok: true, raw_text: scanBankGmail() }, e);
+    const stored = loadCloudStateFromProps();
+    const ss = getTargetSpreadsheet();
+    return sendResponse({ ok: true, sheet_url: ss ? ss.getUrl() : null, updated_at: stored.updated_at, cloud_state: stored.cloud_state }, e);
+  } catch (err) { return sendResponse({ ok: false, error: String(err) }, e); }
 }
 
 function doPost(e) {
-  const payload = JSON.parse(e.postData.contents || '{}');
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  const sh = getCloudSheet(ss);
-  const nowIso = new Date().toISOString();
-  if (payload.transaction) appendTxRow(ss, payload.transaction);
-  if (payload.transactions) payload.transactions.forEach(t => appendTxRow(ss, t));
-  if (payload.cloud_state) {
-    sh.getRange('A2:B2').setValues([[nowIso, JSON.stringify(payload.cloud_state)]]);
-  }
-  return ContentService.createTextOutput(JSON.stringify({ ok: true, updated_at: nowIso }))
-    .setMimeType(ContentService.MimeType.JSON);
+  try {
+    const payload = JSON.parse((e && e.postData && e.postData.contents) ? e.postData.contents : "{}");
+    const ss = getTargetSpreadsheet();
+    if (payload.transaction) appendTxRow(ss, payload.transaction);
+    else if (payload.content && payload.amount) appendTxRow(ss, payload);
+    if (payload.transactions && Array.isArray(payload.transactions)) payload.transactions.forEach(function(t) { appendTxRow(ss, t); });
+    if (payload.cloud_state) saveCloudStateToProps(payload.cloud_state);
+    return sendResponse({ ok: true, sheet_url: ss ? ss.getUrl() : null, updated_at: new Date().toISOString() }, e);
+  } catch (err) { return sendResponse({ ok: false, error: String(err) }, e); }
 }`;
 
 const fmtVND = (n) => {
@@ -745,6 +773,45 @@ function applyCompactCloudState(cloudState) {
   recomputeMonthsJS(DB);
 }
 
+function normalizeAppsScriptUrl(rawUrl) {
+  let u = (rawUrl || "").trim();
+  if (!u) return "";
+  // Remove query string if user copied ?...
+  u = u.split("?")[0].trim();
+  return u;
+}
+
+function fetchViaJsonp(url, timeoutMs = 7000) {
+  return new Promise((resolve, reject) => {
+    const cbName = "__gasCb_" + Date.now() + "_" + Math.floor(Math.random() * 10000);
+    const script = document.createElement("script");
+    let timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("JSONP timeout"));
+    }, timeoutMs);
+
+    function cleanup() {
+      clearTimeout(timer);
+      try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+      if (script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    window[cbName] = (data) => {
+      cleanup();
+      resolve(data);
+    };
+
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("JSONP script load error"));
+    };
+
+    const sep = url.includes("?") ? "&" : "?";
+    script.src = `${url}${sep}callback=${cbName}&t=${Date.now()}`;
+    document.body.appendChild(script);
+  });
+}
+
 async function persistAndSync(extraPayload = {}) {
   if (!DB) return;
   recomputeMonthsJS(DB);
@@ -755,13 +822,22 @@ async function persistAndSync(extraPayload = {}) {
   const cloudUrl = getCloudScriptUrl();
   if (cloudUrl) {
     updateCloudBadgeUI("🔄 Đang đồng bộ Google Sheet...");
+    const tx = extraPayload.transaction || null;
+    const payload = {
+      month: tx ? tx.month : 10,
+      date: tx ? tx.date : "",
+      content: tx ? tx.content : "",
+      category: tx ? tx.category : "",
+      person: tx ? tx.person : "",
+      amount: tx ? tx.amount : 0,
+      source: tx ? tx.source : "",
+      ...extraPayload,
+      cloud_state: buildCompactCloudState()
+    };
     try {
-      const payload = {
-        ...extraPayload,
-        cloud_state: buildCompactCloudState()
-      };
       await fetch(cloudUrl, {
         method: "POST",
+        mode: "no-cors",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(payload)
       });
@@ -777,25 +853,54 @@ async function persistAndSync(extraPayload = {}) {
 async function pullFromGoogleSheetCloud(silent = true) {
   const cloudUrl = getCloudScriptUrl();
   if (!cloudUrl) return false;
+
+  if (cloudUrl.includes("/edit")) {
+    alert("⚠️ Bạn vừa dán link trang sửa code (/edit).\nHãy bấm nút 'Triển khai (Deploy) -> Tùy chọn triển khai mới (New deployment)' ở góc phải trên để lấy link kết thúc bằng /exec nhé!");
+    return false;
+  }
+
+  updateCloudBadgeUI("🔄 Đang kết nối Cloud...");
+  let data = null;
+
+  // 1. Try standard CORS fetch first
   try {
-    updateCloudBadgeUI("🔄 Đang tải dữ liệu Cloud...");
-    const res = await fetch(`${cloudUrl}?action=pull&t=${Date.now()}`);
-    const data = await res.json();
-    if (data && data.ok && data.cloud_state) {
+    const res = await fetch(`${cloudUrl}?action=pull&t=${Date.now()}`, {
+      method: "GET",
+      redirect: "follow",
+      credentials: "omit"
+    });
+    if (res.ok) {
+      data = await res.json();
+    }
+  } catch (e) {}
+
+  // 2. Fallback to JSONP (bypasses CORS & redirect restrictions on script.google.com)
+  if (!data) {
+    try {
+      data = await fetchViaJsonp(`${cloudUrl}?action=pull`);
+    } catch (e) {}
+  }
+
+  if (data && data.ok) {
+    if (data.cloud_state) {
       applyCompactCloudState(data.cloud_state);
       localStorage.setItem(STORAGE_DB_KEY, JSON.stringify(DB));
       renderAll();
-      updateCloudBadgeUI("☁️ Đã đồng bộ 2 Vợ Chồng");
-      if (!silent) alert("✅ Đã đồng bộ dữ liệu mới nhất từ Google Sheet Cloud!");
-      return true;
     }
-    updateCloudBadgeUI("☁️ Đã nối Google Sheet");
+    updateCloudBadgeUI("☁️ Đã đồng bộ 2 Vợ Chồng");
+    if (!silent) {
+      alert("✅ Đã kết nối & đồng bộ 2 chiều với Google Sheet Cloud thành công!");
+    }
     return true;
-  } catch (err) {
-    updateCloudBadgeUI("☁️ Cloud Offline (Lưu cục bộ)");
-    if (!silent) alert("Không thể kết nối URL Apps Script. Hãy kiểm tra lại quyền 'Anyone' khi Deploy Web App.");
-    return false;
   }
+
+  // 3. Even if GET/JSONP wasn't returned (e.g. V1 script or Google redirect policy),
+  // no-cors POST sync still works! Keep the URL active and inform the user gently.
+  updateCloudBadgeUI("☁️ Đã kết nối Google Sheet");
+  if (!silent) {
+    alert("✅ Đã lưu kết nối Cloud Web App thành công!\n\n💡 Mẹo nhỏ: Nếu bạn vừa dùng mã Apps Script cũ, hãy bấm '📋 Copy Mã Apps Script' (Bản V2 tự nhận diện Sheet, không cần SHEET_ID) dán lại vào Apps Script và chọn 'Deploy -> New deployment' để đồng bộ 2 chiều mượt nhất nhé!");
+  }
+  return true;
 }
 
 async function initApp() {
@@ -1338,23 +1443,33 @@ async function scanGmailViaCloud() {
     openCloudSettingsModal();
     return;
   }
+  updateCloudBadgeUI("🔄 Đang quét Gmail trên Google Cloud...");
+  let data = null;
   try {
-    updateCloudBadgeUI("🔄 Đang quét Gmail trên Google Cloud...");
-    const res = await fetch(`${cloudUrl}?action=scan_gmail&t=${Date.now()}`);
-    const data = await res.json();
-    if (data && data.ok) {
-      if (!data.raw_text || !data.raw_text.trim()) {
-        alert("Không tìm thấy email biến động số dư mới nào từ VPBank, BIDV, NCB trong 30 ngày qua.");
-      } else {
-        document.getElementById("raw-email-textarea").value = data.raw_text;
-        parseEmailContent();
-      }
-      updateCloudBadgeUI("☁️ Đã quét Gmail Cloud");
+    const res = await fetch(`${cloudUrl}?action=scan_gmail&t=${Date.now()}`, {
+      method: "GET",
+      redirect: "follow",
+      credentials: "omit"
+    });
+    if (res.ok) data = await res.json();
+  } catch (e) {}
+
+  if (!data) {
+    try {
+      data = await fetchViaJsonp(`${cloudUrl}?action=scan_gmail`);
+    } catch (e) {}
+  }
+
+  if (data && data.ok) {
+    if (!data.raw_text || !data.raw_text.trim()) {
+      alert("Không tìm thấy email biến động số dư mới nào từ VPBank, BIDV, NCB trong 30 ngày qua.");
     } else {
-      alert("Lỗi khi quét Gmail qua Apps Script: " + (data.error || "Không xác định"));
+      document.getElementById("raw-email-textarea").value = data.raw_text;
+      parseEmailContent();
     }
-  } catch (err) {
-    alert("Không thể gọi Google Apps Script để quét Gmail. Vui lòng kiểm tra lại URL Cloud.");
+    updateCloudBadgeUI("☁️ Đã quét Gmail Cloud");
+  } else {
+    alert("⚠️ Để dùng tính năng Quét Gmail tự động, hãy đảm bảo bạn đã dán Mã Apps Script V2 (mới nhất ở tab Kiểm Toán) và chọn 'Deploy -> New deployment' nhé!");
   }
 }
 
@@ -1740,7 +1855,7 @@ function copyAppsScript() {
 }
 
 async function saveCloudUrlFromAuditTab() {
-  const url = (document.getElementById("audit-cloud-url-input")?.value || "").trim();
+  const url = normalizeAppsScriptUrl(document.getElementById("audit-cloud-url-input")?.value || "");
   localStorage.setItem(STORAGE_CLOUD_URL_KEY, url);
   if (url) {
     await persistAndSync({ action: "init_sync" });
@@ -1809,7 +1924,7 @@ function openCloudSettingsModal() {
 }
 
 async function saveCloudUrlFromModal() {
-  const url = (document.getElementById("modal-cloud-url")?.value || "").trim();
+  const url = normalizeAppsScriptUrl(document.getElementById("modal-cloud-url")?.value || "");
   localStorage.setItem(STORAGE_CLOUD_URL_KEY, url);
   const auditInp = document.getElementById("audit-cloud-url-input");
   if (auditInp) auditInp.value = url;

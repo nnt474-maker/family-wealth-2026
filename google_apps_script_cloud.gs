@@ -1,175 +1,182 @@
 /**
  * ============================================================================
- * ☁️ GOOGLE APPS SCRIPT — CLOUD BACKEND & ĐỒNG BỘ 2 VỢ CHỒNG (FAMILY WEALTH 2026)
+ * ☁️ GOOGLE APPS SCRIPT V2 — ĐỒNG BỘ 2 VỢ CHỒNG & GOOGLE SHEET (TỰ ĐỘNG NHẬN SHEET)
  * ============================================================================
- * Tác dụng:
- *   1. Đồng bộ 2 chiều thời gian thực giữa Điện thoại Chồng, Điện thoại Vợ & Máy tính
- *   2. Tự động ghi mọi giao dịch mới vào đúng Sheet [T1 - DETAIL] .. [T12 - DETAIL]
- *   3. Tự động đọc Email biến động số dư VPBank, BIDV, NCB, UOB, Shopee ngay trong
- *      tài khoản Gmail (KHÔNG cần nhập App Password, chạy 100% trên mây Google)
- *
- * HƯỚNG DẪN CÀI ĐẶT (Chỉ làm 1 lần — mất 60 giây):
- *   Bước 1: Mở Google Sheet [2026 - FAMILY NOTE BOOK] của gia đình:
- *           https://docs.google.com/spreadsheets/d/1FtjpyD-DP4HS8z7uJoYDw9TKwBh3qSCwdXqy1eaQEEk/edit
- *   Bước 2: Trên thanh menu chọn: Tiện ích mở rộng (Extensions) -> Apps Script
- *   Bước 3: Xóa mã cũ, dán toàn bộ mã này vào và bấm biểu tượng Lưu (Ctrl+S)
- *   Bước 4: Bấm nút "Triển khai" (Deploy) ở góc phải trên -> "Tùy chọn triển khai mới" (New deployment)
- *           - Chọn loại (Select type): "Ứng dụng web" (Web app)
- *           - Thực thi dưới dạng (Execute as): "Tôi" (Me)
- *           - Ai có quyền truy cập (Who has access): "Bất kỳ ai" (Anyone)
- *           - Bấm "Triển khai" (Deploy) -> Cấp quyền (Authorize access) -> Copy URL Web App
- *   Bước 5: Dán URL Web App (`https://script.google.com/macros/s/.../exec`) vào mục
- *           "☁️ Cài đặt Cloud" trên ứng dụng Family Wealth 2026!
+ * Ưu điểm bản V2:
+ *   ✔ Tự động nhận diện đúng file Google Sheet hiện tại (`getActiveSpreadsheet()`)
+ *     -> Không cần điền SHEET_ID thủ công, không bao giờ lỗi lệch ID!
+ *   ✔ Nếu chạy độc lập, tự động tạo file Google Sheet mới trong Google Drive của bạn.
+ *   ✔ Lưu trạng thái Cloud bằng PropertiesService siêu tốc (không bị giới hạn 50,000 ký tự/ô).
+ *   ✔ Hỗ trợ cả Fetch lẫn JSONP (Vượt mọi rào cản CORS trên trình duyệt & điện thoại).
  * ============================================================================
  */
 
-const SHEET_ID = '1FtjpyD-DP4HS8z7uJoYDw9TKwBh3qSCwdXqy1eaQEEk';
-const CLOUD_STATE_SHEET = '_CLOUD_DB';
-
-const CAT_EXCEL_MAP = {
-  "Ăn uống": "Ăn uống",
-  "Vui chơi": "vui chơi",
-  "Công việc": "Công việc",
-  "Học tập": "học tập",
-  "Đồ dùng GĐ": "đồ dùng GĐ",
-  "Phí tiện ích": "phí tiện ích",
-  "Làm đẹp": "Làm đẹp",
-  "Y tế": "Y tế",
-  "Event": "event",
-  "Nợ": "Nợ"
+const CAT_MAP = {
+  "Ăn uống": "Ăn uống", "Vui chơi": "vui chơi", "Công việc": "Công việc",
+  "Học tập": "học tập", "Đồ dùng GĐ": "đồ dùng GĐ", "Phí tiện ích": "phí tiện ích",
+  "Làm đẹp": "Làm đẹp", "Y tế": "Y tế", "Event": "event", "Nợ": "Nợ"
 };
 
-const PERSON_EXCEL_MAP = {
-  "Chung": "Chung",
-  "Chồng": "chồng",
-  "Vợ": "vợ",
-  "Subo": "SUBO",
-  "Sugi": "SUGI"
+const PERSON_MAP = {
+  "Chung": "Chung", "Chồng": "chồng", "Vợ": "vợ", "Subo": "SUBO", "Sugi": "SUGI"
 };
 
-function getOrCreateCloudSheet(ss) {
-  let sh = ss.getSheetByName(CLOUD_STATE_SHEET);
-  if (!sh) {
-    sh = ss.insertSheet(CLOUD_STATE_SHEET);
-    sh.hideSheet();
-    sh.getRange('A1').setValue('UPDATED_AT');
-    sh.getRange('B1').setValue('STATE_JSON');
-  }
-  return sh;
-}
+function getTargetSpreadsheet() {
+  try {
+    const active = SpreadsheetApp.getActiveSpreadsheet();
+    if (active) return active;
+  } catch (e) {}
 
-function appendTxToMonthSheet(ss, tx) {
-  const m = Number(tx.month || 10);
-  const sheetName = 'T' + m + ' - DETAIL';
-  const sheet = ss.getSheetByName(sheetName);
-  if (!sheet) return { ok: false, reason: 'Không tìm thấy sheet ' + sheetName };
-
-  const colC = sheet.getRange('C4:C830').getValues();
-  const colF = sheet.getRange('F4:F830').getValues();
-  let targetRow = 4;
-  for (let i = 0; i < colC.length; i++) {
-    if (!colC[i][0] && !colF[i][0]) {
-      targetRow = i + 4;
-      break;
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const savedId = props.getProperty("AUTO_SHEET_ID");
+    if (savedId) {
+      return SpreadsheetApp.openById(savedId);
     }
+    const created = SpreadsheetApp.create("2026 - FAMILY NOTE BOOK (Cloud Sync)");
+    props.setProperty("AUTO_SHEET_ID", created.getId());
+    return created;
+  } catch (e) {
+    return null;
   }
-
-  sheet.getRange(targetRow, 2, 1, 6).setValues([[
-    tx.date || new Date(),
-    tx.content || '',
-    CAT_EXCEL_MAP[tx.category] || tx.category || 'Ăn uống',
-    PERSON_EXCEL_MAP[tx.person] || tx.person || 'Chung',
-    Number(tx.amount || 0),
-    tx.source || 'VPBank'
-  ]]);
-  return { ok: true, sheet: sheetName, row: targetRow };
 }
 
-function scanRecentBankEmails(maxThreads) {
-  const limit = maxThreads || 15;
-  const query = '(from:vpbank OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "biến động số dư" OR "Giao dịch thẻ") newer_than:30d';
-  const threads = GmailApp.search(query, 0, limit);
-  const blocks = [];
-
-  for (let i = 0; i < threads.length; i++) {
-    const msgs = threads[i].getMessages();
-    const msg = msgs[msgs.length - 1];
-    const sender = msg.getFrom();
-    const subj = msg.getSubject();
-    const dateStr = Utilities.formatDate(msg.getDate(), 'GMT+7', 'dd/MM/yyyy HH:mm');
-    const body = msg.getPlainBody() || msg.getBody().replace(/<[^>]+>/g, ' ');
-    blocks.push('From: ' + sender + '\nSubject: ' + subj + '\nDate: ' + dateStr + '\n' + body.substring(0, 1200));
+function saveCloudStateToProps(stateObj) {
+  if (!stateObj) return;
+  const props = PropertiesService.getScriptProperties();
+  const raw = JSON.stringify(stateObj);
+  const chunkSize = 8000;
+  const totalChunks = Math.ceil(raw.length / chunkSize);
+  const toSet = {
+    "CLOUD_UPDATED_AT": new Date().toISOString(),
+    "CLOUD_CHUNK_COUNT": String(totalChunks)
+  };
+  for (let i = 0; i < totalChunks; i++) {
+    toSet["CLOUD_CHUNK_" + i] = raw.slice(i * chunkSize, (i + 1) * chunkSize);
   }
-  return blocks.join('\n---\n');
+  props.setProperties(toSet, false);
 }
 
-function jsonResponse(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj))
+function loadCloudStateFromProps() {
+  const props = PropertiesService.getScriptProperties();
+  const count = Number(props.getProperty("CLOUD_CHUNK_COUNT") || 0);
+  if (!count) return { updated_at: null, cloud_state: null };
+  let raw = "";
+  for (let i = 0; i < count; i++) {
+    raw += (props.getProperty("CLOUD_CHUNK_" + i) || "");
+  }
+  try {
+    return {
+      updated_at: props.getProperty("CLOUD_UPDATED_AT"),
+      cloud_state: JSON.parse(raw)
+    };
+  } catch (e) {
+    return { updated_at: null, cloud_state: null };
+  }
+}
+
+function appendTxRow(ss, tx) {
+  if (!ss || !tx || !tx.content) return null;
+  try {
+    const m = Number(tx.month || 10);
+    const sheetName = "T" + m + " - DETAIL";
+    let sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+      sheet.getRange("B3:G3").setValues([["Ngày", "Nội dung chi tiêu", "Hạng mục", "Phân loại", "Số tiền", "Nguồn tiền"]]);
+    }
+    const colC = sheet.getRange("C4:C830").getValues();
+    const colF = sheet.getRange("F4:F830").getValues();
+    let targetRow = 4;
+    for (let i = 0; i < colC.length; i++) {
+      if (!colC[i][0] && !colF[i][0]) {
+        targetRow = i + 4;
+        break;
+      }
+    }
+    sheet.getRange(targetRow, 2, 1, 6).setValues([[
+      tx.date || new Date(),
+      tx.content || "",
+      CAT_MAP[tx.category] || tx.category || "Ăn uống",
+      PERSON_MAP[tx.person] || tx.person || "Chung",
+      Number(tx.amount || 0),
+      tx.source || "VPBank"
+    ]]);
+    return targetRow;
+  } catch (e) {
+    return null;
+  }
+}
+
+function scanBankGmail() {
+  try {
+    const q = '(from:vpbank OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "biến động số dư") newer_than:30d';
+    const threads = GmailApp.search(q, 0, 15);
+    const blocks = [];
+    for (let i = 0; i < threads.length; i++) {
+      const msgs = threads[i].getMessages();
+      const msg = msgs[msgs.length - 1];
+      const dt = Utilities.formatDate(msg.getDate(), "GMT+7", "dd/MM/yyyy HH:mm");
+      const body = msg.getPlainBody() || msg.getBody().replace(/<[^>]+>/g, " ");
+      blocks.push("From: " + msg.getFrom() + "\nSubject: " + msg.getSubject() + "\nDate: " + dt + "\n" + body.substring(0, 1000));
+    }
+    return blocks.join("\n---\n");
+  } catch (e) {
+    return "";
+  }
+}
+
+function sendResponse(obj, e) {
+  const json = JSON.stringify(obj);
+  const cb = e && e.parameter && e.parameter.callback;
+  if (cb) {
+    return ContentService.createTextOutput(cb + "(" + json + ");")
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return ContentService.createTextOutput(json)
     .setMimeType(ContentService.MimeType.JSON);
 }
 
 function doGet(e) {
   try {
-    const action = (e && e.parameter && e.parameter.action) ? e.parameter.action : 'pull';
-    const ss = SpreadsheetApp.openById(SHEET_ID);
-
-    if (action === 'scan_gmail') {
-      const rawEmails = scanRecentBankEmails(15);
-      return jsonResponse({ ok: true, raw_text: rawEmails });
+    const action = (e && e.parameter && e.parameter.action) ? e.parameter.action : "pull";
+    if (action === "scan_gmail") {
+      return sendResponse({ ok: true, raw_text: scanBankGmail() }, e);
     }
-
-    const sh = getOrCreateCloudSheet(ss);
-    const updatedAt = sh.getRange('A2').getValue();
-    const rawState = sh.getRange('B2').getValue();
-    let cloudState = null;
-    if (rawState) {
-      try { cloudState = JSON.parse(rawState); } catch (err) {}
-    }
-
-    return jsonResponse({
+    const stored = loadCloudStateFromProps();
+    const ss = getTargetSpreadsheet();
+    return sendResponse({
       ok: true,
-      updated_at: updatedAt,
-      cloud_state: cloudState
-    });
+      sheet_url: ss ? ss.getUrl() : null,
+      updated_at: stored.updated_at,
+      cloud_state: stored.cloud_state
+    }, e);
   } catch (err) {
-    return jsonResponse({ ok: false, error: String(err) });
+    return sendResponse({ ok: false, error: String(err) }, e);
   }
 }
 
 function doPost(e) {
   try {
-    const payload = JSON.parse(e.postData.contents || '{}');
-    const action = payload.action || 'sync';
-    const ss = SpreadsheetApp.openById(SHEET_ID);
-    const sh = getOrCreateCloudSheet(ss);
-    const nowIso = new Date().toISOString();
-
-    let appendedRows = [];
+    const payload = JSON.parse((e && e.postData && e.postData.contents) ? e.postData.contents : "{}");
+    const ss = getTargetSpreadsheet();
     if (payload.transaction) {
-      appendedRows.push(appendTxToMonthSheet(ss, payload.transaction));
+      appendTxRow(ss, payload.transaction);
+    } else if (payload.content && payload.amount) {
+      appendTxRow(ss, payload);
     }
     if (payload.transactions && Array.isArray(payload.transactions)) {
-      for (let i = 0; i < payload.transactions.length; i++) {
-        appendedRows.push(appendTxToMonthSheet(ss, payload.transactions[i]));
-      }
+      payload.transactions.forEach(function(t) { appendTxRow(ss, t); });
     }
-
     if (payload.cloud_state) {
-      sh.getRange('A2').setValue(nowIso);
-      sh.getRange('B2').setValue(JSON.stringify(payload.cloud_state));
+      saveCloudStateToProps(payload.cloud_state);
     }
-
-    if (action === 'scan_gmail') {
-      const rawEmails = scanRecentBankEmails(15);
-      return jsonResponse({ ok: true, raw_text: rawEmails });
-    }
-
-    return jsonResponse({
+    return sendResponse({
       ok: true,
-      updated_at: nowIso,
-      appended: appendedRows
-    });
+      sheet_url: ss ? ss.getUrl() : null,
+      updated_at: new Date().toISOString()
+    }, e);
   } catch (err) {
-    return jsonResponse({ ok: false, error: String(err) });
+    return sendResponse({ ok: false, error: String(err) }, e);
   }
 }
