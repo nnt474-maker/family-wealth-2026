@@ -621,6 +621,10 @@ function recomputeMonthsJS(db) {
     }
   });
 
+  if (db.investment) {
+    db.investment.dip_fund_balance = (db.months || []).reduce((s, m) => s + Number(m.allocation?.dip_fund || 0), 0);
+  }
+
   const holdings = db.investment?.holdings || [];
   const orders = db.investment?.dca_orders || [];
   holdings.forEach(h => {
@@ -811,8 +815,8 @@ function getDefaultMailboxes() {
   return [
     {
       id: "MB-CHONG",
-      label: "👨 Email của Chồng (VPBank • BIDV)",
-      email: "nnt474@gmail.com",
+      label: "👨 Email của Chồng (VPBank • BIDV • Google Sheet)",
+      email: "nnt472@gmail.com",
       owner: "Chồng",
       default_bank: "VPBank",
       banks: "VPBank, BIDV, UOB",
@@ -831,27 +835,125 @@ function getDefaultMailboxes() {
 }
 
 function getFamilyMailboxes() {
+  let list = null;
   if (DB && DB.meta && Array.isArray(DB.meta.mailboxes) && DB.meta.mailboxes.length > 0) {
-    return DB.meta.mailboxes;
+    list = DB.meta.mailboxes;
+  } else {
+    const saved = localStorage.getItem("FAMILY_MAILBOXES_2026");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) list = parsed;
+      } catch (e) {}
+    }
   }
-  const saved = localStorage.getItem("FAMILY_MAILBOXES_2026");
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        if (DB && DB.meta) DB.meta.mailboxes = parsed;
-        return parsed;
-      }
-    } catch (e) {}
-  }
-  const defs = getDefaultMailboxes();
-  if (DB && DB.meta) DB.meta.mailboxes = defs;
-  return defs;
+  if (!list) list = getDefaultMailboxes();
+
+  // Ensure Husband's email is updated to nnt472@gmail.com
+  list.forEach(mb => {
+    if (mb.id === "MB-CHONG" || mb.email === "nnt474@gmail.com") {
+      mb.email = "nnt472@gmail.com";
+      mb.label = "👨 Email của Chồng (VPBank • BIDV • Google Sheet)";
+    }
+  });
+  if (DB && DB.meta) DB.meta.mailboxes = list;
+  return list;
 }
 
 function saveFamilyMailboxes(list) {
   if (DB && DB.meta) DB.meta.mailboxes = list;
   localStorage.setItem("FAMILY_MAILBOXES_2026", JSON.stringify(list));
+}
+
+// ============================================================================
+// ANTI-DUPLICATE ENGINE (CHỐNG TRÙNG LẶP EMAIL & GIAO DỊCH)
+// ============================================================================
+const STORAGE_PROCESSED_EMAIL_SIGS = "FAMILY_PROCESSED_EMAIL_SIGS_2026";
+
+function getProcessedEmailSigs() {
+  const fromMeta = (DB && DB.meta && Array.isArray(DB.meta.processed_email_sigs)) ? DB.meta.processed_email_sigs : [];
+  let fromLocal = [];
+  try {
+    fromLocal = JSON.parse(localStorage.getItem(STORAGE_PROCESSED_EMAIL_SIGS) || "[]");
+  } catch (e) {}
+  return Array.from(new Set([...fromMeta, ...fromLocal]));
+}
+
+function addProcessedEmailSig(sig) {
+  if (!sig) return;
+  const all = getProcessedEmailSigs();
+  if (!all.includes(sig)) all.push(sig);
+  if (DB && DB.meta) DB.meta.processed_email_sigs = all;
+  localStorage.setItem(STORAGE_PROCESSED_EMAIL_SIGS, JSON.stringify(all));
+}
+
+function makeEmailItemSignature(item) {
+  const m = Number(item.month || 10);
+  const amt = Math.round(Number(item.amount || 0));
+  const rawKey = foldVN(item.raw_content || item.content || "").replace(/[^a-z0-9]/g, "").slice(0, 24);
+  return `M${m}-A${amt}-${rawKey}`;
+}
+
+function isEmailItemAlreadyAdded(item) {
+  if (!item || !DB || !Array.isArray(DB.transactions)) return false;
+  const sig = makeEmailItemSignature(item);
+  if (getProcessedEmailSigs().includes(sig)) return true;
+
+  const amt = Math.round(Number(item.amount || 0));
+  const m = Number(item.month || 10);
+  const itemWords = foldVN(`${item.content || ""} ${item.raw_content || ""}`)
+    .split(/\s+/)
+    .filter(w => w.length >= 3 && !["thanh", "toan", "chuyen", "khoan", "mua", "tai", "cho", "vnd"].includes(w));
+
+  return DB.transactions.some(tx => {
+    if (Number(tx.month) !== m) return false;
+    if (Math.round(Number(tx.amount)) !== amt) return false;
+    const txFold = foldVN(tx.content || "");
+    if (txFold === foldVN(item.content || "") || txFold === foldVN(item.raw_content || "")) return true;
+    // If same month + exact same amount + shares at least 1 meaningful keyword (e.g. "coopmart", "sugi", "petrolimex", "shopee", "long chau")
+    if (itemWords.length > 0 && itemWords.some(w => txFold.includes(w))) return true;
+    return false;
+  });
+}
+
+function ensureT10EtfAndDeduplicateDB(db) {
+  if (!db) return;
+  // 1. Ensure Month 10 ETF & Open Fund DCA is marked "Đã mua" (12,000,000 đ = 3.6tr FUEVFVND + 3.0tr DCDS + 5.4tr VESAF)
+  const m10 = (db.months || []).find(m => m.month === 10);
+  if (m10 && (!m10.allocation || m10.allocation.dca_total === 0 || m10.allocation.status === "Dự kiến")) {
+    m10.allocation = {
+      dca_total: 12000000,
+      dca_fuevfvnd: 3600000,
+      dca_dcds: 3000000,
+      dca_vesaf: 5400000,
+      dip_fund: 4000000,
+      emergency_saving: Math.max(0, (m10.income.total - m10.actual_total_expense) - 16000000),
+      status: "Đã mua"
+    };
+  }
+  if (db.investment && Array.isArray(db.investment.dca_orders)) {
+    const orders = db.investment.dca_orders;
+    if (!orders.some(o => Number(o.month) === 10)) {
+      orders.push(
+        { id: "DCA-T10-FUEVFVND", month: 10, date: "2026-10-05", code: "FUEVFVND", amount: 3600000, buy_nav: 33300, units: 108.11, status: "Đã khớp" },
+        { id: "DCA-T10-DCDS", month: 10, date: "2026-10-05", code: "DCDS", amount: 3000000, buy_nav: 91495, units: 32.79, status: "Đã khớp" },
+        { id: "DCA-T10-VESAF", month: 10, date: "2026-10-05", code: "VESAF", amount: 5400000, buy_nav: 46250, units: 116.76, status: "Đã khớp" }
+      );
+    }
+  }
+
+  // 2. Deduplicate any accidentally duplicated cloud-added transactions (same date, amount, and normalized content)
+  if (Array.isArray(db.transactions)) {
+    const seenCustom = new Set();
+    db.transactions = db.transactions.filter(t => {
+      const isCustom = t.is_cloud_added || Number((t.id || "").split("-")[1]) > 888;
+      if (!isCustom) return true;
+      const key = `${t.month}|${t.date}|${Math.round(Number(t.amount || 0))}|${foldVN(t.content || "")}`;
+      if (seenCustom.has(key)) return false;
+      seenCustom.add(key);
+      return true;
+    });
+  }
 }
 
 function getGeminiApiKey() {
@@ -861,6 +963,7 @@ function getGeminiApiKey() {
 function updateGeminiBadgeUI() {
   const lbl = document.getElementById("topbar-gemini-label");
   const pill = document.getElementById("topbar-gemini-pill");
+  const sideBtn = document.getElementById("sidebar-gemini-btn");
   const key = getGeminiApiKey();
   if (lbl) {
     lbl.textContent = key ? "✨ Gemini AI: Đã Bật (Free)" : "🤖 Bật Gemini AI Free";
@@ -869,6 +972,10 @@ function updateGeminiBadgeUI() {
     pill.style.background = key ? "rgba(16,185,129,0.16)" : "rgba(139,92,246,0.16)";
     pill.style.borderColor = key ? "rgba(16,185,129,0.45)" : "rgba(139,92,246,0.45)";
     pill.style.color = key ? "#6ee7b7" : "#c4b5fd";
+  }
+  if (sideBtn) {
+    sideBtn.innerHTML = key ? "✨ Gemini AI: Đang Hoạt Động" : "🤖 Bật Gemini AI Free (0đ)";
+    sideBtn.style.background = key ? "linear-gradient(135deg,#059669,#10b981)" : "linear-gradient(135deg,#8b5cf6,#6366f1)";
   }
 }
 
@@ -881,6 +988,7 @@ function buildCompactCloudState() {
     updated_at: new Date().toISOString(),
     family_pin: getFamilyPin(),
     gemini_api_key: getGeminiApiKey(),
+    processed_email_sigs: getProcessedEmailSigs(),
     mailboxes: getFamilyMailboxes(),
     custom_transactions: customTxs,
     edited_transactions: editedTxs,
@@ -907,6 +1015,9 @@ function applyCompactCloudState(cloudState) {
     DB.meta.gemini_api_key = String(cloudState.gemini_api_key);
     localStorage.setItem(STORAGE_GEMINI_KEY, String(cloudState.gemini_api_key));
     updateGeminiBadgeUI();
+  }
+  if (Array.isArray(cloudState.processed_email_sigs)) {
+    cloudState.processed_email_sigs.forEach(s => addProcessedEmailSig(s));
   }
   if (Array.isArray(cloudState.mailboxes) && cloudState.mailboxes.length > 0) {
     saveFamilyMailboxes(cloudState.mailboxes);
@@ -957,6 +1068,7 @@ function applyCompactCloudState(cloudState) {
       DB.investment.dca_orders = cloudState.investment.dca_orders;
     }
   }
+  ensureT10EtfAndDeduplicateDB(DB);
   recomputeMonthsJS(DB);
 }
 
@@ -1093,7 +1205,7 @@ async function pullFromGoogleSheetCloud(silent = true) {
 async function initApp() {
   // Register PWA Service Worker if supported
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    navigator.serviceWorker.register("./sw.js?v=2.4").then(reg => { try { reg.update(); } catch (e) {} }).catch(() => {});
   }
 
   // Check if URL has ?cloud=https://script.google.com/... auto-configuration link for spouse
@@ -1111,7 +1223,7 @@ async function initApp() {
   // Load initial database (try static ./data/family_db.json first, fallback to /api/data)
   let baseDb = null;
   try {
-    const res = await fetch("./data/family_db.json");
+    const res = await fetch("./data/family_db.json?v=2.4");
     if (res.ok) baseDb = await res.json();
   } catch (e) {}
 
@@ -1157,17 +1269,14 @@ async function initApp() {
     catSelect.value = savedCat;
   }
 
+  ensureT10EtfAndDeduplicateDB(DB);
   recomputeMonthsJS(DB);
   checkPinLockOnStartup();
   renderAll();
+  renderPendingEmailList();
   updateCloudBadgeUI();
   updateGeminiBadgeUI();
 
-  const emailBox = document.getElementById("raw-email-textarea");
-  if (emailBox && DB.sample_bank_emails) {
-    emailBox.value = DB.sample_bank_emails;
-    parseEmailContent(true);
-  }
   const scriptBox = document.getElementById("apps-script-box");
   if (scriptBox) {
     scriptBox.value = APPS_SCRIPT_CLOUD_CODE;
@@ -1409,8 +1518,11 @@ function renderDashboardTab() {
 
   document.getElementById("dashboard-kpis").innerHTML = `
     <div class="kpi-card" style="--kpi-accent:#10b981;">
-      <div class="kpi-label"><span>TỔNG THU NHẬP (${periodLabel})</span><span>💰</span></div>
-      <div class="kpi-val" style="color:#34d399;">${fmtVND(incTotal)}</div>
+      <div class="kpi-label">
+        <span>TỔNG THU NHẬP (${periodLabel})</span>
+        <button class="btn btn-ghost" style="padding:2px 8px;font-size:11px;color:#34d399;border-color:rgba(16,185,129,0.35);" onclick="openIncomeModal(${selectedMonth === 0 ? 10 : selectedMonth})">✏️ Sửa Thu Nhập</button>
+      </div>
+      <div class="kpi-val" style="color:#34d399;cursor:pointer;" onclick="openIncomeModal(${selectedMonth === 0 ? 10 : selectedMonth})" title="Bấm để sửa thu nhập các tháng">${fmtVND(incTotal)}</div>
       <div class="kpi-sub">Mục tiêu tiết kiệm 30%: <b>${fmtShortVND(incTotal * 0.3)}</b></div>
     </div>
     <div class="kpi-card" style="--kpi-accent:#6366f1;">
@@ -1512,11 +1624,11 @@ function renderDashboardTab() {
     return `
       <tr onclick="selectPeriod(${m.month})" style="cursor:pointer;${selectedMonth === m.month ? 'background:rgba(99,102,241,0.16);' : ''}">
         <td><b>Tháng ${m.month}</b></td>
-        <td class="num">${fmtShortVND(m.income.total)}</td>
+        <td class="num" onclick="event.stopPropagation();openIncomeModal(${m.month})" title="Bấm để sửa Thu nhập Tháng ${m.month}" style="text-decoration:underline dotted rgba(52,211,153,0.5);">${fmtShortVND(m.income.total)} ✏️</td>
         <td class="num">${fmtShortVND(m.actual_total_expense)}</td>
         <td class="num" style="color:${m.remaining_actual >= 0 ? '#34d399' : '#fb7185'};">${fmtShortVND(m.remaining_actual)}</td>
         <td class="num">${savPct}</td>
-        <td class="num" style="color:#a5b4fc;">${m.allocation.dca_total > 0 ? fmtShortVND(m.allocation.dca_total) : '—'}</td>
+        <td class="num" onclick="event.stopPropagation();openIncomeModal(${m.month})" title="Bấm để cập nhật ETF/DCA Tháng ${m.month}" style="color:#a5b4fc;">${m.allocation.dca_total > 0 ? '✅ ' + fmtShortVND(m.allocation.dca_total) : '—'}</td>
       </tr>
     `;
   }).join("") + `
@@ -1551,9 +1663,9 @@ function renderEarlyWarnings() {
   const warnings = [
     {
       type: "success",
-      icon: "☁️",
-      title: "App Gia Đình đã chạy trên Cloud 24/7 (Không cần bật máy tính)!",
-      desc: "Cả Chồng & Vợ có thể mở link trên điện thoại bất cứ lúc nào, thêm vào Màn hình chính (PWA) và đồng bộ 2 chiều với Google Sheet."
+      icon: "📈",
+      title: "Đã khớp đủ 100% lệnh mua ETF & Quỹ Mở Tháng 10/2026 (12,000,000 đ)!",
+      desc: `Đã giải ngân định kỳ Tháng 10: 3.6tr FUEVFVND • 3.0tr DCDS • 5.4tr VESAF (+ 4.0tr vào Quỹ Bắt Đáy). Tổng vốn gốc DCA 10 tháng đạt ${fmtVND(DB.investment.holdings.reduce((s,h)=>s+h.invested,0))}.`
     },
     {
       type: "success",
@@ -1562,10 +1674,10 @@ function renderEarlyWarnings() {
       desc: "Kỳ Tháng 10/2026 (2,490,000 đ) là kỳ cuối cùng trong 12 kỳ. Từ Tháng 11/2026, ngân sách cố định hàng tháng giảm được 3,000,000 đ."
     },
     {
-      type: "warn",
-      icon: "📅",
-      title: "Nhắc lịch khớp lệnh DCA Tháng 10/2026 (12,000,000 đ)",
-      desc: `Tháng 10 hiện đang thặng dư +${fmtVND(m10.remaining_actual)}. Hãy giải ngân định kỳ: 3.6tr FUEVFVND • 3.0tr DCDS • 5.4tr VESAF.`
+      type: "success",
+      icon: "☁️",
+      title: "Đồng bộ Cloud & Email nnt472@gmail.com hoạt động 24/7!",
+      desc: "Link Apps Script trên Google Sheet của nnt472@gmail.com vừa đồng bộ Bảng thu chi 2 chiều, vừa quét luôn thông báo ngân hàng trong Gmail nnt472@gmail.com (có chống trùng lặp tự động)."
     },
     {
       type: "danger",
@@ -2020,6 +2132,8 @@ async function deleteMailbox(id) {
   await persistAndSync({ action: "update_mailboxes", mailboxes });
 }
 
+let lastFilteredDuplicateCount = 0;
+
 function loadSampleBankEmails() {
   const raw = (DB && DB.sample_bank_emails) ? DB.sample_bank_emails : SAMPLE_BANK_EMAILS_DEFAULT;
   document.getElementById("raw-email-textarea").value = raw;
@@ -2028,7 +2142,18 @@ function loadSampleBankEmails() {
 
 function parseEmailContent() {
   const raw = document.getElementById("raw-email-textarea").value;
-  pendingEmails = parseBankEmailsJS(raw);
+  const allParsed = parseBankEmailsJS(raw);
+  const freshItems = [];
+  let dupCount = 0;
+  allParsed.forEach(item => {
+    if (isEmailItemAlreadyAdded(item)) {
+      dupCount++;
+    } else {
+      freshItems.push(item);
+    }
+  });
+  lastFilteredDuplicateCount = dupCount;
+  pendingEmails = freshItems;
   renderPendingEmailList();
 }
 
@@ -2150,16 +2275,30 @@ async function syncGmailImap() {
 }
 
 function renderPendingEmailList() {
-  document.getElementById("pending-email-count").textContent = pendingEmails.length;
+  const countEl = document.getElementById("pending-email-count");
+  if (countEl) countEl.textContent = pendingEmails.length;
   const box = document.getElementById("parsed-email-list");
+  if (!box) return;
+
+  const dupBanner = lastFilteredDuplicateCount > 0
+    ? `<div style="background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.35);border-radius:10px;padding:8px 12px;font-size:12px;color:#34d399;margin-bottom:8px;">
+         🛡️ <b>Chống trùng lặp tự động:</b> Đã lọc bỏ <b>${lastFilteredDuplicateCount}</b> email giao dịch vì đã được thêm vào Sổ chi tiêu trước đó.
+       </div>`
+    : "";
+
   if (pendingEmails.length === 0) {
-    box.innerHTML = `<div style="padding:30px;text-align:center;color:var(--text-secondary);">🎉 Không có giao dịch email nào chờ duyệt!</div>`;
+    box.innerHTML = `
+      ${dupBanner}
+      <div style="padding:30px;text-align:center;color:var(--text-secondary);">
+        🎉 Không có giao dịch email mới nào chờ duyệt!<br/>
+        <span style="font-size:12px;color:var(--text-muted);">Bấm "☁️ Quét Tất Cả Hộp Thư Cloud" ở cột trái để kiểm tra email mới từ nnt472@gmail.com & NCB.</span>
+      </div>`;
     return;
   }
 
-  const bankOptions = DB.meta.banks || ["Tiền mặt / Chuyển khoản", "VPBank", "BIDV", "NCB", "UOB", "VPSP"];
+  const bankOptions = ALL_PAYMENT_SOURCES;
 
-  box.innerHTML = pendingEmails.map((item, idx) => `
+  box.innerHTML = dupBanner + pendingEmails.map((item, idx) => `
     <div style="background:rgba(15,23,42,0.85);border:1px solid var(--border-subtle);border-radius:14px;padding:14px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;">
         <div>
@@ -2171,7 +2310,7 @@ function renderPendingEmailList() {
 
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Gốc: "${item.raw_content}"</div>
 
-      <div style="display:grid;grid-template-columns:1.3fr 0.9fr 0.8fr 0.9fr auto;gap:8px;align-items:center;">
+      <div style="display:grid;grid-template-columns:1.3fr 0.9fr 0.8fr 0.9fr auto auto;gap:6px;align-items:center;">
         <input type="text" class="input-control" value="${String(item.content || '').replace(/"/g, '&quot;')}" onchange="pendingEmails[${idx}].content=this.value" />
         <select class="input-control" onchange="pendingEmails[${idx}].category=this.value">
           ${DB.meta.categories.map(c => `<option value="${c}" ${c === item.category ? 'selected' : ''}>${c}</option>`).join("")}
@@ -2182,8 +2321,11 @@ function renderPendingEmailList() {
         <select class="input-control" onchange="pendingEmails[${idx}].source=this.value;pendingEmails[${idx}].bank=this.value;">
           ${bankOptions.map(b => `<option value="${b}" ${b === (item.source || item.bank) ? 'selected' : ''}>${b}</option>`).join("")}
         </select>
-        <button class="btn btn-primary" style="padding:8px 12px;font-size:12px;" onclick="approveSingleEmail(${idx})">
+        <button class="btn btn-primary" style="padding:8px 10px;font-size:12px;" onclick="approveSingleEmail(${idx})" title="Duyệt vào sổ">
           ✔ Duyệt
+        </button>
+        <button class="btn btn-ghost" style="padding:8px 8px;font-size:12px;color:#fb7185;" onclick="dismissSingleEmail(${idx})" title="Bỏ qua và không hiện lại">
+          ✕
         </button>
       </div>
       <div style="font-size:11.5px;color:#818cf8;margin-top:6px;">✨ AI (${Math.round(item.confidence * 100)}%): ${item.reason}</div>
@@ -2191,9 +2333,19 @@ function renderPendingEmailList() {
   `).join("");
 }
 
+async function dismissSingleEmail(idx) {
+  const item = pendingEmails[idx];
+  if (!item) return;
+  addProcessedEmailSig(makeEmailItemSignature(item));
+  pendingEmails.splice(idx, 1);
+  renderPendingEmailList();
+  await persistAndSync({ action: "dismiss_email" });
+}
+
 async function approveSingleEmail(idx) {
   const item = pendingEmails[idx];
   if (!item) return;
+  addProcessedEmailSig(makeEmailItemSignature(item));
   pendingEmails.splice(idx, 1);
   renderPendingEmailList();
   await addTransactionToState({
@@ -2209,9 +2361,10 @@ async function approveSingleEmail(idx) {
 
 async function approveAllEmailItems() {
   if (pendingEmails.length === 0) return;
-  const itemsToApprove = [...pendingEmails];
+  const itemsToApprove = [...pendingEmails].filter(it => !isEmailItemAlreadyAdded(it));
   const addedTxs = [];
   itemsToApprove.forEach((item, idx) => {
+    addProcessedEmailSig(makeEmailItemSignature(item));
     const newNum = DB.transactions.length + 1;
     const tx = {
       id: `TX2026-${String(newNum).padStart(4, "0")}-${idx}`,
@@ -2242,7 +2395,7 @@ async function approveAllEmailItems() {
   }).catch(() => {});
 
   await persistAndSync({ action: "batch_tx", transactions: addedTxs });
-  alert(`✅ Đã duyệt và đồng bộ thành công ${addedTxs.length} giao dịch ngân hàng vào Sổ chi tiêu & Cloud!`);
+  alert(`✅ Đã duyệt và đồng bộ thành công ${addedTxs.length} giao dịch ngân hàng vào Sổ chi tiêu & Cloud (Đã ghi nhớ chống trùng lặp)!`);
 }
 
 // ============================================================================
@@ -2450,8 +2603,8 @@ function initAiGreeting() {
       ✨ <b>Điểm nổi bật hiện tại:</b><br/>
       • Tổng thu 10 tháng: <b>1,035,283,000 đ</b> — Thực chi: <b>716,037,660 đ</b> (đã cộng 945,000 đ bị sót do thiếu cột ở T1 & T4).<br/>
       • Thặng dư ròng: <b>+319,245,340 đ (Tỷ lệ tiết kiệm đạt 30.84% — Vượt mục tiêu 30%!)</b>.<br/>
-      • Khoản trả góp Điện thoại của Vợ (35.49tr) <b>vừa chính thức tất toán xong 100% trong Tháng 10!</b><br/><br/>
-      Bạn có thể bấm vào các câu hỏi gợi ý phía trên hoặc gõ câu hỏi bất kỳ bên dưới nhé!
+      • <b>Quỹ ETF & Mở Tháng 10 (12.0tr + 4.0tr Quỹ Bắt Đáy)</b> và khoản trả góp Điện thoại của Vợ (35.49tr) <b>đã hoàn tất 100% trong Tháng 10!</b><br/><br/>
+      💡 <i>Mẹo: Bạn có thể bấm nút <b>"🤖 Cài Đặt Gemini AI Free"</b> ở góc phải trên cùng để bật trí tuệ nhân tạo Gemini miễn phí cho cả 2 vợ chồng nhé!</i>
     </div>
   `;
 }
@@ -2729,7 +2882,7 @@ Trả về JSON theo cấu trúc:
     const clean = aiResp.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(clean);
     if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
-      pendingEmails = parsed.items.map(it => ({
+      const allMapped = parsed.items.map(it => ({
         ...it,
         source: it.bank || "NCB",
         amount: Number(it.amount || 0),
@@ -2737,7 +2890,10 @@ Trả về JSON theo cấu trúc:
         confidence: it.confidence || 0.98,
         reason: it.reason || "Gemini AI"
       }));
-      renderPendingEmailList();
+      const freshItems = allMapped.filter(it => !isEmailItemAlreadyAdded(it));
+      const skippedCount = allMapped.length - freshItems.length;
+      pendingEmails = freshItems;
+      renderPendingEmailList(skippedCount);
       return;
     }
   } catch (e) {}
@@ -2975,46 +3131,114 @@ async function submitManualModal(m) {
   await addTransactionToState({ month: m, date, content, category, person, amount, source });
 }
 
-function openIncomeModal() {
-  const m = selectedMonth === 0 ? 10 : selectedMonth;
+function openIncomeModal(targetM = null) {
+  const m = targetM || (selectedMonth === 0 ? 10 : selectedMonth);
   const mObj = DB.months.find(x => x.month === m) || DB.months[9];
+  const alloc = mObj.allocation || { dca_total: 12000000, dip_fund: 4000000, status: "Đã mua" };
   const modal = document.getElementById("modal-overlay");
   const content = document.getElementById("modal-content");
   content.innerHTML = `
     <div class="card-header">
-      <div class="card-title">💰 Cập Nhật Thu Nhập Tháng ${m}/2026</div>
+      <div class="card-title">💰 Điều Chỉnh Thu Nhập & Phân Bổ ETF (Tháng ${m}/2026)</div>
       <button class="btn btn-ghost" style="padding:4px 10px;" onclick="closeModal()">✕</button>
     </div>
     <div style="display:flex;flex-direction:column;gap:12px;">
-      <div>
-        <label style="font-size:12.5px;color:var(--text-secondary);">👨 Thu nhập Chồng (CK)</label>
-        <input type="number" id="inc-ck" class="input-control" style="width:100%;margin-top:4px;" value="${mObj.income.CK}" />
+      <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <span style="font-size:12.5px;color:#a7f3d0;font-weight:600;">📅 Chọn tháng cần chỉnh sửa thu nhập / thưởng / ETF:</span>
+        <select id="inc-month-select" class="input-control" style="font-weight:700;color:#34d399;" onchange="openIncomeModal(Number(this.value))">
+          ${DB.months.map(x => `<option value="${x.month}" ${x.month === m ? 'selected' : ''}>Tháng ${x.month}/2026 (${fmtShortVND(x.income.total)})</option>`).join("")}
+        </select>
       </div>
-      <div>
-        <label style="font-size:12.5px;color:var(--text-secondary);">👩 Thu nhập Vợ (VK)</label>
-        <input type="number" id="inc-vk" class="input-control" style="width:100%;margin-top:4px;" value="${mObj.income.VK}" />
-      </div>
+
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div>
-          <label style="font-size:12.5px;color:var(--text-secondary);">👦 Thu nhập / Quỹ Subo</label>
-          <input type="number" id="inc-subo" class="input-control" style="width:100%;margin-top:4px;" value="${mObj.income.Subo}" />
+          <label style="font-size:12px;color:var(--text-secondary);">👨 Thu nhập Chồng (CK + Lương/Thưởng)</label>
+          <input type="number" id="inc-ck" class="input-control" style="width:100%;margin-top:4px;font-weight:700;" value="${mObj.income.CK}" oninput="previewIncomeModalCalc(${m})" />
         </div>
         <div>
-          <label style="font-size:12.5px;color:var(--text-secondary);">👶 Thu nhập / Quỹ Sugi</label>
-          <input type="number" id="inc-sugi" class="input-control" style="width:100%;margin-top:4px;" value="${mObj.income.Sugi}" />
+          <label style="font-size:12px;color:var(--text-secondary);">👩 Thu nhập Vợ (VK + Lương/Thưởng)</label>
+          <input type="number" id="inc-vk" class="input-control" style="width:100%;margin-top:4px;font-weight:700;" value="${mObj.income.VK}" oninput="previewIncomeModalCalc(${m})" />
         </div>
       </div>
-      <button class="btn btn-primary" style="width:100%;margin-top:8px;" onclick="submitIncomeModal(${m})">💾 Cập Nhật Thu Nhập Tháng ${m}</button>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <label style="font-size:12px;color:var(--text-secondary);">👦 Thu nhập / Lì xì / Quỹ Subo</label>
+          <input type="number" id="inc-subo" class="input-control" style="width:100%;margin-top:4px;" value="${mObj.income.Subo}" oninput="previewIncomeModalCalc(${m})" />
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-secondary);">👶 Thu nhập / Mừng sinh / Quỹ Sugi</label>
+          <input type="number" id="inc-sugi" class="input-control" style="width:100%;margin-top:4px;" value="${mObj.income.Sugi}" oninput="previewIncomeModalCalc(${m})" />
+        </div>
+      </div>
+
+      <div style="border-top:1px dashed var(--border-subtle);padding-top:10px;margin-top:2px;">
+        <div style="font-size:12.5px;font-weight:700;color:#a5b4fc;margin-bottom:8px;">📈 Phân bổ Đầu tư DCA ETF & Quỹ Bắt Đáy Tháng ${m}:</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div>
+            <label style="font-size:11.5px;color:var(--text-secondary);">DCA 3 Quỹ ETF/Mở (VNĐ)</label>
+            <input type="number" id="inc-dca-total" class="input-control" style="width:100%;margin-top:4px;color:#818cf8;font-weight:700;" value="${alloc.dca_total || 0}" oninput="previewIncomeModalCalc(${m})" />
+          </div>
+          <div>
+            <label style="font-size:11.5px;color:var(--text-secondary);">Quỹ Bắt Đáy (VNĐ)</label>
+            <input type="number" id="inc-dip-fund" class="input-control" style="width:100%;margin-top:4px;color:#fbbf24;font-weight:700;" value="${alloc.dip_fund || 0}" oninput="previewIncomeModalCalc(${m})" />
+          </div>
+          <div>
+            <label style="font-size:11.5px;color:var(--text-secondary);">Trạng thái ETF Tháng ${m}</label>
+            <select id="inc-dca-status" class="input-control" style="width:100%;margin-top:4px;font-weight:700;">
+              <option value="Đã mua" ${alloc.status === 'Đã mua' ? 'selected' : ''}>✅ Đã mua đủ</option>
+              <option value="Chờ mua" ${alloc.status === 'Chờ mua' ? 'selected' : ''}>⏳ Chờ mua</option>
+              <option value="Linh hoạt cuối năm" ${alloc.status === 'Linh hoạt cuối năm' ? 'selected' : ''}>🎯 Linh hoạt cuối năm</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div id="inc-live-preview" style="background:rgba(15,23,42,0.85);border:1px solid var(--border-subtle);border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.6;"></div>
+
+      <button class="btn btn-primary" style="width:100%;margin-top:4px;padding:11px;font-size:13.5px;" onclick="submitIncomeModal(${m})">💾 Lưu Thu Nhập & ETF Tháng ${m} (Đồng Bộ Cloud)</button>
     </div>
   `;
   modal.style.display = "flex";
+  previewIncomeModalCalc(m);
+}
+
+function previewIncomeModalCalc(m) {
+  const mObj = DB.months.find(x => x.month === m) || DB.months[9];
+  const CK = Number(document.getElementById("inc-ck")?.value || 0);
+  const VK = Number(document.getElementById("inc-vk")?.value || 0);
+  const Subo = Number(document.getElementById("inc-subo")?.value || 0);
+  const Sugi = Number(document.getElementById("inc-sugi")?.value || 0);
+  const dca = Number(document.getElementById("inc-dca-total")?.value || 0);
+  const dip = Number(document.getElementById("inc-dip-fund")?.value || 0);
+
+  const totInc = CK + VK + Subo + Sugi;
+  const exp = mObj.actual_total_expense || 0;
+  const surplus = totInc - exp;
+  const cashRemain = surplus - dca - dip;
+
+  const box = document.getElementById("inc-live-preview");
+  if (box) {
+    box.innerHTML = `
+      <div style="display:flex;justify-content:space-between;"><span>Tổng thu nhập Tháng ${m}:</span><b style="color:#34d399;">${fmtVND(totInc)}</b></div>
+      <div style="display:flex;justify-content:space-between;"><span>Thực chi Tháng ${m} hiện tại:</span><b style="color:#fb7185;">${fmtVND(exp)}</b></div>
+      <div style="display:flex;justify-content:space-between;"><span>Thặng dư ròng (Thu - Chi):</span><b style="color:${surplus >= 0 ? '#38bdf8' : '#ef4444'};">${fmtVND(surplus)}</b></div>
+      <div style="display:flex;justify-content:space-between;border-top:1px solid rgba(255,255,255,0.08);margin-top:4px;padding-top:4px;">
+        <span>Tiền mặt giữ lại (sau DCA + Quỹ Bắt Đáy):</span>
+        <b style="color:#a7f3d0;">${fmtVND(cashRemain)}</b>
+      </div>
+    `;
+  }
 }
 
 async function submitIncomeModal(m) {
-  const CK = Number(document.getElementById("inc-ck").value || 0);
-  const VK = Number(document.getElementById("inc-vk").value || 0);
-  const Subo = Number(document.getElementById("inc-subo").value || 0);
-  const Sugi = Number(document.getElementById("inc-sugi").value || 0);
+  const CK = Number(document.getElementById("inc-ck")?.value || 0);
+  const VK = Number(document.getElementById("inc-vk")?.value || 0);
+  const Subo = Number(document.getElementById("inc-subo")?.value || 0);
+  const Sugi = Number(document.getElementById("inc-sugi")?.value || 0);
+  const dcaTotal = Number(document.getElementById("inc-dca-total")?.value || 0);
+  const dipFund = Number(document.getElementById("inc-dip-fund")?.value || 0);
+  const dcaStatus = document.getElementById("inc-dca-status")?.value || "Đã mua";
 
   const mObj = DB.months.find(x => x.month === m);
   if (mObj) {
@@ -3022,7 +3246,60 @@ async function submitIncomeModal(m) {
     mObj.income.VK = VK;
     mObj.income.Subo = Subo;
     mObj.income.Sugi = Sugi;
+    if (!mObj.allocation) mObj.allocation = {};
+    mObj.allocation.dca_total = dcaTotal;
+    mObj.allocation.dca_fuevfvnd = Math.round(dcaTotal * 0.30);
+    mObj.allocation.dca_dcds = Math.round(dcaTotal * 0.25);
+    mObj.allocation.dca_vesaf = Math.round(dcaTotal * 0.45);
+    mObj.allocation.dip_fund = dipFund;
+    mObj.allocation.status = dcaStatus;
   }
+
+  // Đồng bộ bảng lệnh DCA nếu trạng thái là "Đã mua"
+  if (DB.investment && Array.isArray(DB.investment.dca_orders)) {
+    if (dcaStatus === "Đã mua" && dcaTotal > 0) {
+      const holdingsMap = {};
+      (DB.investment.holdings || []).forEach(h => { holdingsMap[h.code] = h; });
+      [["FUEVFVND", 0.30], ["DCDS", 0.25], ["VESAF", 0.45]].forEach(([code, ratio]) => {
+        const amt = Math.round(dcaTotal * ratio);
+        const nav = Number(holdingsMap[code]?.current_nav || 40000);
+        const units = nav > 0 ? Number((amt / nav).toFixed(2)) : 0;
+        const existing = DB.investment.dca_orders.find(o => Number(o.month) === m && o.code === code);
+        if (existing) {
+          existing.amount = amt;
+          existing.units = Number((amt / (existing.buy_nav || nav)).toFixed(2));
+          existing.status = "Đã khớp";
+        } else {
+          DB.investment.dca_orders.push({
+            id: `DCA-T${m}-${code}`,
+            month: m,
+            date: `2026-${String(m).padStart(2, "0")}-15`,
+            code,
+            amount: amt,
+            buy_nav: nav,
+            units,
+            status: "Đã khớp"
+          });
+        }
+      });
+    } else if (dcaStatus !== "Đã mua") {
+      DB.investment.dca_orders = DB.investment.dca_orders.filter(o => Number(o.month) !== m);
+    }
+
+    // Tính lại tổng CCQ & Giá vốn của 3 quỹ
+    (DB.investment.holdings || []).forEach(h => {
+      const orders = DB.investment.dca_orders.filter(o => o.code === h.code && o.status === "Đã khớp");
+      const totInv = orders.reduce((s, o) => s + Number(o.amount || 0), 0);
+      const totUnits = Number(orders.reduce((s, o) => s + Number(o.units || 0), 0).toFixed(2));
+      h.invested_amount = totInv;
+      h.units = totUnits;
+      h.avg_buy_nav = totUnits > 0 ? Math.round(totInv / totUnits) : h.avg_buy_nav;
+      h.market_value = Math.round(totUnits * Number(h.current_nav || 0));
+      h.profit = h.market_value - totInv;
+      h.profit_pct = totInv > 0 ? Number(((h.profit / totInv) * 100).toFixed(2)) : 0;
+    });
+  }
+
   closeModal();
   renderAll();
   fetch("/api/income", {

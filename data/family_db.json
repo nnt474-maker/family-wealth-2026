@@ -404,13 +404,13 @@
       "discrepancy": 0.0,
       "remaining_actual": 38495000.0,
       "allocation": {
-        "dca_total": 0.0,
-        "dca_fuevfvnd": 0,
-        "dca_dcds": 0,
-        "dca_vesaf": 0,
-        "dip_fund": 0.0,
-        "emergency_saving": 38495000.0,
-        "status": "Dự kiến"
+        "dca_total": 12000000.0,
+        "dca_fuevfvnd": 3600000,
+        "dca_dcds": 3000000,
+        "dca_vesaf": 5400000,
+        "dip_fund": 4000000.0,
+        "emergency_saving": 22495000.0,
+        "status": "Đã mua"
       },
       "tx_count": 48
     },
@@ -15856,7 +15856,7 @@
   "investment": {
     "monthly_dca_budget": 12000000,
     "annual_step_up": 0.05,
-    "dip_fund_balance": 32576000.0,
+    "dip_fund_balance": 36576000.0,
     "emergency_fund_balance": 153917600.0,
     "holdings": [
       {
@@ -15866,12 +15866,12 @@
         "target_weight": 0.3,
         "current_nav": 33300,
         "monthly_dca": 3600000,
-        "invested": 28800000.0,
-        "units": 890.26,
-        "avg_cost": 32350,
-        "market_value": 29645658,
-        "pnl": 845658.0,
-        "pnl_pct": 2.94,
+        "invested": 32400000,
+        "units": 998.37,
+        "avg_cost": 32453,
+        "market_value": 33245721,
+        "pnl": 845721,
+        "pnl_pct": 2.61,
         "actual_weight": 0.2982
       },
       {
@@ -15881,12 +15881,12 @@
         "target_weight": 0.25,
         "current_nav": 91495,
         "monthly_dca": 3000000,
-        "invested": 24000000.0,
-        "units": 272.71,
-        "avg_cost": 88006,
-        "market_value": 24951601,
-        "pnl": 951601.0,
-        "pnl_pct": 3.97,
+        "invested": 27000000,
+        "units": 305.5,
+        "avg_cost": 88380,
+        "market_value": 27951722,
+        "pnl": 951722,
+        "pnl_pct": 3.52,
         "actual_weight": 0.251
       },
       {
@@ -15896,12 +15896,12 @@
         "target_weight": 0.45,
         "current_nav": 46250,
         "monthly_dca": 5400000,
-        "invested": 43200000.0,
-        "units": 968.73,
-        "avg_cost": 44594,
-        "market_value": 44803762,
-        "pnl": 1603762.0,
-        "pnl_pct": 3.71,
+        "invested": 48600000,
+        "units": 1085.49,
+        "avg_cost": 44772,
+        "market_value": 50203912,
+        "pnl": 1603912,
+        "pnl_pct": 3.3,
         "actual_weight": 0.4507
       }
     ],
@@ -16145,6 +16145,36 @@
         "buy_nav": 45900,
         "units": 117.65,
         "status": "Đã khớp"
+      },
+      {
+        "id": "DCA-T10-FUEVFVND",
+        "month": 10,
+        "date": "2026-10-05",
+        "code": "FUEVFVND",
+        "amount": 3600000,
+        "buy_nav": 33300,
+        "units": 108.11,
+        "status": "Đã khớp"
+      },
+      {
+        "id": "DCA-T10-DCDS",
+        "month": 10,
+        "date": "2026-10-05",
+        "code": "DCDS",
+        "amount": 3000000,
+        "buy_nav": 91495,
+        "units": 32.79,
+        "status": "Đã khớp"
+      },
+      {
+        "id": "DCA-T10-VESAF",
+        "month": 10,
+        "date": "2026-10-05",
+        "code": "VESAF",
+        "amount": 5400000,
+        "buy_nav": 46250,
+        "units": 116.76,
+        "status": "Đã khớp"
       }
     ],
     "dip_rules": [
@@ -16353,7 +16383,7 @@
     ]
   },
   "email_config": {
-    "email": "",
+    "email": "nnt472@gmail.com",
     "imap_host": "imap.gmail.com",
     "imap_port": 993,
     "enabled_banks": [

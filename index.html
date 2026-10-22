@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./styles.css?v=2.4" />
 </head>
 <body>
   <!-- FAMILY PIN LOCK SCREEN OVERLAY -->
@@ -103,6 +103,12 @@
         <div style="font-size:11.5px;color:var(--text-secondary);">
           VPBank • BIDV • NCB • UOB • Shopee
         </div>
+        <button class="btn" id="sidebar-gemini-btn" style="width:100%;font-size:12.5px;padding:9px 10px;background:linear-gradient(135deg,#8b5cf6,#6366f1);color:#fff;font-weight:700;border:1px solid rgba(167,139,250,0.5);" onclick="openGeminiSettingsModal()">
+          🤖 Bật Gemini AI Free (0đ)
+        </button>
+        <button class="btn btn-emerald" style="width:100%;font-size:12.5px;padding:8px 10px;" onclick="openIncomeModal()">
+          💰 Sửa Thu Nhập & ETF Tháng
+        </button>
         <button class="btn btn-primary" style="width:100%;font-size:12.5px;padding:8px 10px;" onclick="openCloudSettingsModal()">
           ☁️ Đồng Bộ Cloud 2 Vợ Chồng
         </button>
@@ -551,13 +557,16 @@
       <!-- ==================================================================== -->
       <div class="tab-pane" id="tab-ai">
         <div class="card">
-          <div class="card-header">
+          <div class="card-header" style="flex-wrap:wrap;gap:10px;">
             <div>
               <div class="card-title">🤖 Trợ Lý AI Tài Chính Gia Đình (Hỏi Đáp Tức Thì Trên Dữ Liệu Thật)</div>
               <div style="font-size:13px;color:var(--text-secondary);">
-                Đã nạp toàn bộ 888 giao dịch (T1–T10/2026), bảng lương CK/VK, quỹ Subo/Sugi, dư nợ thuế & danh mục 3 quỹ ETF/Open Fund.
+                Đã nạp toàn bộ 888 giao dịch (T1–T10/2026), bảng lương CK/VK, quỹ Subo/Sugi, dư nợ thuế & danh mục 3 quỹ ETF/Open Fund (Đã khớp đủ ETF Tháng 10).
               </div>
             </div>
+            <button class="btn" style="background:linear-gradient(135deg,#8b5cf6,#6366f1);color:#fff;font-weight:700;padding:8px 14px;font-size:12.5px;" onclick="openGeminiSettingsModal()">
+              🤖 Cài Đặt Gemini AI Free (1.500 lượt/ngày)
+            </button>
           </div>
 
           <div class="prompt-chips">
@@ -660,6 +669,6 @@
     <div class="card" style="width:100%;max-width:620px;border-color:var(--border-glow);max-height:92vh;overflow-y:auto;" id="modal-content"></div>
   </div>
 
-  <script src="./app.js?v=2.3"></script>
+  <script src="./app.js?v=2.4"></script>
 </body>
 </html>
