@@ -147,7 +147,7 @@
         </div>
       </header>
 
-      <!-- ZERO-FRICTION 1-LINE AI QUICK INPUT (Always accessible on top) -->
+      <!-- ZERO-FRICTION 1-LINE AI QUICK INPUT + VOICE + RECEIPT OCR (Always accessible on top) -->
       <section class="quick-hero">
         <div class="quick-hero-top">
           <div class="quick-input-wrap">
@@ -155,20 +155,23 @@
             <input
               type="text"
               id="quick-add-input"
-              placeholder="Nhập siêu tốc 1 dòng (VD: 'winmart 385k', 'bỉm sugi 420k bidv', 'xăng ck 95k ncb', 'học phí subo 9.35tr vp')..."
+              placeholder="Gõ hoặc bấm 🎙️ nói: 'cá, ốc 570k', 'winmart 385k', 'bỉm sugi 420k ncb', 'xăng ck 95k vp'..."
               oninput="onQuickInputChange(this.value)"
               onkeydown="if(event.key==='Enter') submitQuickAdd()"
             />
           </div>
-          <button class="btn btn-primary" onclick="submitQuickAdd()">
-            ➕ Lưu Ngay (1 Chạm)
+          <button class="btn btn-ghost" id="btn-voice-input" onclick="toggleVoiceInput()" title="Ghi âm giọng nói tiếng Việt" style="border-color:rgba(244,63,94,0.4);color:#fda4af;">
+            🎙️ Ghi âm
           </button>
-          <button class="btn btn-ghost" onclick="switchTab('email')">
-            📧 Quét Email Bank
+          <button class="btn btn-ghost" onclick="openReceiptScannerModal()" title="Chụp ảnh hoặc tải ảnh hóa đơn siêu thị / bill chuyển khoản" style="border-color:rgba(16,185,129,0.4);color:#6ee7b7;">
+            📸 Quét Bill / Ảnh
+          </button>
+          <button class="btn btn-primary" onclick="submitQuickAdd()">
+            ➕ Lưu Ngay
           </button>
         </div>
         <div class="quick-preview" id="quick-preview-bar">
-          <span>💡 <b>Gõ tự nhiên như nhắn Zalo:</b> AI tự nhận diện Số tiền, Hạng mục, Thành viên (Chung/Chồng/Vợ/Subo/Sugi) & Ngân hàng (VPBank/BIDV/NCB) rồi ghi thẳng vào Sheet!</span>
+          <span>💡 <b>Nhập gõ chữ, 🎙️ Giọng nói hoặc 📸 Chụp Bill siêu thị:</b> Mặc định <b>Tiền mặt / Chuyển khoản</b> (gõ kèm <code>ncb</code>, <code>vp</code>, <code>bidv</code> nếu quẹt thẻ/bank). Chỉnh sửa trực tiếp bên dưới trước hoặc sau khi lưu!</span>
         </div>
       </section>
 
@@ -305,7 +308,7 @@
                   <th>Thành viên</th>
                   <th>Nguồn / Bank</th>
                   <th class="num">Số tiền</th>
-                  <th style="width:50px;"></th>
+                  <th style="width:95px;text-align:right;">Sửa / Xóa</th>
                 </tr>
               </thead>
               <tbody id="tx-table-body"></tbody>
@@ -315,46 +318,58 @@
       </div>
 
       <!-- ==================================================================== -->
-      <!-- TAB 3: AUTO EMAIL & BANK PARSER (VPBank, BIDV, NCB)                  -->
+      <!-- TAB 3: AUTO EMAIL & BANK PARSER (CHỒNG & VỢ: VPBank, BIDV, NCB...)   -->
       <!-- ==================================================================== -->
       <div class="tab-pane" id="tab-email">
         <div class="grid-2">
-          <!-- Left: Email Parser & Gmail IMAP Connection -->
+          <!-- Left: Multi-Mailbox Manager (Chồng & Vợ) + Email Parser -->
           <div class="card">
             <div class="card-header">
-              <div class="card-title">📧 Tự Động Lấy Giao Dịch Từ Email & Thông Báo Ngân Hàng</div>
-              <span class="chip chip-bank">VPBank • BIDV • NCB</span>
+              <div class="card-title">📧 Quản Lý Hộp Thư Ngân Hàng (Chồng & Vợ)</div>
+              <span class="chip chip-bank">VPBank • BIDV • NCB • UOB</span>
             </div>
-            <p style="font-size:13.5px;color:var(--text-secondary);margin-bottom:14px;">
-              Kết nối trực tiếp hộp thư Gmail để tự động quét email thông báo biến động số dư / sao kê từ <b>VPBank, BIDV, NCB, UOB, Shopee</b> hoặc dán nhanh tin nhắn/email vào ô bên dưới để AI tự phân loại.
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">
+              Theo dõi biến động số dư từ <b>nhiều email khác nhau</b> (VD: Email Chồng nhận <b>VPBank, BIDV</b>; Email Vợ nhận <b>NCB</b>) hoặc chụp ảnh Bill / dán tin nhắn SMS ngân hàng.
             </p>
 
-            <!-- Cloud Google Apps Script Gmail Box + Local IMAP Box -->
-            <div style="background:rgba(15,23,42,0.8);border:1px solid var(--border-subtle);border-radius:14px;padding:14px;margin-bottom:16px;">
-              <div style="font-weight:700;font-size:13.5px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
-                <span>☁️ Quét Gmail Tự Động Trên Cloud (Google Apps Script / IMAP)</span>
-                <button class="btn btn-emerald" style="padding:5px 12px;font-size:12px;" onclick="scanGmailViaCloud()">
-                  ☁️ Quét Gmail Qua Google Cloud (Không cần App Password)
-                </button>
+            <!-- Multi-Mailbox List (Chồng + Vợ + Thêm mới) -->
+            <div style="background:rgba(15,23,42,0.85);border:1px solid var(--border-subtle);border-radius:14px;padding:14px;margin-bottom:16px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+                <span style="font-weight:700;font-size:13.5px;">👨‍👩‍👧‍👦 Danh Sách Email Ngân Hàng Của Gia Đình</span>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                  <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px;" onclick="openAddMailboxModal()">
+                    ➕ Thêm Email Mới (Vợ / Chồng)
+                  </button>
+                  <button class="btn btn-emerald" style="padding:5px 12px;font-size:12px;" onclick="scanGmailViaCloud()">
+                    ☁️ Quét Tất Cả Hộp Thư Cloud
+                  </button>
+                </div>
               </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:center;">
-                <input type="email" id="imap-email" class="input-control" placeholder="Địa chỉ Gmail (nếu dùng IMAP)..." />
-                <input type="password" id="imap-password" class="input-control" placeholder="App Password Gmail (16 ký tự)..." />
-                <button class="btn btn-primary" onclick="syncGmailImap()">🔄 Quét IMAP</button>
+
+              <div id="family-mailboxes-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;">
+                <!-- Populated by JS -->
               </div>
-              <div style="font-size:11.5px;color:var(--text-muted);margin-top:8px;">
-                💡 Trên Cloud: Bấm <b>"☁️ Quét Gmail Qua Google Cloud"</b> để đọc thẳng email VPBank, BIDV, NCB từ chính tài khoản Google của bạn mà không cần nhập mật khẩu.
+
+              <div style="font-size:11.5px;color:#a5b4fc;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.28);border-radius:10px;padding:9px 11px;">
+                💡 <b>Mẹo gộp Email NCB của Vợ siêu nhanh (Không cần cài 2 lần):</b><br/>
+                • <b>Cách 1 (Khuyên dùng):</b> Trong Gmail của Vợ, vào <i>Cài đặt → Chuyển tiếp (Forwarding)</i>, tạo bộ lọc chuyển tiếp tự động các email từ <code>ncb</code> sang Gmail của Chồng. Khi đó bấm <b>"☁️ Quét Tất Cả Hộp Thư Cloud"</b> sẽ tự lấy luôn cả NCB của Vợ!<br/>
+                • <b>Cách 2:</b> Bấm <b>"➕ Thêm Email Mới"</b> ở trên để gắn Link Apps Script riêng từ Gmail của Vợ (mặc định tự gán ngân hàng <b>NCB</b> & thành viên <b>Vợ / Chung</b>).
               </div>
             </div>
 
             <!-- Smart Paste / Sample Simulator -->
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-              <label style="font-weight:700;font-size:13.5px;">📋 Hoặc Dán Email / Biến Động Số Dư Ngân Hàng (VPBank, BIDV, NCB):</label>
-              <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px;" onclick="loadSampleBankEmails()">
-                ⚡ Nạp 5 Email Mẫu (VPBank • BIDV • NCB)
-              </button>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+              <label style="font-weight:700;font-size:13.5px;">📋 Hoặc Dán Tin Nhắn / Email Biến Động Số Dư (NCB, VPBank, BIDV):</label>
+              <div style="display:flex;gap:6px;">
+                <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px;color:#6ee7b7;" onclick="openReceiptScannerModal()">
+                  📸 Quét Từ Ảnh Bill / Siêu Thị
+                </button>
+                <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px;" onclick="loadSampleBankEmails()">
+                  ⚡ Nạp Mẫu (VPBank • BIDV • NCB)
+                </button>
+              </div>
             </div>
-            <textarea id="raw-email-textarea" class="input-control" rows="8" style="width:100%;font-family:monospace;font-size:12.5px;margin-bottom:12px;" placeholder="Dán nội dung email hoặc thông báo biến động số dư từ VPBank, BIDV, NCB vào đây..."></textarea>
+            <textarea id="raw-email-textarea" class="input-control" rows="7" style="width:100%;font-family:monospace;font-size:12.5px;margin-bottom:12px;" placeholder="Dán nội dung email hoặc thông báo biến động số dư từ NCB, VPBank, BIDV vào đây..."></textarea>
             <button class="btn btn-primary" style="width:100%;" onclick="parseEmailContent()">
               🤖 AI Bóc Tách & Tự Động Phân Loại Hạng Mục Ngay
             </button>
@@ -579,11 +594,11 @@
     </nav>
   </div>
 
-  <!-- MODAL: ADD TRANSACTION / UPDATE INCOME / CLOUD SETTINGS / PIN -->
+  <!-- MODAL: ADD TRANSACTION / UPDATE INCOME / CLOUD SETTINGS / PIN / SCAN BILL / EDIT TX -->
   <div id="modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);backdrop-filter:blur(6px);z-index:100;align-items:center;justify-content:center;padding:16px;">
-    <div class="card" style="width:100%;max-width:540px;border-color:var(--border-glow);max-height:90vh;overflow-y:auto;" id="modal-content"></div>
+    <div class="card" style="width:100%;max-width:620px;border-color:var(--border-glow);max-height:92vh;overflow-y:auto;" id="modal-content"></div>
   </div>
 
-  <script src="./app.js?v=2.1"></script>
+  <script src="./app.js?v=2.2"></script>
 </body>
 </html>

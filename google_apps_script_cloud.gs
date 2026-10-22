@@ -100,7 +100,7 @@ function appendTxRow(ss, tx) {
       CAT_MAP[tx.category] || tx.category || "Ăn uống",
       PERSON_MAP[tx.person] || tx.person || "Chung",
       Number(tx.amount || 0),
-      tx.source || "VPBank"
+      tx.source || "Tiền mặt / Chuyển khoản"
     ]]);
     return targetRow;
   } catch (e) {
@@ -108,10 +108,30 @@ function appendTxRow(ss, tx) {
   }
 }
 
+function updateTxRow(ss, tx) {
+  if (!ss || !tx || !tx.row || Number(tx.row) < 4) return null;
+  try {
+    const m = Number(tx.month || 10);
+    const sheet = ss.getSheetByName("T" + m + " - DETAIL");
+    if (!sheet) return null;
+    sheet.getRange(Number(tx.row), 2, 1, 6).setValues([[
+      tx.date || new Date(),
+      tx.content || "",
+      CAT_MAP[tx.category] || tx.category || "Ăn uống",
+      PERSON_MAP[tx.person] || tx.person || "Chung",
+      Number(tx.amount || 0),
+      tx.source || "Tiền mặt / Chuyển khoản"
+    ]]);
+    return Number(tx.row);
+  } catch (e) {
+    return null;
+  }
+}
+
 function scanBankGmail() {
   try {
-    const q = '(from:vpbank OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "biến động số dư") newer_than:30d';
-    const threads = GmailApp.search(q, 0, 15);
+    const q = '(from:vpbank OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "Quoc Dan" OR "biến động số dư") newer_than:30d';
+    const threads = GmailApp.search(q, 0, 20);
     const blocks = [];
     for (let i = 0; i < threads.length; i++) {
       const msgs = threads[i].getMessages();
@@ -160,7 +180,9 @@ function doPost(e) {
   try {
     const payload = JSON.parse((e && e.postData && e.postData.contents) ? e.postData.contents : "{}");
     const ss = getTargetSpreadsheet();
-    if (payload.transaction) {
+    if (payload.action === "edit_tx" && payload.transaction) {
+      updateTxRow(ss, payload.transaction);
+    } else if (payload.transaction) {
       appendTxRow(ss, payload.transaction);
     } else if (payload.content && payload.amount) {
       appendTxRow(ss, payload);

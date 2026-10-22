@@ -107,16 +107,30 @@ function appendTxRow(ss, tx) {
     }
     sheet.getRange(targetRow, 2, 1, 6).setValues([[
       tx.date || new Date(), tx.content || "", CAT_MAP[tx.category] || tx.category || "Ăn uống",
-      PERSON_MAP[tx.person] || tx.person || "Chung", Number(tx.amount || 0), tx.source || "VPBank"
+      PERSON_MAP[tx.person] || tx.person || "Chung", Number(tx.amount || 0), tx.source || "Tiền mặt / Chuyển khoản"
     ]]);
     return targetRow;
   } catch (e) { return null; }
 }
 
+function updateTxRow(ss, tx) {
+  if (!ss || !tx || !tx.row || Number(tx.row) < 4) return null;
+  try {
+    const m = Number(tx.month || 10);
+    const sheet = ss.getSheetByName("T" + m + " - DETAIL");
+    if (!sheet) return null;
+    sheet.getRange(Number(tx.row), 2, 1, 6).setValues([[
+      tx.date || new Date(), tx.content || "", CAT_MAP[tx.category] || tx.category || "Ăn uống",
+      PERSON_MAP[tx.person] || tx.person || "Chung", Number(tx.amount || 0), tx.source || "Tiền mặt / Chuyển khoản"
+    ]]);
+    return Number(tx.row);
+  } catch (e) { return null; }
+}
+
 function scanBankGmail() {
   try {
-    const q = '(from:vpbank OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "biến động số dư") newer_than:30d';
-    const threads = GmailApp.search(q, 0, 15);
+    const q = '(from:vpbank OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "Quoc Dan" OR "biến động số dư") newer_than:30d';
+    const threads = GmailApp.search(q, 0, 20);
     const blocks = [];
     for (let i = 0; i < threads.length; i++) {
       const msgs = threads[i].getMessages();
@@ -150,7 +164,8 @@ function doPost(e) {
   try {
     const payload = JSON.parse((e && e.postData && e.postData.contents) ? e.postData.contents : "{}");
     const ss = getTargetSpreadsheet();
-    if (payload.transaction) appendTxRow(ss, payload.transaction);
+    if (payload.action === "edit_tx" && payload.transaction) updateTxRow(ss, payload.transaction);
+    else if (payload.transaction) appendTxRow(ss, payload.transaction);
     else if (payload.content && payload.amount) appendTxRow(ss, payload);
     if (payload.transactions && Array.isArray(payload.transactions)) payload.transactions.forEach(function(t) { appendTxRow(ss, t); });
     if (payload.cloud_state) saveCloudStateToProps(payload.cloud_state);
@@ -347,39 +362,86 @@ function classifyTransactionTextJS(text) {
   return { cat, person, confidence, reason };
 }
 
+function convertVietnameseSpokenNumbers(str) {
+  let s = (str || "").toLowerCase();
+  // Convert common voice recognition outputs like "570 nghìn", "570 ngàn", "570.000", "năm trăm bảy mươi nghìn"
+  const wordDigits = {
+    "không": 0, "một": 1, "mốt": 1, "hai": 2, "ba": 3, "bốn": 4, "tư": 4,
+    "năm": 5, "lăm": 5, "sáu": 6, "bảy": 7, "bẩy": 7, "tám": 8, "chín": 9
+  };
+  // Pattern: "<h> trăm <t> mươi <u> nghìn/ngàn" or "<h> trăm <t> nghìn/ngàn"
+  s = s.replace(/\b(một|hai|ba|bốn|năm|sáu|bảy|bẩy|tám|chín)\s+trăm(?:\s+(một|hai|ba|bốn|năm|sáu|bảy|bẩy|tám|chín|mười)(?:\s+mươi)?(?:\s+(một|mốt|hai|ba|bốn|tư|năm|lăm|sáu|bảy|bẩy|tám|chín))?)?\s*(nghìn|ngàn|k)\b/gi,
+    (match, hW, tW, uW) => {
+      const h = wordDigits[hW.toLowerCase()] || 0;
+      let t = 0, u = 0;
+      if (tW) {
+        t = tW.toLowerCase() === "mười" ? 1 : (wordDigits[tW.toLowerCase()] || 0);
+      }
+      if (uW) {
+        u = wordDigits[uW.toLowerCase()] || 0;
+      }
+      return `${h * 100 + t * 10 + u}k`;
+    }
+  );
+  // Pattern: "<t> mươi <u> nghìn/ngàn" (e.g. "chín mươi lăm nghìn" -> 95k)
+  s = s.replace(/\b(một|hai|ba|bốn|năm|sáu|bảy|bẩy|tám|chín|mười)(?:\s+mươi)?(?:\s+(một|mốt|hai|ba|bốn|tư|năm|lăm|sáu|bảy|bẩy|tám|chín))?\s*(nghìn|ngàn)\b/gi,
+    (match, tW, uW) => {
+      const t = tW.toLowerCase() === "mười" ? 1 : (wordDigits[tW.toLowerCase()] || 0);
+      const u = uW ? (wordDigits[uW.toLowerCase()] || 0) : 0;
+      return `${t * 10 + u}k`;
+    }
+  );
+  return s;
+}
+
 function parseQuickInputJS(rawText, defaultMonth = 10) {
-  const text = (rawText || "").trim();
-  let source = "VPBank";
-  const bankTokens = [
-    ["vpsp", "VPBank Shopee"], ["vp sp", "VPBank Shopee"],
-    ["vpbank", "VPBank"], [" vp", "VPBank"],
-    ["bidv", "BIDV"], ["ncb", "NCB"], ["uob", "UOB"],
-    ["tiền mặt", "Tiền mặt / Chuyển khoản"], [" tm", "Tiền mặt / Chuyển khoản"]
+  const originalText = (rawText || "").trim();
+  const text = convertVietnameseSpokenNumbers(originalText);
+
+  // Default payment source is "Tiền mặt / Chuyển khoản" unless user explicitly types a bank keyword (ncb, vp, bidv, uob, vpsp)
+  let source = localStorage.getItem("FAMILY_DEFAULT_SOURCE_2026") || "Tiền mặt / Chuyển khoản";
+  let matchedBankToken = null;
+
+  const bankRules = [
+    { re: /(?:^|[\s,.;])(vpsp|vp\s*sp|vpbank\s*shopee)(?=$|[\s,.;])/i, name: "VPBank Shopee" },
+    { re: /(?:^|[\s,.;])(vpbank|vp)(?=$|[\s,.;])/i, name: "VPBank" },
+    { re: /(?:^|[\s,.;])(bidv)(?=$|[\s,.;])/i, name: "BIDV" },
+    { re: /(?:^|[\s,.;])(ncb)(?=$|[\s,.;])/i, name: "NCB" },
+    { re: /(?:^|[\s,.;])(uob)(?=$|[\s,.;])/i, name: "UOB" },
+    { re: /(?:^|[\s,.;])(tiền\s*mặt|tien\s*mat|chuyển\s*khoản|chuyen\s*khoan|tm)(?=$|[\s,.;])/i, name: "Tiền mặt / Chuyển khoản" }
   ];
-  const paddedLow = " " + text.toLowerCase();
-  for (const [tok, srcName] of bankTokens) {
-    if (paddedLow.includes(tok)) {
-      source = srcName;
+
+  for (const rule of bankRules) {
+    const mB = text.match(rule.re);
+    if (mB) {
+      source = rule.name;
+      matchedBankToken = mB[1];
       break;
     }
   }
 
   let amount = 0;
-  let cleanDesc = text;
+  let cleanDesc = originalText;
 
-  const mTr = text.match(/(\d+(?:[.,]\d+)?)\s*(?:tr|triệu|trieu)(?:\s*(\d{1,3}))?/i);
-  if (mTr) {
-    const base = parseFloat(mTr[1].replace(",", "."));
-    const tail = mTr[2];
-    amount = base * 1000000 + (tail ? parseFloat(tail) * Math.pow(10, 6 - tail.length) : 0);
-    cleanDesc = (text.slice(0, mTr.index) + " " + text.slice(mTr.index + mTr[0].length)).trim();
+  // Check for multiple 'k' amounts in one line first (e.g. "cá 200k, ốc 370k")
+  const allKMatches = [...text.matchAll(/(\d+(?:[.,]\d+)?)\s*(?:k|ng|nghìn|ngàn)(?=$|[\s,.;])/gi)];
+  if (allKMatches.length > 1) {
+    amount = allKMatches.reduce((sum, m) => sum + parseFloat(m[1].replace(",", ".")) * 1000, 0);
+    // Keep the full itemized description when multiple prices are written
+    cleanDesc = originalText;
   } else {
-    const mK = text.match(/(\d+(?:[.,]\d+)?)\s*(?:k|ng|nghìn|ngàn)\b/i);
-    if (mK) {
+    const mTr = text.match(/(\d+(?:[.,]\d+)?)\s*(?:tr|triệu|trieu|củ)(?:\s*(\d{1,3}))?/i);
+    if (mTr) {
+      const base = parseFloat(mTr[1].replace(",", "."));
+      const tail = mTr[2];
+      amount = base * 1000000 + (tail ? parseFloat(tail) * Math.pow(10, 6 - tail.length) : 0);
+      cleanDesc = (text.slice(0, mTr.index) + " " + text.slice(mTr.index + mTr[0].length)).trim();
+    } else if (allKMatches.length === 1) {
+      const mK = allKMatches[0];
       amount = parseFloat(mK[1].replace(",", ".")) * 1000;
       cleanDesc = (text.slice(0, mK.index) + " " + text.slice(mK.index + mK[0].length)).trim();
     } else {
-      const mNum = text.match(/(\d{1,3}(?:[.,]\d{3})+|\d{4,9})/);
+      const mNum = text.match(/(\d{1,3}(?:[.,]\d{3})+|\d{4,9})(?:\s*(?:đ|vnđ|vnd))?/i);
       if (mNum) {
         amount = parseFloat(mNum[1].replace(/[.,]/g, ""));
         cleanDesc = (text.slice(0, mNum.index) + " " + text.slice(mNum.index + mNum[0].length)).trim();
@@ -387,8 +449,11 @@ function parseQuickInputJS(rawText, defaultMonth = 10) {
     }
   }
 
+  // Remove only standalone trailing bank code tokens, preserving all Vietnamese words and commas (e.g., "cá , ốc")
   cleanDesc = cleanDesc
-    .replace(/\b(vpbank|vpsp|vp sp|vp|bidv|ncb|uob|tm)\b/gi, "")
+    .replace(/(?:^|\s+)(vpbank\s*shopee|vp\s*sp|vpsp|vpbank|vp|bidv|ncb|uob|tiền\s*mặt|chuyển\s*khoản|tm)(?=$|\s+)/gi, " ")
+    .replace(/\s*,\s*/g, ", ")
+    .replace(/\s{2,}/g, " ")
     .replace(/^[\s\-,.|]+|[\s\-,.|]+$/g, "")
     .trim();
 
@@ -400,7 +465,7 @@ function parseQuickInputJS(rawText, defaultMonth = 10) {
   return {
     date: `2026-${mStr}-${dayStr}`,
     month: Number(defaultMonth),
-    content: cleanDesc || text,
+    content: cleanDesc || originalText,
     category: cat,
     person,
     amount: Math.round(amount),
@@ -708,14 +773,64 @@ function updateCloudBadgeUI(statusText, isConnected = true) {
   if (sideTxt) sideTxt.textContent = label;
 }
 
+function getDefaultMailboxes() {
+  return [
+    {
+      id: "MB-CHONG",
+      label: "👨 Email của Chồng (VPBank • BIDV)",
+      email: "nnt474@gmail.com",
+      owner: "Chồng",
+      default_bank: "VPBank",
+      banks: "VPBank, BIDV, UOB",
+      cloud_url: "" // Uses primary Cloud Apps Script URL by default
+    },
+    {
+      id: "MB-VO",
+      label: "👩 Email của Vợ (Theo dõi NCB • Shopee)",
+      email: "Email của Vợ (NCB)",
+      owner: "Vợ",
+      default_bank: "NCB",
+      banks: "NCB, VPBank Shopee",
+      cloud_url: "" // Can attach Wife's own Apps Script URL or use Gmail Auto-Forward
+    }
+  ];
+}
+
+function getFamilyMailboxes() {
+  if (DB && DB.meta && Array.isArray(DB.meta.mailboxes) && DB.meta.mailboxes.length > 0) {
+    return DB.meta.mailboxes;
+  }
+  const saved = localStorage.getItem("FAMILY_MAILBOXES_2026");
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        if (DB && DB.meta) DB.meta.mailboxes = parsed;
+        return parsed;
+      }
+    } catch (e) {}
+  }
+  const defs = getDefaultMailboxes();
+  if (DB && DB.meta) DB.meta.mailboxes = defs;
+  return defs;
+}
+
+function saveFamilyMailboxes(list) {
+  if (DB && DB.meta) DB.meta.mailboxes = list;
+  localStorage.setItem("FAMILY_MAILBOXES_2026", JSON.stringify(list));
+}
+
 function buildCompactCloudState() {
-  // Store custom added transactions (id > TX2026-0888 or custom), updated months income/allocation, and investment state
+  // Store custom added transactions, edited transactions, deleted IDs, mailboxes, months income/allocation, and investment state
   const customTxs = (DB.transactions || []).filter(t => t.is_cloud_added || Number((t.id || "").split("-")[1]) > 888);
+  const editedTxs = (DB.transactions || []).filter(t => t.is_cloud_edited && !t.is_cloud_added);
   const deletedIds = DB.meta.deleted_tx_ids || [];
   return {
     updated_at: new Date().toISOString(),
     family_pin: getFamilyPin(),
+    mailboxes: getFamilyMailboxes(),
     custom_transactions: customTxs,
+    edited_transactions: editedTxs,
     deleted_tx_ids: deletedIds,
     months_income: DB.months.map(m => ({
       month: m.month,
@@ -735,18 +850,32 @@ function applyCompactCloudState(cloudState) {
     DB.meta.family_pin = String(cloudState.family_pin);
     localStorage.setItem(STORAGE_PIN_KEY, String(cloudState.family_pin));
   }
+  if (Array.isArray(cloudState.mailboxes) && cloudState.mailboxes.length > 0) {
+    saveFamilyMailboxes(cloudState.mailboxes);
+  }
   if (Array.isArray(cloudState.deleted_tx_ids)) {
     DB.meta.deleted_tx_ids = cloudState.deleted_tx_ids;
     const delSet = new Set(cloudState.deleted_tx_ids);
     DB.transactions = DB.transactions.filter(t => !delSet.has(t.id));
   }
+  if (Array.isArray(cloudState.edited_transactions)) {
+    cloudState.edited_transactions.forEach(ed => {
+      const idx = DB.transactions.findIndex(t => t.id === ed.id);
+      if (idx !== -1) {
+        DB.transactions[idx] = { ...DB.transactions[idx], ...ed, is_cloud_edited: true };
+      }
+    });
+  }
   if (Array.isArray(cloudState.custom_transactions)) {
-    const existingIds = new Set(DB.transactions.map(t => t.id));
+    const existingMap = new Map(DB.transactions.map((t, i) => [t.id, i]));
     for (let i = cloudState.custom_transactions.length - 1; i >= 0; i--) {
       const tx = cloudState.custom_transactions[i];
-      if (!existingIds.has(tx.id)) {
+      if (existingMap.has(tx.id)) {
+        const idx = existingMap.get(tx.id);
+        DB.transactions[idx] = { ...DB.transactions[idx], ...tx };
+      } else {
         DB.transactions.unshift(tx);
-        existingIds.add(tx.id);
+        existingMap.set(tx.id, 0);
       }
     }
   }
@@ -986,6 +1115,7 @@ function renderAll() {
   updatePeriodLabels();
   renderDashboardTab();
   renderTransactionsTab();
+  renderFamilyMailboxes();
   renderInvestmentTab();
   renderAuditTab();
 }
@@ -1032,30 +1162,47 @@ function getActiveTransactions() {
 }
 
 // ============================================================================
-// QUICK 1-LINE AI INPUT (0ms CLIENT-SIDE + CLOUD SYNC)
+// QUICK 1-LINE AI INPUT + EDITABLE PREVIEW BAR (0ms CLIENT-SIDE + CLOUD SYNC)
 // ============================================================================
+function renderInteractiveQuickPreview(p) {
+  const bar = document.getElementById("quick-preview-bar");
+  if (!bar || !p) return;
+  const cats = (DB && DB.meta && DB.meta.categories) ? DB.meta.categories : ["Ăn uống", "Học tập", "Phí tiện ích", "Đồ dùng GĐ", "Nợ", "Làm đẹp", "Y tế", "Vui chơi", "Event", "Công việc"];
+  const members = (DB && DB.meta && DB.meta.members) ? DB.meta.members : ["Chung", "Chồng", "Vợ", "Subo", "Sugi"];
+  const banks = ["Tiền mặt / Chuyển khoản", "NCB", "VPBank", "BIDV", "VPBank Shopee", "UOB"];
+
+  bar.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%;">
+      <span style="color:#a5b4fc;font-weight:700;">🤖 Sửa nhanh trước khi lưu:</span>
+      <input type="text" id="qp-content" class="input-control" style="padding:4px 9px;font-size:12.5px;min-width:150px;flex:1;" value="${(p.content || "").replace(/"/g, '&quot;')}" oninput="if(currentQuickParsed) currentQuickParsed.content=this.value" title="Nội dung chi tiêu" />
+      <input type="number" id="qp-amount" class="input-control" style="padding:4px 9px;font-size:12.5px;width:115px;color:#34d399;font-weight:700;" value="${p.amount || 0}" oninput="if(currentQuickParsed) currentQuickParsed.amount=Number(this.value)" title="Số tiền (VNĐ)" />
+      <select id="qp-category" class="input-control" style="padding:4px 8px;font-size:12px;" onchange="if(currentQuickParsed) currentQuickParsed.category=this.value">
+        ${cats.map(c => `<option value="${c}" ${c === p.category ? 'selected' : ''}>🗂️ ${c}</option>`).join("")}
+      </select>
+      <select id="qp-person" class="input-control" style="padding:4px 8px;font-size:12px;" onchange="if(currentQuickParsed) currentQuickParsed.person=this.value">
+        ${members.map(m => `<option value="${m}" ${m === p.person ? 'selected' : ''}>👤 ${m}</option>`).join("")}
+      </select>
+      <select id="qp-source" class="input-control" style="padding:4px 8px;font-size:12px;border-color:rgba(168,85,247,0.45);color:#e9d5ff;" onchange="if(currentQuickParsed){currentQuickParsed.source=this.value;localStorage.setItem('FAMILY_DEFAULT_SOURCE_2026',this.value);}">
+        ${banks.map(b => `<option value="${b}" ${b === p.source ? 'selected' : ''}>🏦 ${b}</option>`).join("")}
+      </select>
+    </div>
+  `;
+}
+
 function onQuickInputChange(val) {
   clearTimeout(quickParseTimer);
   const bar = document.getElementById("quick-preview-bar");
   if (!val || !val.trim()) {
     currentQuickParsed = null;
-    bar.innerHTML = `<span>💡 <b>Gõ tự nhiên như nhắn Zalo:</b> AI tự nhận diện Số tiền, Hạng mục, Thành viên (Chung/Chồng/Vợ/Subo/Sugi) & Ngân hàng (VPBank/BIDV/NCB) rồi đồng bộ Cloud!</span>`;
+    bar.innerHTML = `<span>💡 <b>Nhập gõ chữ, 🎙️ Giọng nói hoặc 📸 Chụp Bill siêu thị:</b> Mặc định <b>Tiền mặt / Chuyển khoản</b> (gõ kèm <code>ncb</code>, <code>vp</code>, <code>bidv</code> nếu quẹt thẻ/bank). Chỉnh sửa trực tiếp bên dưới trước hoặc sau khi lưu!</span>`;
     return;
   }
   quickParseTimer = setTimeout(() => {
     const targetM = selectedMonth === 0 ? 10 : selectedMonth;
     const p = parseQuickInputJS(val, targetM);
     currentQuickParsed = p;
-    bar.innerHTML = `
-      <span>🤖 <b>AI nhận diện:</b></span>
-      <span class="chip chip-cat">📝 ${p.content}</span>
-      <span class="chip" style="background:rgba(16,185,129,0.2);color:#34d399;border:1px solid rgba(16,185,129,0.4);">💰 ${fmtVND(p.amount)}</span>
-      <span class="chip chip-cat">🗂️ ${p.category}</span>
-      <span class="chip chip-${p.person}">👤 ${p.person}</span>
-      <span class="chip chip-bank">🏦 ${p.source}</span>
-      <span style="color:var(--text-muted);font-size:11.5px;">(Tháng ${p.month} • ${p.reason})</span>
-    `;
-  }, 60);
+    renderInteractiveQuickPreview(p);
+  }, 40);
 }
 
 async function addTransactionToState(payload) {
@@ -1063,13 +1210,13 @@ async function addTransactionToState(payload) {
   const tx = {
     id: `TX2026-${String(newNum).padStart(4, "0")}-${Date.now().toString().slice(-3)}`,
     month: Number(payload.month || 10),
-    date: payload.date || `2026-${String(payload.month || 10).padStart(2, "0")}-22`,
+    date: payload.date || `2026-${String(payload.month || 10).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`,
     row: 0,
     content: (payload.content || "").trim(),
     category: payload.category || "Ăn uống",
     person: payload.person || "Chung",
     amount: Number(payload.amount || 0),
-    source: payload.source || "VPBank",
+    source: payload.source || "Tiền mặt / Chuyển khoản",
     was_unmatched_in_excel: false,
     issue_note: null,
     is_cloud_added: true
@@ -1077,7 +1224,6 @@ async function addTransactionToState(payload) {
   DB.transactions.unshift(tx);
   renderAll();
 
-  // Also try local backend if running locally
   fetch("/api/transactions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1094,10 +1240,26 @@ async function submitQuickAdd() {
   if (!val) return;
 
   const targetM = selectedMonth === 0 ? 10 : selectedMonth;
-  const payload = currentQuickParsed || parseQuickInputJS(val, targetM);
+  // Always parse fresh from `val` first so fast typing + Enter never uses stale text,
+  // then merge any user edits from the interactive preview bar if present
+  const freshParsed = parseQuickInputJS(val, targetM);
+  const qpContent = document.getElementById("qp-content")?.value?.trim();
+  const qpAmount = Number(document.getElementById("qp-amount")?.value || 0);
+  const qpCat = document.getElementById("qp-category")?.value;
+  const qpPerson = document.getElementById("qp-person")?.value;
+  const qpSource = document.getElementById("qp-source")?.value;
+
+  const payload = {
+    ...freshParsed,
+    content: (currentQuickParsed && qpContent) ? qpContent : freshParsed.content,
+    amount: (currentQuickParsed && qpAmount > 0) ? qpAmount : freshParsed.amount,
+    category: qpCat || freshParsed.category,
+    person: qpPerson || freshParsed.person,
+    source: qpSource || freshParsed.source
+  };
 
   if (!payload || !payload.amount || payload.amount <= 0) {
-    alert("Vui lòng nhập kèm số tiền (ví dụ: 'winmart 385k' hoặc 'bỉm sugi 420k vp')!");
+    alert("Vui lòng nhập kèm số tiền (ví dụ: 'cá, ốc 570k' hoặc 'bỉm sugi 420k ncb')!");
     return;
   }
 
@@ -1105,7 +1267,8 @@ async function submitQuickAdd() {
   inp.value = "";
   currentQuickParsed = null;
   document.getElementById("quick-preview-bar").innerHTML = `
-    <span style="color:#34d399;font-weight:700;">✅ Đã lưu '${tx.content}' (${fmtVND(tx.amount)}) vào Tháng ${tx.month} & đồng bộ Cloud!</span>
+    <span style="color:#34d399;font-weight:700;">✅ Đã lưu '${tx.content}' (${fmtVND(tx.amount)} • ${tx.category} • ${tx.person} • ${tx.source}) vào Tháng ${tx.month}!</span>
+    <button class="btn btn-ghost" style="padding:3px 9px;font-size:11.5px;margin-left:8px;" onclick="openEditTransactionModal('${tx.id}')">✏️ Sửa lại</button>
   `;
 }
 
@@ -1395,18 +1558,132 @@ function renderTransactionsTab() {
     <tr>
       <td style="white-space:nowrap;color:var(--text-secondary);font-size:12.5px;">${t.date} <span style="opacity:0.6;">(T${t.month})</span></td>
       <td>
-        <div style="font-weight:600;">${t.content}</div>
+        <div style="font-weight:600;cursor:pointer;" onclick="openEditTransactionModal('${t.id}')" title="Bấm để chỉnh sửa giao dịch này">${t.content}</div>
         ${t.was_unmatched_in_excel ? `<div style="font-size:11px;color:#fbbf24;">🔧 Đã khôi phục từ dòng sót trong Excel</div>` : ''}
       </td>
-      <td><span class="chip chip-cat">${t.category}</span></td>
-      <td><span class="chip chip-${t.person}">${t.person}</span></td>
-      <td><span class="chip chip-bank">${t.source}</span></td>
-      <td class="num" style="color:#f8fafc;">${fmtVND(t.amount)}</td>
-      <td class="num">
-        <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px;color:#fb7185;" onclick="deleteTransaction('${t.id}')" title="Xóa">✕</button>
+      <td><span class="chip chip-cat" style="cursor:pointer;" onclick="openEditTransactionModal('${t.id}')">${t.category}</span></td>
+      <td><span class="chip chip-${t.person}" style="cursor:pointer;" onclick="openEditTransactionModal('${t.id}')">${t.person}</span></td>
+      <td><span class="chip chip-bank" style="cursor:pointer;" onclick="openEditTransactionModal('${t.id}')">${t.source}</span></td>
+      <td class="num" style="color:#f8fafc;cursor:pointer;" onclick="openEditTransactionModal('${t.id}')">${fmtVND(t.amount)}</td>
+      <td class="num" style="white-space:nowrap;">
+        <button class="btn btn-ghost" style="padding:4px 8px;font-size:11.5px;color:#38bdf8;margin-right:4px;" onclick="openEditTransactionModal('${t.id}')" title="Sửa giao dịch">✏️ Sửa</button>
+        <button class="btn btn-ghost" style="padding:4px 8px;font-size:11.5px;color:#fb7185;" onclick="deleteTransaction('${t.id}')" title="Xóa">✕</button>
       </td>
     </tr>
   `).join("");
+}
+
+function openEditTransactionModal(txId) {
+  const tx = DB.transactions.find(t => t.id === txId);
+  if (!tx) return;
+
+  const bankOptions = DB.meta.banks || ["Tiền mặt / Chuyển khoản", "VPBank", "BIDV", "NCB", "UOB", "VPSP"];
+  const modal = document.getElementById("modal-overlay");
+  const content = document.getElementById("modal-content");
+  content.innerHTML = `
+    <div class="card-header">
+      <div class="card-title">✏️ Chỉnh Sửa Giao Dịch (${tx.id})</div>
+      <button class="btn btn-ghost" style="padding:4px 10px;" onclick="closeModal()">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div>
+        <label style="font-size:12.5px;color:var(--text-secondary);">Nội dung chi tiêu (giữ nguyên dấu phẩy nếu nhiều món: VD "cá, ốc")</label>
+        <input type="text" id="edit-tx-content" class="input-control" style="width:100%;margin-top:4px;font-weight:600;" value="${String(tx.content || '').replace(/"/g, '&quot;')}" />
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 0.8fr;gap:10px;">
+        <div>
+          <label style="font-size:12.5px;color:var(--text-secondary);">Số tiền (VNĐ)</label>
+          <input type="number" id="edit-tx-amount" class="input-control" style="width:100%;margin-top:4px;font-weight:700;color:#34d399;" value="${tx.amount}" />
+        </div>
+        <div>
+          <label style="font-size:12.5px;color:var(--text-secondary);">Ngày giao dịch</label>
+          <input type="date" id="edit-tx-date" class="input-control" style="width:100%;margin-top:4px;" value="${tx.date}" />
+        </div>
+        <div>
+          <label style="font-size:12.5px;color:var(--text-secondary);">Tháng</label>
+          <select id="edit-tx-month" class="input-control" style="width:100%;margin-top:4px;">
+            ${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${Number(tx.month) === m ? 'selected' : ''}>Tháng ${m}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:10px;">
+        <div>
+          <label style="font-size:12.5px;color:var(--text-secondary);">Hạng mục</label>
+          <select id="edit-tx-cat" class="input-control" style="width:100%;margin-top:4px;">
+            ${DB.meta.categories.map(c => `<option value="${c}" ${c === tx.category ? 'selected' : ''}>${c}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12.5px;color:var(--text-secondary);">Thành viên</label>
+          <select id="edit-tx-person" class="input-control" style="width:100%;margin-top:4px;">
+            ${DB.meta.members.map(p => `<option value="${p}" ${p === tx.person ? 'selected' : ''}>${p}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12.5px;color:var(--text-secondary);">Nguồn tiền / Ngân hàng</label>
+          <select id="edit-tx-src" class="input-control" style="width:100%;margin-top:4px;">
+            ${bankOptions.map(b => `<option value="${b}" ${b === tx.source ? 'selected' : ''}>${b}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary);cursor:pointer;margin-top:2px;">
+        <input type="checkbox" id="edit-tx-save-default-src" />
+        <span>Đặt nguồn tiền này làm mặc định khi nhập nhanh trên máy này</span>
+      </label>
+      <div style="display:flex;gap:8px;margin-top:6px;">
+        <button class="btn btn-primary" style="flex:1;" onclick="submitEditTransactionModal('${tx.id}')">💾 Lưu Thay Đổi & Đồng Bộ Cloud</button>
+        <button class="btn btn-ghost" onclick="closeModal()">Hủy</button>
+      </div>
+    </div>
+  `;
+  modal.style.display = "flex";
+}
+
+async function submitEditTransactionModal(txId) {
+  const tx = DB.transactions.find(t => t.id === txId);
+  if (!tx) return;
+
+  const content = document.getElementById("edit-tx-content").value.trim();
+  const amount = Number(document.getElementById("edit-tx-amount").value);
+  const date = document.getElementById("edit-tx-date").value;
+  const month = Number(document.getElementById("edit-tx-month").value || tx.month);
+  const category = document.getElementById("edit-tx-cat").value;
+  const person = document.getElementById("edit-tx-person").value;
+  const source = document.getElementById("edit-tx-src").value;
+  const saveDefaultSrc = document.getElementById("edit-tx-save-default-src")?.checked;
+
+  if (!content || !amount || amount <= 0) {
+    alert("Vui lòng nhập nội dung và số tiền hợp lệ!");
+    return;
+  }
+
+  if (saveDefaultSrc && source) {
+    localStorage.setItem(STORAGE_DEFAULT_SOURCE_KEY, source);
+  }
+
+  tx.content = content;
+  tx.amount = amount;
+  tx.date = date;
+  tx.month = month;
+  tx.category = category;
+  tx.person = person;
+  tx.source = source;
+
+  if (!DB.meta.edited_transactions) DB.meta.edited_transactions = {};
+  DB.meta.edited_transactions[tx.id] = {
+    content,
+    amount,
+    date,
+    month,
+    category,
+    person,
+    source,
+    updated_at: new Date().toISOString()
+  };
+
+  closeModal();
+  renderAll();
+  await persistAndSync({ action: "edit_tx", transaction: tx });
 }
 
 async function deleteTransaction(id) {
@@ -1423,8 +1700,148 @@ async function deleteTransaction(id) {
 }
 
 // ============================================================================
-// TAB 3: AUTO EMAIL & BANK PARSER (CLOUD + CLIENT-SIDE)
+// TAB 3: MULTI-EMAIL (CHỒNG + VỢ NCB) & AUTO BANK PARSER
 // ============================================================================
+function renderFamilyMailboxes() {
+  const container = document.getElementById("family-mailboxes-list");
+  if (!container) return;
+  const mailboxes = getFamilyMailboxes();
+
+  container.innerHTML = mailboxes.map(mb => {
+    const hasCustomUrl = Boolean(mb.script_url && mb.script_url.trim());
+    const isPrimary = mb.id === "mb-husband";
+    const statusText = hasCustomUrl
+      ? "☁️ Đã gắn Link Apps Script riêng"
+      : (isPrimary ? "☁️ Dùng Link Cloud chính của Gia Đình" : "🔄 Tự động quét chung (Forward) hoặc gắn Link riêng");
+
+    return `
+      <div style="background:rgba(15,23,42,0.8);border:1px solid var(--border-subtle);border-radius:12px;padding:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span class="chip chip-${mb.owner || 'Chung'}">${mb.owner === 'Chồng' ? '👨 Chồng' : (mb.owner === 'Vợ' ? '👩 Vợ' : '👨‍👩‍👧‍👦 ' + mb.owner)}</span>
+            <b style="color:#f8fafc;font-size:13.5px;">${mb.label}</b>
+            <span class="chip chip-bank">🏦 ${mb.banks || 'NCB, VPBank, BIDV'}</span>
+          </div>
+          <div style="font-size:12px;color:var(--text-secondary);">
+            📧 Email: <b style="color:#cbd5e1;">${mb.email || 'Chưa điền địa chỉ (Bấm Cấu hình để nhập)'}</b> • <span style="color:#34d399;">${statusText}</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button class="btn btn-ghost" style="padding:6px 10px;font-size:11.5px;color:#34d399;border-color:rgba(16,185,129,0.35);" onclick="scanSingleMailboxCloud('${mb.id}')">
+            🔍 Quét Hộp Thư
+          </button>
+          <button class="btn btn-ghost" style="padding:6px 10px;font-size:11.5px;" onclick="openAddMailboxModal('${mb.id}')">
+            ⚙️ Cấu hình
+          </button>
+          ${(!isPrimary && mb.id !== 'mb-wife-ncb') ? `<button class="btn btn-ghost" style="padding:6px 8px;font-size:11.5px;color:#fb7185;" onclick="deleteMailbox('${mb.id}')">✕</button>` : ''}
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function openAddMailboxModal(editId = null) {
+  const mailboxes = getFamilyMailboxes();
+  const existing = editId ? mailboxes.find(m => m.id === editId) : null;
+
+  const label = existing ? existing.label : "Email Phụ Gia Đình";
+  const email = existing ? existing.email : "";
+  const owner = existing ? existing.owner : "Vợ";
+  const banks = existing ? existing.banks : "NCB";
+  const scriptUrl = existing ? (existing.script_url || "") : "";
+
+  const modal = document.getElementById("modal-overlay");
+  const content = document.getElementById("modal-content");
+  content.innerHTML = `
+    <div class="card-header">
+      <div class="card-title">📧 ${existing ? 'Cấu Hình Hộp Thư: ' + existing.label : 'Thêm Email Theo Dõi Ngân Hàng (Chồng / Vợ)'}</div>
+      <button class="btn btn-ghost" style="padding:4px 10px;" onclick="closeModal()">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;">
+      <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:10px;">
+        <div>
+          <label style="font-size:12px;color:var(--text-secondary);">Tên gợi nhớ hộp thư</label>
+          <input type="text" id="mb-label" class="input-control" style="width:100%;margin-top:4px;" value="${label}" placeholder="VD: Email Vợ (Theo dõi NCB)" />
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-secondary);">Địa chỉ Email</label>
+          <input type="email" id="mb-email" class="input-control" style="width:100%;margin-top:4px;" value="${email}" placeholder="VD: vo.ncb@gmail.com" />
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <label style="font-size:12px;color:var(--text-secondary);">Của thành viên nào?</label>
+          <select id="mb-owner" class="input-control" style="width:100%;margin-top:4px;">
+            ${["Vợ", "Chồng", "Chung"].map(o => `<option value="${o}" ${o === owner ? 'selected' : ''}>${o}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-secondary);">Ngân hàng nhận thông báo ở Email này</label>
+          <input type="text" id="mb-banks" class="input-control" style="width:100%;margin-top:4px;" value="${banks}" placeholder="VD: NCB, VPBank, BIDV" />
+        </div>
+      </div>
+
+      <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:12px;line-height:1.55;">
+        <div style="font-weight:700;color:#34d399;margin-bottom:4px;">💡 2 Cách để App tự động đọc Email NCB của Vợ (Không cần nhập mật khẩu):</div>
+        <div style="font-size:12px;color:var(--text-secondary);">
+          • <b>Cách 1 (Đơn giản nhất - Tự động gộp về 1 mối):</b> Trong Gmail của Vợ, vào <i>Cài đặt → Bộ lọc và địa chỉ bị chặn</i>, tạo bộ lọc có từ khóa <code>NCB</code> hoặc <code>Biến động số dư</code> → Chọn <b>Chuyển tiếp (Forward) sang Gmail của Chồng</b>. Khi đó chỉ cần 1 Link Cloud duy nhất là đọc được cả 2 vợ chồng!<br/>
+          • <b>Cách 2 (Kết nối trực tiếp Gmail riêng của Vợ):</b> Mở <a href="https://script.new" target="_blank" style="color:#38bdf8;text-decoration:underline;">script.new</a> trên Gmail của Vợ, dán mã Apps Script (ở tab Kiểm Toán) và bấm <i>Deploy → Web App</i>, rồi dán Link Web App của Vợ vào ô bên dưới:
+        </div>
+      </div>
+
+      <div>
+        <label style="font-size:12px;color:var(--text-secondary);">🔗 Link Apps Script riêng của Email này (Tùy chọn - Để trống nếu dùng Cách 1 hoặc là Email chính):</label>
+        <input type="url" id="mb-script-url" class="input-control" style="width:100%;margin-top:4px;" value="${scriptUrl}" placeholder="https://script.google.com/macros/s/.../exec" />
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:4px;">
+        <button class="btn btn-primary" style="flex:1;" onclick="saveMailboxFromModal('${existing ? existing.id : ''}')">💾 Lưu Cấu Hình Email</button>
+        <button class="btn btn-ghost" onclick="closeModal()">Đóng</button>
+      </div>
+    </div>
+  `;
+  modal.style.display = "flex";
+}
+
+async function saveMailboxFromModal(editId) {
+  const label = (document.getElementById("mb-label")?.value || "").trim() || "Email Gia Đình";
+  const email = (document.getElementById("mb-email")?.value || "").trim();
+  const owner = document.getElementById("mb-owner")?.value || "Vợ";
+  const banks = (document.getElementById("mb-banks")?.value || "").trim() || "NCB";
+  const script_url = normalizeAppsScriptUrl(document.getElementById("mb-script-url")?.value || "");
+
+  const mailboxes = getFamilyMailboxes();
+  if (editId) {
+    const idx = mailboxes.findIndex(m => m.id === editId);
+    if (idx !== -1) {
+      mailboxes[idx] = { ...mailboxes[idx], label, email, owner, banks, script_url };
+    }
+  } else {
+    mailboxes.push({
+      id: `mb-${Date.now()}`,
+      label,
+      email,
+      owner,
+      banks,
+      script_url
+    });
+  }
+
+  saveFamilyMailboxes(mailboxes);
+  closeModal();
+  renderFamilyMailboxes();
+  await persistAndSync({ action: "update_mailboxes", mailboxes });
+}
+
+async function deleteMailbox(id) {
+  if (!confirm("Xóa hộp thư này khỏi danh sách?")) return;
+  const mailboxes = getFamilyMailboxes().filter(m => m.id !== id);
+  saveFamilyMailboxes(mailboxes);
+  renderFamilyMailboxes();
+  await persistAndSync({ action: "update_mailboxes", mailboxes });
+}
+
 function loadSampleBankEmails() {
   const raw = (DB && DB.sample_bank_emails) ? DB.sample_bank_emails : SAMPLE_BANK_EMAILS_DEFAULT;
   document.getElementById("raw-email-textarea").value = raw;
@@ -1437,34 +1854,90 @@ function parseEmailContent() {
   renderPendingEmailList();
 }
 
-async function scanGmailViaCloud() {
-  const cloudUrl = getCloudScriptUrl();
-  if (!cloudUrl) {
-    openCloudSettingsModal();
-    return;
-  }
-  updateCloudBadgeUI("🔄 Đang quét Gmail trên Google Cloud...");
+async function fetchGmailRawFromUrl(url) {
   let data = null;
   try {
-    const res = await fetch(`${cloudUrl}?action=scan_gmail&t=${Date.now()}`, {
+    const res = await fetch(`${url}?action=scan_gmail&t=${Date.now()}`, {
       method: "GET",
       redirect: "follow",
       credentials: "omit"
     });
     if (res.ok) data = await res.json();
   } catch (e) {}
-
   if (!data) {
     try {
-      data = await fetchViaJsonp(`${cloudUrl}?action=scan_gmail`);
+      data = await fetchViaJsonp(`${url}?action=scan_gmail`);
     } catch (e) {}
   }
+  return data;
+}
 
+async function scanSingleMailboxCloud(mbId) {
+  const mailboxes = getFamilyMailboxes();
+  const mb = mailboxes.find(m => m.id === mbId);
+  const targetUrl = (mb && mb.script_url) ? mb.script_url : getCloudScriptUrl();
+  if (!targetUrl) {
+    openAddMailboxModal(mbId);
+    return;
+  }
+  updateCloudBadgeUI(`🔄 Đang quét ${mb ? mb.label : 'Gmail'}...`);
+  const data = await fetchGmailRawFromUrl(targetUrl);
   if (data && data.ok) {
     if (!data.raw_text || !data.raw_text.trim()) {
-      alert("Không tìm thấy email biến động số dư mới nào từ VPBank, BIDV, NCB trong 30 ngày qua.");
+      alert(`Không tìm thấy email biến động số dư mới nào trong 30 ngày qua từ ${mb ? mb.label : 'hộp thư'}.`);
     } else {
       document.getElementById("raw-email-textarea").value = data.raw_text;
+      parseEmailContent();
+      // Nếu hộp thư của Vợ (NCB), ưu tiên gán người chi mặc định là Vợ nếu AI để Chung
+      if (mb && mb.owner && mb.owner !== "Chung") {
+        pendingEmails.forEach(item => {
+          if (item.person === "Chung") item.person = mb.owner;
+        });
+        renderPendingEmailList();
+      }
+    }
+    updateCloudBadgeUI("☁️ Đã quét hộp thư");
+  } else {
+    alert("⚠️ Không thể kết nối Link Apps Script của hộp thư này. Hãy kiểm tra lại cấu hình hoặc cập nhật mã Apps Script V2!");
+  }
+}
+
+async function scanGmailViaCloud() {
+  const primaryUrl = getCloudScriptUrl();
+  const mailboxes = getFamilyMailboxes();
+  const urlsToScan = [];
+
+  if (primaryUrl) urlsToScan.push({ url: primaryUrl, owner: "Chung", label: "Gmail Chính" });
+  mailboxes.forEach(mb => {
+    if (mb.script_url && !urlsToScan.some(u => u.url === mb.script_url)) {
+      urlsToScan.push({ url: mb.script_url, owner: mb.owner, label: mb.label });
+    }
+  });
+
+  if (urlsToScan.length === 0) {
+    openCloudSettingsModal();
+    return;
+  }
+
+  updateCloudBadgeUI(`🔄 Đang quét ${urlsToScan.length} hộp thư gia đình trên Cloud...`);
+  const combinedTexts = [];
+  let anySuccess = false;
+
+  for (const item of urlsToScan) {
+    const data = await fetchGmailRawFromUrl(item.url);
+    if (data && data.ok) {
+      anySuccess = true;
+      if (data.raw_text && data.raw_text.trim()) {
+        combinedTexts.push(data.raw_text.trim());
+      }
+    }
+  }
+
+  if (anySuccess) {
+    if (combinedTexts.length === 0) {
+      alert("Không tìm thấy email biến động số dư mới nào từ VPBank, BIDV, NCB trong 30 ngày qua.");
+    } else {
+      document.getElementById("raw-email-textarea").value = combinedTexts.join("\n---\n");
       parseEmailContent();
     }
     updateCloudBadgeUI("☁️ Đã quét Gmail Cloud");
@@ -1477,7 +1950,7 @@ async function syncGmailImap() {
   const email = document.getElementById("imap-email").value.trim();
   const app_password = document.getElementById("imap-password").value.trim();
   if (!email || !app_password) {
-    alert("Trên Cloud, bạn nên bấm nút màu xanh '☁️ Quét Gmail Qua Google Cloud' (không cần nhập mật khẩu) hoặc nhập đầy đủ Gmail + App Password!");
+    alert("Trên Cloud, bạn nên bấm nút màu xanh '☁️ Quét Tất Cả Hộp Thư Gia Đình' (không cần nhập mật khẩu) hoặc nhập đầy đủ Gmail + App Password!");
     return;
   }
   try {
@@ -1494,7 +1967,7 @@ async function syncGmailImap() {
     pendingEmails = out.items || [];
     renderPendingEmailList();
   } catch (e) {
-    alert("Khi chạy trên Cloud (không bật máy tính cá nhân), trình duyệt không kết nối cổng TCP IMAP trực tiếp. Hãy bấm nút '☁️ Quét Gmail Qua Google Cloud' để đọc email trực tiếp từ Google!");
+    alert("Khi chạy trên Cloud (không bật máy tính cá nhân), trình duyệt không kết nối cổng TCP IMAP trực tiếp. Hãy bấm nút '☁️ Quét Tất Cả Hộp Thư Gia Đình' để đọc email trực tiếp từ Google!");
   }
 }
 
@@ -1506,11 +1979,13 @@ function renderPendingEmailList() {
     return;
   }
 
+  const bankOptions = DB.meta.banks || ["Tiền mặt / Chuyển khoản", "VPBank", "BIDV", "NCB", "UOB", "VPSP"];
+
   box.innerHTML = pendingEmails.map((item, idx) => `
     <div style="background:rgba(15,23,42,0.85);border:1px solid var(--border-subtle);border-radius:14px;padding:14px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;">
         <div>
-          <span class="chip chip-bank">🏦 ${item.bank}</span>
+          <span class="chip chip-bank">🏦 ${item.source || item.bank}</span>
           <span style="font-size:12px;color:var(--text-secondary);margin-left:6px;">📅 ${item.date} (Tháng ${item.month})</span>
         </div>
         <div style="font-size:17px;font-weight:800;color:#34d399;">${fmtVND(item.amount)}</div>
@@ -1518,13 +1993,16 @@ function renderPendingEmailList() {
 
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Gốc: "${item.raw_content}"</div>
 
-      <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr auto;gap:8px;align-items:center;">
-        <input type="text" class="input-control" value="${item.content}" onchange="pendingEmails[${idx}].content=this.value" />
+      <div style="display:grid;grid-template-columns:1.3fr 0.9fr 0.8fr 0.9fr auto;gap:8px;align-items:center;">
+        <input type="text" class="input-control" value="${String(item.content || '').replace(/"/g, '&quot;')}" onchange="pendingEmails[${idx}].content=this.value" />
         <select class="input-control" onchange="pendingEmails[${idx}].category=this.value">
           ${DB.meta.categories.map(c => `<option value="${c}" ${c === item.category ? 'selected' : ''}>${c}</option>`).join("")}
         </select>
         <select class="input-control" onchange="pendingEmails[${idx}].person=this.value">
           ${DB.meta.members.map(m => `<option value="${m}" ${m === item.person ? 'selected' : ''}>${m}</option>`).join("")}
+        </select>
+        <select class="input-control" onchange="pendingEmails[${idx}].source=this.value;pendingEmails[${idx}].bank=this.value;">
+          ${bankOptions.map(b => `<option value="${b}" ${b === (item.source || item.bank) ? 'selected' : ''}>${b}</option>`).join("")}
         </select>
         <button class="btn btn-primary" style="padding:8px 12px;font-size:12px;" onclick="approveSingleEmail(${idx})">
           ✔ Duyệt
@@ -2104,5 +2582,605 @@ async function submitIncomeModal(m) {
   }).catch(() => {});
   await persistAndSync({ action: "update_income", month: m });
 }
+
+// ============================================================================
+// VOICE INPUT (GHI ÂM TIẾNG VIỆT TRỰC TIẾP TRÊN ĐIỆN THOẠI & MÁY TÍNH)
+// ============================================================================
+function toggleVoiceInput() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const btn = document.getElementById("btn-voice-input");
+  const inp = document.getElementById("quick-input");
+
+  if (!SpeechRecognition) {
+    alert("Trình duyệt hiện tại chưa hỗ trợ nhận diện giọng nói trực tiếp. Bạn có thể bấm biểu tượng Micro 🎙️ trên bàn phím điện thoại (iPhone / Android) hoặc mở bằng Chrome / Safari nhé!");
+    if (inp) inp.focus();
+    return;
+  }
+
+  if (isVoiceListening && voiceRecognition) {
+    try { voiceRecognition.stop(); } catch (e) {}
+    isVoiceListening = false;
+    if (btn) {
+      btn.innerHTML = "🎙️ Ghi âm";
+      btn.style.background = "rgba(236,72,153,0.14)";
+      btn.style.borderColor = "rgba(236,72,153,0.4)";
+    }
+    return;
+  }
+
+  voiceRecognition = new SpeechRecognition();
+  voiceRecognition.lang = "vi-VN";
+  voiceRecognition.continuous = false;
+  voiceRecognition.interimResults = true;
+
+  voiceRecognition.onstart = () => {
+    isVoiceListening = true;
+    if (btn) {
+      btn.innerHTML = "🔴 Đang nghe... (Hãy nói)";
+      btn.style.background = "rgba(239,68,68,0.28)";
+      btn.style.borderColor = "#ef4444";
+    }
+    if (inp) {
+      inp.placeholder = "🎙️ Đang nghe... Hãy nói VD: 'Cá, ốc 570k vợ' hoặc 'Đi siêu thị 850k ncb'";
+    }
+  };
+
+  voiceRecognition.onresult = (event) => {
+    let transcript = "";
+    for (let i = 0; i < event.results.length; i++) {
+      transcript += event.results[i][0].transcript;
+    }
+    const normalized = convertVietnameseSpokenNumbers(transcript.trim());
+    if (inp) {
+      inp.value = normalized;
+      onQuickInputChange(normalized);
+    }
+  };
+
+  voiceRecognition.onerror = (event) => {
+    isVoiceListening = false;
+    if (btn) {
+      btn.innerHTML = "🎙️ Ghi âm";
+      btn.style.background = "rgba(236,72,153,0.14)";
+      btn.style.borderColor = "rgba(236,72,153,0.4)";
+    }
+    if (event.error === "not-allowed") {
+      alert("Vui lòng cấp quyền Micro (Microphone) cho trình duyệt để sử dụng tính năng Ghi âm giọng nói!");
+    }
+  };
+
+  voiceRecognition.onend = () => {
+    isVoiceListening = false;
+    if (btn) {
+      btn.innerHTML = "🎙️ Ghi âm";
+      btn.style.background = "rgba(236,72,153,0.14)";
+      btn.style.borderColor = "rgba(236,72,153,0.4)";
+    }
+    if (inp) {
+      inp.placeholder = "⚡ Nhập nhanh hoặc bấm 🎙️ Ghi âm: 'cá, ốc 570k' hoặc 'bỉm sugi 420k ncb'...";
+      if (inp.value.trim()) {
+        onQuickInputChange(inp.value);
+      }
+    }
+  };
+
+  try {
+    voiceRecognition.start();
+  } catch (e) {
+    isVoiceListening = false;
+  }
+}
+
+// ============================================================================
+// RECEIPT / BILL IMAGE SCANNER (QUÉT BILL SIÊU THỊ & ẢNH CHUYỂN KHOẢN)
+// ============================================================================
+let scannedReceiptData = {
+  storeName: "Siêu thị",
+  saveMode: "total", // 'total' | 'items'
+  totalAmount: 0,
+  totalContent: "",
+  category: "Ăn uống",
+  person: "Vợ",
+  source: "Tiền mặt / Chuyển khoản",
+  date: "",
+  items: []
+};
+
+function openReceiptScannerModal() {
+  const m = selectedMonth === 0 ? 10 : selectedMonth;
+  const todayStr = `2026-${String(m).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`;
+  const defaultSrc = localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt / Chuyển khoản";
+  const geminiKey = localStorage.getItem(STORAGE_GEMINI_KEY) || "";
+
+  scannedReceiptData = {
+    storeName: "Siêu thị",
+    saveMode: "total",
+    totalAmount: 0,
+    totalContent: "",
+    category: "Ăn uống",
+    person: "Vợ",
+    source: defaultSrc,
+    date: todayStr,
+    items: []
+  };
+
+  const modal = document.getElementById("modal-overlay");
+  const content = document.getElementById("modal-content");
+  content.innerHTML = `
+    <div class="card-header">
+      <div class="card-title">📸 Quét Bill Đi Siêu Thị / Hóa Đơn / Ảnh Chuyển Khoản</div>
+      <button class="btn btn-ghost" style="padding:4px 10px;" onclick="closeModal()">✕</button>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;max-height:78vh;overflow-y:auto;padding-right:4px;">
+      <div style="background:rgba(6,182,212,0.1);border:1px dashed rgba(6,182,212,0.45);border-radius:14px;padding:16px;text-align:center;">
+        <div style="font-weight:700;color:#22d3ee;font-size:14px;margin-bottom:6px;">
+          🛒 Chụp ảnh Bill Siêu Thị (Co.opmart, WinMart, Bách Hóa Xanh, Emart...) hoặc Ảnh Bill Ngân Hàng
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">
+          Hỗ trợ tự động đọc tên món hàng, giá tiền từng món và tổng hóa đơn. Bạn cũng có thể bấm <b>Ctrl+V</b> để dán ảnh chụp màn hình.
+        </div>
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+          <label class="btn btn-primary" style="cursor:pointer;padding:9px 14px;font-size:12.5px;">
+            📷 Chụp Ảnh / Chọn Ảnh Bill
+            <input type="file" id="receipt-file-input" accept="image/*" style="display:none;" onchange="handleReceiptImageSelected(this.files[0])" />
+          </label>
+          <button class="btn btn-ghost" style="padding:9px 12px;font-size:12px;color:#fbbf24;border-color:rgba(245,158,11,0.4);" onclick="loadSampleSupermarketBill()">
+            🧾 Thử Bill Siêu Thị Mẫu (Cá, ốc, rau...)
+          </button>
+        </div>
+
+        <details style="margin-top:10px;text-align:left;font-size:11.5px;color:var(--text-secondary);">
+          <summary style="cursor:pointer;color:#a5b4fc;font-weight:600;">✨ Nâng cao: Cài Gemini AI Key miễn phí để đọc Bill chữ mờ / viết tay siêu chuẩn (Tùy chọn)</summary>
+          <div style="margin-top:6px;display:flex;gap:6px;">
+            <input type="password" id="gemini-api-key-input" class="input-control" style="flex:1;padding:6px 10px;font-size:11.5px;" value="${geminiKey}" placeholder="Dán Gemini API Key (AIzaSy...) từ aistudio.google.com" onchange="saveGeminiKey(this.value)" />
+            <button class="btn btn-ghost" style="padding:6px 10px;font-size:11.5px;" onclick="saveGeminiKey(document.getElementById('gemini-api-key-input').value)">Lưu Key</button>
+          </div>
+        </details>
+      </div>
+
+      <div id="receipt-preview-area" style="display:none;gap:12px;align-items:flex-start;background:rgba(15,23,42,0.75);padding:10px;border-radius:12px;border:1px solid var(--border-subtle);">
+        <img id="receipt-img-preview" style="width:95px;height:120px;object-fit:cover;border-radius:8px;border:1px solid var(--border-subtle);" />
+        <div style="flex:1;">
+          <div id="receipt-ocr-status" style="font-weight:700;color:#38bdf8;margin-bottom:6px;">⏳ Đang phân tích ảnh hóa đơn...</div>
+          <div style="width:100%;height:7px;background:rgba(255,255,255,0.08);border-radius:99px;overflow:hidden;">
+            <div id="receipt-ocr-bar" style="width:15%;height:100%;background:linear-gradient(90deg,#06b6d4,#6366f1);transition:width 0.25s;"></div>
+          </div>
+          <div style="font-size:11.5px;color:var(--text-secondary);margin-top:6px;">
+            Bạn có thể chỉnh sửa trực tiếp các món hoặc Tổng tiền bên dưới trước khi bấm Lưu vào sổ.
+          </div>
+        </div>
+      </div>
+
+      <div id="receipt-parsed-container" style="display:none;flex-direction:column;gap:12px;"></div>
+    </div>
+  `;
+  modal.style.display = "flex";
+}
+
+function saveGeminiKey(val) {
+  const k = (val || "").trim();
+  localStorage.setItem(STORAGE_GEMINI_KEY, k);
+  alert(k ? "✅ Đã lưu Gemini Vision AI Key! Khi chọn ảnh Bill, App sẽ ưu tiên dùng AI để đọc chính xác từng món hàng." : "Đã xóa Gemini Key (App sẽ dùng bộ đọc OCR tích hợp sẵn).");
+}
+
+function loadTesseractScript() {
+  return new Promise((resolve, reject) => {
+    if (window.Tesseract) return resolve(window.Tesseract);
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+    s.onload = () => resolve(window.Tesseract);
+    s.onerror = (e) => reject(e);
+    document.head.appendChild(s);
+  });
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleReceiptImageSelected(file) {
+  if (!file) return;
+  const previewArea = document.getElementById("receipt-preview-area");
+  const imgEl = document.getElementById("receipt-img-preview");
+  const statusEl = document.getElementById("receipt-ocr-status");
+  const barEl = document.getElementById("receipt-ocr-bar");
+
+  if (previewArea) previewArea.style.display = "flex";
+  const dataUrl = await fileToBase64(file);
+  if (imgEl) imgEl.src = dataUrl;
+
+  const geminiKey = (localStorage.getItem(STORAGE_GEMINI_KEY) || "").trim();
+
+  // 1. Try Gemini Vision AI if key is configured
+  if (geminiKey) {
+    try {
+      if (statusEl) statusEl.textContent = "✨ Đang dùng Gemini Vision AI bóc tách hóa đơn siêu thị...";
+      if (barEl) barEl.style.width = "60%";
+      const base64Raw = dataUrl.split(",")[1];
+      const mimeType = file.type || "image/jpeg";
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(geminiKey)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              {
+                text: `Đây là hóa đơn siêu thị hoặc bill thanh toán tại Việt Nam. Hãy trích xuất chính xác sang JSON thuần (không có markdown):
+{"storeName": "Tên siêu thị/cửa hàng", "source": "Tiền mặt / Chuyển khoản hoặc NCB/VPBank/BIDV", "totalAmount": số_nguyên_VNĐ, "items": [{"name": "Tên món hàng", "amount": số_nguyên_VNĐ, "category": "Ăn uống|Cho con|Hóa đơn|Gia đình|Mặc|Đi lại|Khác"}]}`
+              },
+              { inline_data: { mime_type: mimeType, data: base64Raw } }
+            ]
+          }]
+        })
+      });
+      if (resp.ok) {
+        const json = await resp.json();
+        const rawTxt = json?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        const cleanJson = rawTxt.replace(/```json|```/g, "").trim();
+        const parsedAi = JSON.parse(cleanJson);
+        if (parsedAi && (parsedAi.totalAmount || (parsedAi.items && parsedAi.items.length > 0))) {
+          if (barEl) barEl.style.width = "100%";
+          if (statusEl) statusEl.textContent = "✅ Đã bóc tách hóa đơn bằng AI thành công!";
+          applyParsedReceiptResult(parsedAi);
+          return;
+        }
+      }
+    } catch (e) {}
+  }
+
+  // 2. Built-in Client-side OCR (Tesseract.js Vietnamese)
+  try {
+    if (statusEl) statusEl.textContent = "🔍 Đang tải bộ nhận diện chữ Tiếng Việt (OCR)...";
+    if (barEl) barEl.style.width = "30%";
+    const TesseractLib = await loadTesseractScript();
+
+    const result = await TesseractLib.recognize(dataUrl, "vie+eng", {
+      logger: m => {
+        if (m.status === "recognizing text" && barEl) {
+          const pct = Math.max(30, Math.round((m.progress || 0) * 100));
+          barEl.style.width = `${pct}%`;
+          if (statusEl) statusEl.textContent = `🔍 Đang đọc từng dòng trên Bill (${pct}%)...`;
+        }
+      }
+    });
+
+    const rawText = result?.data?.text || "";
+    if (barEl) barEl.style.width = "100%";
+    if (statusEl) statusEl.textContent = "✅ Đã quét xong! Bạn có thể kiểm tra & chỉnh sửa bên dưới:";
+
+    const parsed = parseReceiptOcrTextJS(rawText);
+    applyParsedReceiptResult(parsed, rawText);
+  } catch (err) {
+    if (statusEl) statusEl.textContent = "⚠️ Không đọc rõ chữ tự động. Bạn có thể nhập nhanh bên dưới:";
+    applyParsedReceiptResult({
+      storeName: "Hóa đơn siêu thị",
+      totalAmount: 0,
+      items: [{ name: "Đi siêu thị / Mua đồ", amount: 0, category: "Ăn uống" }]
+    });
+  }
+}
+
+function parseReceiptOcrTextJS(rawText) {
+  const lines = String(rawText || "")
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(l => l.length >= 2);
+
+  let storeName = "Siêu thị";
+  const fullFold = foldVN(rawText || "");
+  if (fullFold.includes("coop") || fullFold.includes("co.op")) storeName = "Siêu thị Co.opmart";
+  else if (fullFold.includes("winmart") || fullFold.includes("vinmart")) storeName = "Siêu thị WinMart";
+  else if (fullFold.includes("bach hoa xanh") || fullFold.includes("bhx")) storeName = "Bách Hóa Xanh";
+  else if (fullFold.includes("emart")) storeName = "Siêu thị Emart";
+  else if (fullFold.includes("lotte")) storeName = "Siêu thị Lotte Mart";
+  else if (fullFold.includes("aeon")) storeName = "Siêu thị AEON";
+  else if (fullFold.includes("big c") || fullFold.includes("go!")) storeName = "Siêu thị GO! / Big C";
+  else if (fullFold.includes("con cung") || fullFold.includes("concung")) storeName = "Con Cưng";
+  else if (fullFold.includes("pharmacity") || fullFold.includes("long chau") || fullFold.includes("guardian")) storeName = "Nhà thuốc";
+
+  let detectedSource = localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt / Chuyển khoản";
+  if (fullFold.includes("ncb") || fullFold.includes("quoc dan")) detectedSource = "NCB";
+  else if (fullFold.includes("vpbank")) detectedSource = "VPBank";
+  else if (fullFold.includes("bidv")) detectedSource = "BIDV";
+  else if (fullFold.includes("uob")) detectedSource = "UOB";
+
+  const ignoreKeywords = [
+    "tong cong", "thanh tien", "thanh toan", "tong tien", "total", "tien mat",
+    "tien thoi", "tien thua", "chuyen khoan", "giam gia", " chiet khau", "vat",
+    "thue", "hoa don", "ngay", "gio", "thu ngan", "khach hang", "diem tich luy",
+    "so du", "ma gd", "so tk", "cam on", "hen gap lai", "hotline", " MST"
+  ];
+
+  const totalKeywords = [
+    "tong cong", "thanh toan", "tong thanh toan", "phai thu", "tong tien", "total", "so tien gd", "so tien:"
+  ];
+
+  let totalAmount = 0;
+  const items = [];
+
+  for (const line of lines) {
+    const lf = foldVN(line);
+    // Tìm số tiền ở cuối dòng (VD: 185,000 hoặc 185.000 hoặc 570k)
+    const priceMatches = [...line.matchAll(/(\d{1,3}(?:[.,]\d{3})+|\d+\s*k)\b/gi)];
+    if (priceMatches.length === 0) continue;
+
+    const lastMatch = priceMatches[priceMatches.length - 1][0];
+    let val = 0;
+    if (/k$/i.test(lastMatch)) {
+      val = Math.round(parseFloat(lastMatch) * 1000);
+    } else {
+      val = parseInt(lastMatch.replace(/[.,\s]/g, ""), 10);
+    }
+
+    if (!val || val < 1000 || val > 500000000) continue;
+
+    // Kiểm tra có phải dòng Tổng tiền không
+    if (totalKeywords.some(tk => lf.includes(tk))) {
+      if (val > totalAmount) totalAmount = val;
+      continue;
+    }
+
+    if (ignoreKeywords.some(ik => lf.includes(ik))) continue;
+
+    // Lấy tên món hàng phía trước số tiền
+    const firstMatchIdx = line.indexOf(priceMatches[0][0]);
+    let itemName = line.slice(0, firstMatchIdx)
+      .replace(/^[\d\s.\-*#]+/, "")
+      .replace(/\s+\d+\s*[xX*]\s*$/, "")
+      .trim();
+
+    if (itemName.length >= 2 && !/^\d+$/.test(itemName)) {
+      const cls = classifyExpenseJS(itemName);
+      items.push({
+        name: itemName,
+        amount: val,
+        category: cls.category,
+        checked: true
+      });
+    }
+  }
+
+  const sumItems = items.reduce((s, it) => s + it.amount, 0);
+  if (!totalAmount && sumItems > 0) {
+    totalAmount = sumItems;
+  }
+
+  if (items.length === 0 && totalAmount > 0) {
+    items.push({
+      name: `Thanh toán ${storeName}`,
+      amount: totalAmount,
+      category: "Ăn uống",
+      checked: true
+    });
+  }
+
+  return {
+    storeName,
+    source: detectedSource,
+    totalAmount: totalAmount || sumItems,
+    items
+  };
+}
+
+function loadSampleSupermarketBill() {
+  const previewArea = document.getElementById("receipt-preview-area");
+  if (previewArea) previewArea.style.display = "none";
+
+  applyParsedReceiptResult({
+    storeName: "Siêu thị Co.opmart",
+    source: localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt / Chuyển khoản",
+    totalAmount: 570000,
+    items: [
+      { name: "Cá điêu hồng làm sạch", amount: 185000, category: "Ăn uống", checked: true },
+      { name: "Ốc hương tươi", amount: 245000, category: "Ăn uống", checked: true },
+      { name: "Rau cải ngọt & hành ngò", amount: 35000, category: "Ăn uống", checked: true },
+      { name: "Sữa tươi cho Subo & Sugi", amount: 105000, category: "Cho con", checked: true }
+    ]
+  });
+}
+
+function applyParsedReceiptResult(parsed) {
+  const m = selectedMonth === 0 ? 10 : selectedMonth;
+  const todayStr = `2026-${String(m).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`;
+
+  const items = (parsed.items || []).map(it => ({
+    name: it.name || "Món hàng",
+    amount: Number(it.amount || 0),
+    category: it.category || classifyExpenseJS(it.name || "").category || "Ăn uống",
+    checked: it.checked !== false
+  }));
+
+  const sumItems = items.reduce((s, it) => s + it.amount, 0);
+  const totalAmt = Number(parsed.totalAmount || sumItems || 0);
+  const itemSummaryNames = items.map(i => i.name).slice(0, 4).join(", ");
+  const storePrefix = parsed.storeName || "Siêu thị";
+
+  scannedReceiptData = {
+    storeName: storePrefix,
+    saveMode: "total",
+    totalAmount: totalAmt,
+    totalContent: itemSummaryNames ? `${storePrefix}: ${itemSummaryNames}` : `Đi ${storePrefix}`,
+    category: "Ăn uống",
+    person: "Vợ",
+    source: parsed.source || localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt / Chuyển khoản",
+    date: todayStr,
+    items
+  };
+
+  renderScannedReceiptUI();
+}
+
+function renderScannedReceiptUI() {
+  const container = document.getElementById("receipt-parsed-container");
+  if (!container) return;
+  container.style.display = "flex";
+
+  const bankOptions = DB.meta.banks || ["Tiền mặt / Chuyển khoản", "VPBank", "BIDV", "NCB", "UOB", "VPSP"];
+  const selectedItemsCount = scannedReceiptData.items.filter(i => i.checked).length;
+  const selectedItemsSum = scannedReceiptData.items.filter(i => i.checked).reduce((s, i) => s + Number(i.amount || 0), 0);
+
+  container.innerHTML = `
+    <div style="background:rgba(15,23,42,0.9);border:1px solid rgba(99,102,241,0.35);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div style="font-weight:700;color:#a5b4fc;">🧾 Kết Quả Đọc Hóa Đơn (Chỉnh sửa thoải mái trước khi Lưu)</div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn ${scannedReceiptData.saveMode === 'total' ? 'btn-primary' : 'btn-ghost'}" style="padding:5px 10px;font-size:11.5px;" onclick="scannedReceiptData.saveMode='total';renderScannedReceiptUI();">
+            1️⃣ Gộp 1 Dòng Tổng Bill
+          </button>
+          <button class="btn ${scannedReceiptData.saveMode === 'items' ? 'btn-primary' : 'btn-ghost'}" style="padding:5px 10px;font-size:11.5px;" onclick="scannedReceiptData.saveMode='items';renderScannedReceiptUI();">
+            🔢 Tách Từng Món (${selectedItemsCount} món)
+          </button>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:8px;">
+        <div>
+          <label style="font-size:11.5px;color:var(--text-secondary);">Người chi tiêu</label>
+          <select class="input-control" style="width:100%;margin-top:3px;padding:6px 8px;font-size:12px;" onchange="scannedReceiptData.person=this.value">
+            ${DB.meta.members.map(m => `<option value="${m}" ${m === scannedReceiptData.person ? 'selected' : ''}>${m}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11.5px;color:var(--text-secondary);">Nguồn tiền / Ngân hàng</label>
+          <select class="input-control" style="width:100%;margin-top:3px;padding:6px 8px;font-size:12px;" onchange="scannedReceiptData.source=this.value">
+            ${bankOptions.map(b => `<option value="${b}" ${b === scannedReceiptData.source ? 'selected' : ''}>${b}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11.5px;color:var(--text-secondary);">Ngày hóa đơn</label>
+          <input type="date" class="input-control" style="width:100%;margin-top:3px;padding:6px 8px;font-size:12px;" value="${scannedReceiptData.date}" onchange="scannedReceiptData.date=this.value" />
+        </div>
+      </div>
+
+      ${scannedReceiptData.saveMode === "total" ? `
+        <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;">
+          <div style="font-size:12px;color:#34d399;font-weight:700;">📌 Chế độ 1: Lưu gọn thành 1 dòng Tổng Bill (Ghi kèm tên các món đã mua)</div>
+          <div style="display:grid;grid-template-columns:1.6fr 1fr 0.9fr;gap:8px;">
+            <div>
+              <label style="font-size:11px;color:var(--text-secondary);">Nội dung tổng hợp</label>
+              <input type="text" class="input-control" style="width:100%;margin-top:2px;font-weight:600;" value="${String(scannedReceiptData.totalContent).replace(/"/g, '&quot;')}" oninput="scannedReceiptData.totalContent=this.value" />
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-secondary);">Tổng số tiền (VNĐ)</label>
+              <input type="number" class="input-control" style="width:100%;margin-top:2px;font-weight:800;color:#34d399;" value="${scannedReceiptData.totalAmount}" oninput="scannedReceiptData.totalAmount=Number(this.value||0)" />
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-secondary);">Hạng mục</label>
+              <select class="input-control" style="width:100%;margin-top:2px;" onchange="scannedReceiptData.category=this.value">
+                ${DB.meta.categories.map(c => `<option value="${c}" ${c === scannedReceiptData.category ? 'selected' : ''}>${c}</option>`).join("")}
+              </select>
+            </div>
+          </div>
+        </div>
+      ` : `
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:12px;color:#38bdf8;font-weight:700;">📌 Chế độ 2: Chọn & sửa từng món trên Bill (${selectedItemsCount} món = ${fmtVND(selectedItemsSum)})</span>
+            <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px;" onclick="addBlankReceiptItem()">➕ Thêm dòng món</button>
+          </div>
+          ${scannedReceiptData.items.map((it, idx) => `
+            <div style="display:grid;grid-template-columns:auto 1.5fr 0.9fr 0.9fr auto;gap:6px;align-items:center;">
+              <input type="checkbox" ${it.checked ? 'checked' : ''} onchange="scannedReceiptData.items[${idx}].checked=this.checked;renderScannedReceiptUI();" />
+              <input type="text" class="input-control" style="padding:6px 8px;font-size:12px;" value="${String(it.name).replace(/"/g, '&quot;')}" oninput="scannedReceiptData.items[${idx}].name=this.value" />
+              <input type="number" class="input-control" style="padding:6px 8px;font-size:12px;color:#34d399;font-weight:700;" value="${it.amount}" oninput="scannedReceiptData.items[${idx}].amount=Number(this.value||0)" />
+              <select class="input-control" style="padding:6px 8px;font-size:12px;" onchange="scannedReceiptData.items[${idx}].category=this.value">
+                ${DB.meta.categories.map(c => `<option value="${c}" ${c === it.category ? 'selected' : ''}>${c}</option>`).join("")}
+              </select>
+              <button class="btn btn-ghost" style="padding:4px 8px;color:#fb7185;" onclick="scannedReceiptData.items.splice(${idx},1);renderScannedReceiptUI();">✕</button>
+            </div>
+          `).join("")}
+        </div>
+      `}
+
+      <button class="btn btn-primary" style="width:100%;padding:11px;font-size:13.5px;" onclick="saveScannedReceiptToTransactions()">
+        💾 Lưu Hóa Đơn Vào Sổ & Đồng Bộ Cloud
+      </button>
+    </div>
+  `;
+}
+
+function addBlankReceiptItem() {
+  scannedReceiptData.items.push({
+    name: "Món mới",
+    amount: 50000,
+    category: "Ăn uống",
+    checked: true
+  });
+  renderScannedReceiptUI();
+}
+
+async function saveScannedReceiptToTransactions() {
+  const m = selectedMonth === 0 ? 10 : selectedMonth;
+  const dateStr = scannedReceiptData.date || `2026-${String(m).padStart(2, "0")}-22`;
+  const monthFromDate = dateStr.split("-")[1] ? Number(dateStr.split("-")[1]) : m;
+
+  if (scannedReceiptData.saveMode === "total") {
+    const content = (scannedReceiptData.totalContent || "").trim();
+    const amount = Number(scannedReceiptData.totalAmount || 0);
+    if (!content || amount <= 0) {
+      alert("Vui lòng kiểm tra lại nội dung và tổng số tiền (> 0 đ)!");
+      return;
+    }
+    closeModal();
+    await addTransactionToState({
+      month: monthFromDate,
+      date: dateStr,
+      content,
+      category: scannedReceiptData.category || "Ăn uống",
+      person: scannedReceiptData.person || "Vợ",
+      amount,
+      source: scannedReceiptData.source || "Tiền mặt / Chuyển khoản"
+    });
+  } else {
+    const chosen = scannedReceiptData.items.filter(i => i.checked && i.name.trim() && Number(i.amount) > 0);
+    if (chosen.length === 0) {
+      alert("Vui lòng chọn ít nhất 1 món hàng có số tiền > 0 đ!");
+      return;
+    }
+    const addedTxs = [];
+    chosen.forEach((it, idx) => {
+      const newNum = DB.transactions.length + 1 + idx;
+      const tx = {
+        id: `TX2026-${String(newNum).padStart(4, "0")}-BILL${idx}`,
+        month: monthFromDate,
+        date: dateStr,
+        row: 0,
+        content: it.name.trim(),
+        category: it.category || "Ăn uống",
+        person: scannedReceiptData.person || "Vợ",
+        amount: Number(it.amount),
+        source: scannedReceiptData.source || "Tiền mặt / Chuyển khoản",
+        was_unmatched_in_excel: false,
+        issue_note: null,
+        is_cloud_added: true
+      };
+      DB.transactions.unshift(tx);
+      addedTxs.push(tx);
+    });
+    closeModal();
+    renderAll();
+    await persistAndSync({ action: "batch_tx", transactions: addedTxs });
+  }
+}
+
+// Hỗ trợ Ctrl+V dán ảnh trực tiếp khi đang mở cửa sổ Quét Bill
+window.addEventListener("paste", (e) => {
+  const modal = document.getElementById("modal-overlay");
+  if (!modal || modal.style.display === "none") return;
+  const items = e.clipboardData?.items || [];
+  for (const item of items) {
+    if (item.type && item.type.startsWith("image/")) {
+      const file = item.getAsFile();
+      if (file) handleReceiptImageSelected(file);
+      break;
+    }
+  }
+});
 
 window.addEventListener("DOMContentLoaded", initApp);
