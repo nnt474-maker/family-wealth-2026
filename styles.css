@@ -889,3 +889,217 @@ tr:hover td {
   background: rgba(16, 185, 129, 0.25);
 }
 
+/* ============================================================================
+ * AI EMAIL CLARIFICATION & SMART REVIEW SYSTEM
+ * ============================================================================ */
+.email-clarify-card {
+  background: linear-gradient(135deg, rgba(30, 27, 75, 0.55), rgba(15, 23, 42, 0.95)) !important;
+  border: 1px solid rgba(245, 158, 11, 0.45) !important;
+  box-shadow: 0 8px 25px -8px rgba(245, 158, 11, 0.25);
+  position: relative;
+  overflow: hidden;
+}
+
+.email-clarify-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; width: 4px; height: 100%;
+  background: linear-gradient(180deg, #f59e0b, #ec4899);
+}
+
+.clarify-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 99px;
+  font-size: 11.5px;
+  font-weight: 700;
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.clarify-badge.resolved {
+  background: rgba(16, 185, 129, 0.16);
+  color: #34d399;
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.clarify-prompt-box {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px dashed rgba(245, 158, 11, 0.35);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 8px 0;
+}
+
+.clarify-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.clarify-pill {
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  color: #c7d2fe;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.clarify-pill:hover {
+  background: rgba(99, 102, 241, 0.35);
+  color: #fff;
+  border-color: var(--primary-light);
+  transform: translateY(-1px);
+}
+
+.clarify-input-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* ============================================================================
+ * AI FINANCIAL ADVISORY & CATEGORY REBALANCING (TƯ VẤN TĂNG / GIẢM CHI TIÊU)
+ * ============================================================================ */
+.advice-hero {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.75), rgba(15, 23, 42, 0.95));
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  border-radius: var(--radius-xl);
+  padding: 22px;
+  margin-bottom: 24px;
+  box-shadow: 0 16px 40px -15px rgba(0, 0, 0, 0.5);
+}
+
+.advice-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.advice-score-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 99px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #34d399;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.advice-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.advice-group-card {
+  background: rgba(15, 23, 42, 0.85);
+  border-radius: 14px;
+  border: 1px solid var(--border-subtle);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.advice-group-card.cut {
+  border-top: 3px solid #f43f5e;
+  background: linear-gradient(180deg, rgba(244, 63, 94, 0.08), rgba(15, 23, 42, 0.85));
+}
+
+.advice-group-card.boost {
+  border-top: 3px solid #10b981;
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.08), rgba(15, 23, 42, 0.85));
+}
+
+.advice-group-card.keep {
+  border-top: 3px solid #38bdf8;
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.08), rgba(15, 23, 42, 0.85));
+}
+
+.advice-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.advice-item-row {
+  background: rgba(2, 6, 23, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.advice-delta-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.delta-cut { background: rgba(244, 63, 94, 0.2); color: #fda4af; }
+.delta-boost { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
+.delta-keep { background: rgba(56, 189, 248, 0.2); color: #bae6fd; }
+
+/* Micro-polish for decluttering UI */
+.quick-preset-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.preset-chip-btn {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: var(--text-secondary);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.preset-chip-btn:hover, .preset-chip-btn.active {
+  background: rgba(99, 102, 241, 0.25);
+  color: #fff;
+  border-color: var(--primary-light);
+}
+
+@media (max-width: 900px) {
+  .advice-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+

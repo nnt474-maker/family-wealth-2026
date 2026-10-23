@@ -136,8 +136,8 @@ KEYWORD_RULES = [
     # (keywords_list, category, default_person, clean_label)
     (["học phí subo", "hphi subo", "hoc phi subo", "tiền học subo"], "Học tập", "Subo", "học phí subo"),
     (["đón bo", "đón subo", "don subo", "grab subo"], "Phí tiện ích", "Subo", "đón subo"),
-    (["tini", "khu vui chơi", "lego", "đồ chơi", "tô tượng", "super wing", "con cưng", "concung"], "Vui chơi", "Subo", None),
-    (["bỉm", "sữa thanh", "kem hăm", "kem bôi hăm", "bình sữa", "túi trữ sữa", "tiêm chủng sugi"], "Đồ dùng GĐ", "Sugi", None),
+    (["tini", "khu vui chơi", "lego", "đồ chơi", "tô tượng", "super wing"], "Vui chơi", "Subo", None),
+    (["bỉm", "sữa thanh", "kem hăm", "kem bôi hăm", "bình sữa", "túi trữ sữa", "tiêm chủng sugi", "con cưng", "concung"], "Đồ dùng GĐ", "Sugi", None),
     (["nhi đồng", "khám sugi", "thuốc sugi"], "Y tế", "Sugi", None),
     (["shinhan", "nợ ck shinhan"], "Nợ", "Chồng", "nợ ck shinhan"),
     (["thuế ck", "nợ thuế"], "Nợ", "Chồng", "nợ thuế ck"),
@@ -200,12 +200,58 @@ def classify_transaction_text(text):
         ("học tập", "Học tập"), ("đồ dùng", "Đồ dùng GĐ"), ("tiện ích", "Phí tiện ích"),
         ("làm đẹp", "Làm đẹp"), ("y tế", "Y tế"), ("event", "Event"), ("nợ", "Nợ")
     ]:
-        if c_key in t_low:
+        if c_key == "nợ":
+            if re.search(r'(?<!ghi\s)(?<!báo\s)(?<!dư\s)\bnợ\b', t_low):
+                cat = "Nợ"
+                confidence = 0.98
+                break
+        elif c_key in t_low:
             cat = c_val
             confidence = 0.98
             break
 
     return cat, person, confidence, reason
+
+
+def is_unclear_email_transaction(friendly_note, raw_content, confidence):
+    """
+    Xác định email giao dịch ngân hàng có nội dung mờ / không rõ mục đích chi tiêu hay không.
+    Nếu không rõ: cần AI hỏi lại người dùng để xác nhận người chi & hạng mục.
+    """
+    fn = (friendly_note or "").strip().lower()
+    rc = (raw_content or "").strip().lower()
+
+    # 1. Độ tin cậy thấp từ bộ từ khóa gia đình
+    if confidence < 0.88:
+        return True, "Nội dung giao dịch chưa khớp từ khóa nào của gia đình, AI cần bạn xác nhận."
+
+    # 2. Nội dung quá ngắn hoặc chỉ toàn chữ số / mã giao dịch
+    if len(fn) < 4:
+        return True, "Nội dung quá ngắn, chỉ có vài ký tự viết tắt ngân hàng."
+    if re.match(r'^\d+$', fn) or re.match(r'^[a-z0-9._\-]{1,6}$', fn):
+        return True, "Nội dung chỉ là mã số/mã POS của ngân hàng, chưa rõ món đồ đã mua."
+
+    # 3. Nội dung chỉ là thuật ngữ chuyển khoản chung chung không có tên người/món
+    vague_patterns = [
+        r'^(thanh toan|chuyen tien|chuyen khoan|rut tien|pos|qr|payment|ecom|transfer|napas|ibft|mbvcb)$',
+        r'^(thanh toan qr|thanh toan pos|gd online|gd tai quay|ecom transaction)$'
+    ]
+    for vp in vague_patterns:
+        if re.search(vp, fn):
+            return True, "Nội dung thanh toán chung chung, chưa rõ mua hàng hóa hay dịch vụ gì."
+
+    return False, None
+
+
+def get_smart_clarification_suggestions(amount, bank, raw_content):
+    """Tạo các lựa chọn gợi ý 1 chạm thông minh khi email chưa rõ nội dung"""
+    return [
+        {"label": "🍲 Ăn uống • Chung", "category": "Ăn uống", "person": "Chung", "note": "Ăn uống gia đình"},
+        {"label": "🧺 Đồ dùng GĐ • Vợ", "category": "Đồ dùng GĐ", "person": "Vợ", "note": "Mua đồ dùng gia đình"},
+        {"label": "⛽ Tiện ích / Xăng • Chồng", "category": "Phí tiện ích", "person": "Chồng", "note": "Đổ xăng / Tiện ích"},
+        {"label": "👶 Bỉm sữa / Y tế • Sugi", "category": "Đồ dùng GĐ", "person": "Sugi", "note": "Mua đồ cho Sugi"},
+        {"label": "👦 Học tập / Đồ chơi • Subo", "category": "Học tập", "person": "Subo", "note": "Chi phí cho Subo"}
+    ]
 
 
 def parse_quick_input(raw_text, default_month=10):
@@ -342,10 +388,11 @@ def parse_bank_emails(raw_email_text):
         friendly_note = content_extracted
         friendly_note = re.sub(r'^(MBVCB|IBFT|NAPAS|QR|POS|ECOM|TT|GD|CHUYEN TIEN|THANH TOAN)[\s._:-]*', '', friendly_note, flags=re.IGNORECASE).strip()
 
-        cat, person, conf, reason = classify_transaction_text(block + " " + friendly_note)
+        cat, person, conf, reason = classify_transaction_text(content_extracted + " " + friendly_note)
+        is_unclear, unclear_msg = is_unclear_email_transaction(friendly_note, content_extracted, conf)
 
         if amt > 0:
-            parsed_items.append({
+            item_data = {
                 "temp_id": f"EMAIL-{idx}-{int(amt)}",
                 "bank": bank,
                 "date": date_str,
@@ -358,8 +405,13 @@ def parse_bank_emails(raw_email_text):
                 "person": person,
                 "source": bank,
                 "confidence": conf,
-                "reason": reason
-            })
+                "reason": reason,
+                "needs_clarification": is_unclear,
+                "unclear_reason": unclear_msg,
+                "ai_question": f"Giao dịch {round(amt):,}đ tại {bank} ('{friendly_note}') chi cho mục đích gì và của ai trong gia đình?" if is_unclear else None,
+                "suggested_options": get_smart_clarification_suggestions(amt, bank, content_extracted) if is_unclear else []
+            }
+            parsed_items.append(item_data)
 
     return parsed_items
 
@@ -384,6 +436,32 @@ def answer_family_question(question, db):
     # Check if asking about a specific month (e.g. "tháng 10", "t10", "tháng 9")
     m_match = re.search(r'(?:tháng|thang|t)\s*(\d{1,2})\b', q)
     target_m = int(m_match.group(1)) if m_match and 1 <= int(m_match.group(1)) <= 12 else None
+
+    if any(k in q for k in ["tư vấn", "tăng giảm", "tăng", "giảm", "cắt giảm", "ngân sách", "tiết kiệm thêm", "tối ưu chi tiêu"]):
+        lines = [
+            "### 💡 Cố Vấn Tài Chính AI: Tư Vấn Tăng / Giảm Chi Tiêu Từng Nhóm\n",
+            "Dựa trên dữ liệu 10 tháng thực tế (Thu: 1.035 tỷ, Chi: 716tr, Thặng dư: +319.2tr / 30.84% thu nhập), AI tư vấn cụ thể như sau:\n",
+            "#### 🔴 1. CÁC NHÓM NÊN CẮT GIẢM:",
+            "- **🍲 Ăn uống (Thực tế: ~17.5tr/tháng - chiếm 24.5% tổng chi)**:",
+            "  * *Khuyến nghị:* **Cắt giảm ~2.500.000 đ/tháng** (mục tiêu giữ dưới 15.000.000 đ/tháng).",
+            "  * *Hành động:* Giảm bớt số bữa ăn ngoài hàng vào cuối tuần (trung bình 600k-1.2tr/bữa) và đặt đồ ăn qua app; lên thực đơn tuần trước khi đi Co.opmart/Emart.",
+            "- **💄 Làm đẹp / Mua sắm (Từng vọt lên 20.9tr ở T7 và 11.9tr ở T2)**:",
+            "  * *Khuyến nghị:* **Khống chế trần cố định 2.500.000 đ/tháng**.",
+            "  * *Hành động:* Gom mua mỹ phẩm/quần áo vào các đợt sale định kỳ, hạn chế mua sắm phát sinh ngoài kế hoạch.",
+            "- **⚡ Phí tiện ích / Phát sinh xe (T9 vọt lên 19.4tr do sửa xe 12.6tr)**:",
+            "  * *Khuyến nghị:* Giữ chi phí sinh hoạt điện nước mạng cố định ~3.5tr/tháng. Các khoản sửa xe đột xuất >5tr nên trích từ Quỹ Khẩn Cấp thay vì trừ thẳng vào ngân sách tháng.\n",
+            "#### 🟢 2. CÁC NHÓM NÊN TĂNG / TẬN DỤNG ĐẦU TƯ:",
+            "- **📈 Đầu tư DCA 3 Quỹ ETF/Mở (FUEVFVND, DCDS, VESAF)**:",
+            "  * *Khuyến nghị:* **NÊN TĂNG TỪ 12.000.000 đ LÊN 15.000.000 đ/tháng**.",
+            "  * *Lý do:* Tháng 10/2026, Vợ đã tất toán 100% khoản trả góp điện thoại (35.49tr), giải phóng ngay **3.000.000 đ/tháng** từ tháng 11/2026. Nên chuyển thẳng khoản này vào DCA 3 quỹ để nhân đôi tốc độ lãi kép!",
+            "- **🎯 Quỹ Tiền Mặt Bắt Đáy (Hiện có 36.57tr)**:",
+            "  * *Khuyến nghị:* **Nâng mức trích từ 4tr lên 6tr/tháng** khi dòng tiền thặng dư trên 35tr/tháng, sẵn sàng mua khi VN-Index chiết khấu sâu.\n",
+            "#### 🟡 3. CÁC NHÓM DUY TRÌ & BẢO VỆ:",
+            "- **👦 Học tập Subo (~15.1tr/tháng):** Duy trì trọn vẹn, đầu tư giáo dục cho con là ưu tiên số 1.",
+            "- **👶 Sugi (~3.8tr/tháng bỉm sữa, y tế):** Đảm bảo dinh dưỡng và tiêm chủng đầy đủ.",
+            "- **💳 Nợ Thuế Chồng:** Duy trì trả đều 3tr/tháng (còn 23.1tr, dự kiến tất toán vào Tháng 6/2027)."
+        ]
+        return "\n".join(lines)
 
     if "lỗi" in q or "logic" in q or "excel" in q or "sai" in q:
         bugs = db["audit"]["formula_bugs"]
@@ -598,7 +676,12 @@ Nội dung: SHOPEE VN - Nước giặt OMO và túi rác gia đình.
 From: BIDV SmartBanking <bidvsmartbanking@bidv.com.vn>
 Subject: [BIDV] Thanh toán hóa đơn thành công
 Ngày 22/10/2026, TK BIDV thanh toán -265,000 VND.
-Nội dung: Nhà thuốc Long Châu mua thuốc ho và vitamin cho Subo."""
+Nội dung: Nhà thuốc Long Châu mua thuốc ho và vitamin cho Subo.
+---
+From: VPBank Online <customercare@vpbank.com.vn>
+Subject: [VPBank] Thông báo giao dịch thẻ ghi nợ
+Ngày 22/10/2026 14:10:00. TK 1988xxxx trừ -1,250,000 VND.
+Nội dung: THANH TOAN POS 004128 CH SO 19."""
 
 
 APPS_SCRIPT_CODE = """/**
@@ -790,6 +873,22 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
             raw_text = body.get("raw_text", SAMPLE_BANK_EMAILS)
             parsed_list = parse_bank_emails(raw_text)
             self._send_json({"ok": True, "items": parsed_list})
+            return
+
+        elif parsed.path == "/api/email/clarify":
+            raw_content = body.get("raw_content", "")
+            amount = float(body.get("amount", 0))
+            user_reply = body.get("user_reply", "").strip()
+            cat, person, conf, reason = classify_transaction_text(raw_content + " " + user_reply)
+            self._send_json({
+                "ok": True,
+                "content": user_reply or raw_content,
+                "category": cat,
+                "person": person,
+                "confidence": max(conf, 0.95),
+                "reason": f"AI cập nhật theo phản hồi: '{user_reply}'" if user_reply else reason,
+                "needs_clarification": False
+            })
             return
 
         elif parsed.path == "/api/email/sync-imap":

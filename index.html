@@ -157,7 +157,7 @@
         </div>
       </header>
 
-      <!-- ZERO-FRICTION 1-LINE AI QUICK INPUT + VOICE + RECEIPT OCR (Always accessible on top) -->
+      <!-- ZERO-FRICTION 1-LINE AI QUICK INPUT + VOICE + RECEIPT OCR -->
       <section class="quick-hero">
         <div class="quick-hero-top">
           <div class="quick-input-wrap">
@@ -174,7 +174,7 @@
             🎙️ Ghi âm
           </button>
           <button class="btn btn-ghost" onclick="openReceiptScannerModal()" title="Chụp ảnh hoặc tải ảnh hóa đơn siêu thị / bill chuyển khoản (Có Gemini Vision AI)" style="border-color:rgba(16,185,129,0.4);color:#6ee7b7;">
-            📸 Quét Bill / Ảnh
+            📸 Quét Bill
           </button>
           <button class="btn btn-ghost" onclick="analyzeQuickInputWithGemini()" title="Dùng Gemini AI tách câu phức tạp hoặc nhiều món" style="border-color:rgba(139,92,246,0.45);color:#c4b5fd;">
             🤖 AI Tách Món
@@ -184,54 +184,45 @@
           </button>
         </div>
 
-        <!-- Thanh chọn chủ động Nguồn tiền, Người chi, Hạng mục ngay trước khi nhập -->
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid rgba(148,163,184,0.14);font-size:12px;">
-          <span style="color:var(--text-secondary);font-weight:600;">🎛️ Chọn sẵn khi nhập:</span>
-          <div style="display:flex;align-items:center;gap:4px;">
-            <span style="color:var(--text-secondary);">Nguồn tiền:</span>
-            <select id="quick-default-source" class="input-control" style="padding:4px 8px;font-size:12px;font-weight:700;color:#38bdf8;" onchange="onQuickPresetChange()">
-              <option value="Tiền mặt">💵 Tiền mặt</option>
-              <option value="Chuyển khoản">📲 Chuyển khoản</option>
-              <option value="Tiền mặt / Chuyển khoản">💵 Tiền mặt / CK</option>
-              <option value="NCB">🏦 NCB</option>
-              <option value="VPBank">🏦 VPBank</option>
-              <option value="BIDV">🏦 BIDV</option>
-              <option value="UOB">🏦 UOB</option>
-              <option value="VPSP">💳 VPSP</option>
-            </select>
-          </div>
-          <div style="display:flex;align-items:center;gap:4px;">
-            <span style="color:var(--text-secondary);">Người chi:</span>
-            <select id="quick-default-person" class="input-control" style="padding:4px 8px;font-size:12px;font-weight:700;" onchange="onQuickPresetChange()">
-              <option value="AUTO">✨ Tự nhận diện (hoặc Chung)</option>
-              <option value="Vợ">👩 Vợ</option>
-              <option value="Chồng">👨 Chồng</option>
-              <option value="Chung">👨‍👩‍👧‍👦 Chung</option>
-              <option value="Subo">👦 Subo</option>
-              <option value="Sugi">👶 Sugi</option>
-            </select>
-          </div>
-          <div style="display:flex;align-items:center;gap:4px;">
-            <span style="color:var(--text-secondary);">Hạng mục:</span>
-            <select id="quick-default-cat" class="input-control" style="padding:4px 8px;font-size:12px;" onchange="onQuickPresetChange()">
-              <option value="AUTO">✨ Tự động phân loại AI</option>
-              <option value="Ăn uống">Ăn uống</option>
-              <option value="Đồ dùng GĐ">Đồ dùng GĐ</option>
-              <option value="Phí tiện ích">Phí tiện ích</option>
-              <option value="Học tập">Học tập</option>
-              <option value="Y tế">Y tế</option>
-              <option value="Vui chơi">Vui chơi</option>
-              <option value="Làm đẹp">Làm đẹp</option>
-              <option value="Công việc">Công việc</option>
-              <option value="Event">Event</option>
-              <option value="Nợ">Nợ</option>
-            </select>
-          </div>
-          <span style="color:var(--text-muted);font-size:11.5px;margin-left:auto;">💡 Mọi giao dịch sau khi lưu đều sửa trực tiếp được ngay trên bảng Sổ Chi Tiêu!</span>
+        <!-- Thanh chọn nhanh tinh gọn: Nguồn tiền, Người chi, Hạng mục -->
+        <div class="quick-preset-bar">
+          <span style="color:var(--text-secondary);font-weight:600;font-size:12px;">🎛️ Chọn sẵn:</span>
+          <select id="quick-default-source" class="input-control" style="padding:3px 8px;font-size:12px;font-weight:700;color:#38bdf8;" onchange="onQuickPresetChange()">
+            <option value="Tiền mặt">💵 Tiền mặt</option>
+            <option value="Chuyển khoản">📲 Chuyển khoản</option>
+            <option value="Tiền mặt / Chuyển khoản">💵 Tiền mặt / CK</option>
+            <option value="NCB">🏦 NCB</option>
+            <option value="VPBank">🏦 VPBank</option>
+            <option value="BIDV">🏦 BIDV</option>
+            <option value="UOB">🏦 UOB</option>
+            <option value="VPSP">💳 VPSP</option>
+          </select>
+          <select id="quick-default-person" class="input-control" style="padding:3px 8px;font-size:12px;font-weight:700;" onchange="onQuickPresetChange()">
+            <option value="AUTO">✨ Người chi: Tự động</option>
+            <option value="Vợ">👩 Vợ</option>
+            <option value="Chồng">👨 Chồng</option>
+            <option value="Chung">👨‍👩‍👧‍👦 Chung</option>
+            <option value="Subo">👦 Subo</option>
+            <option value="Sugi">👶 Sugi</option>
+          </select>
+          <select id="quick-default-cat" class="input-control" style="padding:3px 8px;font-size:12px;" onchange="onQuickPresetChange()">
+            <option value="AUTO">✨ Hạng mục: Tự động AI</option>
+            <option value="Ăn uống">Ăn uống</option>
+            <option value="Đồ dùng GĐ">Đồ dùng GĐ</option>
+            <option value="Phí tiện ích">Phí tiện ích</option>
+            <option value="Học tập">Học tập</option>
+            <option value="Y tế">Y tế</option>
+            <option value="Vui chơi">Vui chơi</option>
+            <option value="Làm đẹp">Làm đẹp</option>
+            <option value="Công việc">Công việc</option>
+            <option value="Event">Event</option>
+            <option value="Nợ">Nợ</option>
+          </select>
+          <span style="color:var(--text-muted);font-size:11.5px;margin-left:auto;">💡 Có thể sửa trực tiếp mọi lúc trên Sổ Chi Tiêu</span>
         </div>
 
-        <div class="quick-preview" id="quick-preview-bar" style="margin-top:8px;">
-          <span>💡 <b>Mẹo:</b> Chọn sẵn <b>Nguồn tiền / Người chi</b> ở thanh trên (App sẽ tự nhớ lựa chọn của bạn), hoặc sửa trực tiếp tại đây và trong bảng <b>Sổ Chi Tiêu</b> bất cứ lúc nào!</span>
+        <div class="quick-preview" id="quick-preview-bar">
+          <!-- Live preview populated by JS -->
         </div>
       </section>
 
@@ -242,6 +233,9 @@
         <div class="kpi-grid" id="dashboard-kpis">
           <!-- Populated by JS -->
         </div>
+
+        <!-- 💡 CỐ VẤN TÀI CHÍNH AI: TƯ VẤN TĂNG / GIẢM CHI TIÊU TỪNG NHÓM -->
+        <div id="dashboard-advice-section"></div>
 
         <div class="grid-2">
           <!-- Left: Monthly Cashflow Chart & Member Breakdown -->
@@ -444,11 +438,16 @@
 
           <!-- Right: Parsed Pending Inbox -->
           <div class="card">
-            <div class="card-header">
+            <div class="card-header" style="flex-wrap:wrap;gap:8px;">
               <div class="card-title">📥 Hộp Thư Giao Dịch Chờ Duyệt (<span id="pending-email-count">0</span> khoản)</div>
-              <button class="btn btn-emerald" id="btn-approve-all" style="padding:8px 14px;font-size:12.5px;" onclick="approveAllEmailItems()">
-                ✅ Duyệt Tất Cả Vào Sổ & Excel
-              </button>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                <button class="btn btn-ghost" id="btn-clarify-all-emails" style="padding:6px 11px;font-size:12px;border-color:rgba(245,158,11,0.45);color:#fbbf24;" onclick="autoClarifyUnclearEmails()" title="Dùng AI kiểm tra và đặt câu hỏi gợi ý cho các mail mờ/chưa rõ">
+                  🤖 AI Rà Soát Mail Chưa Rõ
+                </button>
+                <button class="btn btn-emerald" id="btn-approve-all" style="padding:6px 12px;font-size:12px;" onclick="approveAllEmailItems()">
+                  ✅ Duyệt Tất Cả Vào Sổ & Excel
+                </button>
+              </div>
             </div>
             <div id="parsed-email-list" style="display:flex;flex-direction:column;gap:12px;max-height:520px;overflow-y:auto;">
               <!-- Populated by JS -->
@@ -570,6 +569,7 @@
           </div>
 
           <div class="prompt-chips">
+            <button class="prompt-chip" onclick="askAiQuestion('Tư vấn giúp gia đình nên tăng hoặc giảm chi tiêu nhóm nào?')">💡 Nên tăng/giảm chi tiêu nhóm nào?</button>
             <button class="prompt-chip" onclick="askAiQuestion('Tổng quan sức khỏe tài chính gia đình 10 tháng năm 2026')">🏆 Sức khỏe tài chính 2026</button>
             <button class="prompt-chip" onclick="askAiQuestion('Báo cáo chi tiết thu chi Tháng 10')">📊 Báo cáo Tháng 10</button>
             <button class="prompt-chip" onclick="askAiQuestion('Phân tích chi tiêu Ăn uống 10 tháng qua và trung bình mỗi ngày')">🍲 Tiền ăn uống mỗi ngày</button>

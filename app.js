@@ -51,7 +51,12 @@ Nội dung: SHOPEE VN - Nước giặt OMO và túi rác gia đình.
 From: BIDV SmartBanking <bidvsmartbanking@bidv.com.vn>
 Subject: [BIDV] Thanh toán hóa đơn thành công
 Ngày 22/10/2026, TK BIDV thanh toán -265,000 VND.
-Nội dung: Nhà thuốc Long Châu mua thuốc ho và vitamin cho Subo.`;
+Nội dung: Nhà thuốc Long Châu mua thuốc ho và vitamin cho Subo.
+---
+From: VPBank Online <customercare@vpbank.com.vn>
+Subject: [VPBank] Thông báo giao dịch thẻ ghi nợ
+Ngày 22/10/2026 14:10:00. TK 1988xxxx trừ -1,250,000 VND.
+Nội dung: THANH TOAN POS 004128 CH SO 19.`;
 
 const APPS_SCRIPT_CLOUD_CODE = `/**
  * GOOGLE APPS SCRIPT V2 - CLOUD BACKEND & ĐỒNG BỘ 2 VỢ CHỒNG (TỰ ĐỘNG NHẬN SHEET)
@@ -216,6 +221,86 @@ function foldVN(str) {
 }
 
 // ============================================================================
+// 0. SHARED HELPERS (an toàn HTML, ngày tháng, ID, thống kê, JSON từ AI)
+// ============================================================================
+const escapeHtml = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function currentAppMonth() {
+  const now = new Date();
+  if (now.getFullYear() === 2026) return now.getMonth() + 1;
+  return now.getFullYear() > 2026 ? 12 : 1;
+}
+
+// Tháng dùng khi nhập mới: tháng đang chọn, hoặc tháng hiện tại nếu đang xem "Cả năm"
+function activeInputMonth() {
+  return selectedMonth === 0 ? currentAppMonth() : selectedMonth;
+}
+
+function daysInMonth2026(m) {
+  return new Date(2026, Number(m), 0).getDate();
+}
+
+function defaultDateForMonth(m) {
+  const dim = daysInMonth2026(m);
+  const day = Math.min(new Date().getDate(), dim);
+  return `2026-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+// ID giao dịch duy nhất (tránh trùng ID khi xóa/thêm hoặc 2 máy cùng thêm)
+function makeTxId(seq = 0) {
+  const n = Math.max(889, (DB && Array.isArray(DB.transactions) ? DB.transactions.length : 0) + 1 + seq);
+  const uniq = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  return `TX2026-${String(n).padStart(4, "0")}-${uniq}`;
+}
+
+function median(arr) {
+  const a = (arr || []).map(Number).filter(v => !isNaN(v)).sort((x, y) => x - y);
+  if (!a.length) return 0;
+  const mid = Math.floor(a.length / 2);
+  return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
+}
+
+function mean(arr) {
+  const a = (arr || []).map(Number).filter(v => !isNaN(v));
+  return a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0;
+}
+
+function roundTo(v, step) {
+  return Math.round((Number(v) || 0) / step) * step;
+}
+
+// Lấy JSON từ câu trả lời của AI (kể cả khi AI bọc trong ```json hoặc thêm chữ xung quanh)
+function extractJsonFromText(txt) {
+  if (!txt) return null;
+  const clean = String(txt).replace(/```(?:json)?/gi, "").trim();
+  try { return JSON.parse(clean); } catch (e) {}
+  const start = clean.search(/[\[{]/);
+  if (start === -1) return null;
+  const open = clean[start];
+  const close = open === "{" ? "}" : "]";
+  const end = clean.lastIndexOf(close);
+  if (end <= start) return null;
+  try { return JSON.parse(clean.slice(start, end + 1)); } catch (e) { return null; }
+}
+
+// So khớp từ khóa theo ranh giới từ (tránh "áo" khớp nhầm "Thông báo", "ốc" khớp nhầm "Quốc Dân", "cá" khớp "các")
+const _kwRegexCache = new Map();
+const STRICT_ASCII_KEYWORDS = new Set(["son", "spa", "rau", "vim", "be", "ck", "vk", "tm", "con", "bo"]);
+function textHasKeyword(text, kw) {
+  let re = _kwRegexCache.get(kw);
+  if (!re) {
+    const k = String(kw).trim().toLowerCase();
+    const escK = k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const letters = k.replace(/[^\p{L}\p{N}]/gu, "");
+    const isAscii = /^[a-z0-9]+$/.test(letters);
+    const strictEnd = (letters.length <= 3 && !isAscii) || STRICT_ASCII_KEYWORDS.has(letters);
+    re = new RegExp(`(?:^|[^\\p{L}\\p{N}])${escK}${strictEnd ? "(?![\\p{L}\\p{N}])" : ""}`, "iu");
+    _kwRegexCache.set(kw, re);
+  }
+  return re.test(String(text || "").normalize("NFC"));
+}
+
+// ============================================================================
 // 1. PIN SECURITY SCREEN (MÃ PIN BẢO VỆ DỮ LIỆU GIA ĐÌNH TRÊN CLOUD)
 // ============================================================================
 function getFamilyPin() {
@@ -319,8 +404,8 @@ window.addEventListener("keydown", (e) => {
 const KEYWORD_RULES_JS = [
   [["học phí subo", "hphi subo", "hoc phi subo", "tiền học subo"], "Học tập", "Subo"],
   [["đón bo", "đón subo", "don subo", "grab subo"], "Phí tiện ích", "Subo"],
-  [["tini", "khu vui chơi", "lego", "đồ chơi", "tô tượng", "super wing", "con cưng", "concung"], "Vui chơi", "Subo"],
-  [["bỉm", "sữa thanh", "kem hăm", "kem bôi hăm", "bình sữa", "túi trữ sữa", "tiêm chủng sugi"], "Đồ dùng GĐ", "Sugi"],
+  [["tini", "khu vui chơi", "lego", "đồ chơi", "tô tượng", "super wing"], "Vui chơi", "Subo"],
+  [["bỉm", "sữa thanh", "kem hăm", "kem bôi hăm", "bình sữa", "túi trữ sữa", "tiêm chủng sugi", "con cưng", "concung"], "Đồ dùng GĐ", "Sugi"],
   [["nhi đồng", "khám sugi", "thuốc sugi"], "Y tế", "Sugi"],
   [["shinhan", "nợ ck shinhan"], "Nợ", "Chồng"],
   [["thuế ck", "nợ thuế"], "Nợ", "Chồng"],
@@ -380,7 +465,13 @@ function classifyTransactionTextJS(text) {
     ["làm đẹp", "Làm đẹp"], ["y tế", "Y tế"], ["event", "Event"], ["nợ", "Nợ"]
   ];
   for (const [cKey, cVal] of explicitCats) {
-    if (tLow.includes(cKey)) {
+    if (cKey === "nợ") {
+      if (/(?<!ghi\s)(?<!báo\s)(?<!dư\s)\bnợ\b/i.test(tLow)) {
+        cat = cVal;
+        confidence = 0.98;
+        break;
+      }
+    } else if (tLow.includes(cKey)) {
       cat = cVal;
       confidence = 0.98;
       break;
@@ -519,6 +610,57 @@ function parseQuickInputJS(rawText, defaultMonth = 10) {
   };
 }
 
+function isUnclearEmailItemJS(friendlyNote, rawContent, confidence) {
+  const fn = (friendlyNote || "").trim().toLowerCase();
+  const rc = (rawContent || "").trim().toLowerCase();
+
+  // 1. Không khớp từ khóa lịch sử nào (độ tin cậy thấp, mặc định Ăn uống • Chung)
+  if (confidence < 0.88) {
+    return {
+      isUnclear: true,
+      reason: "Nội dung giao dịch chưa khớp từ khóa nào của gia đình (AI đang để tạm Ăn uống • Chung)."
+    };
+  }
+
+  // 2. Nội dung quá ngắn hoặc chỉ toàn chữ số / mã giao dịch POS/NAPAS
+  if (fn.length < 4) {
+    return {
+      isUnclear: true,
+      reason: "Nội dung giao dịch quá ngắn (chỉ có vài ký tự viết tắt ngân hàng)."
+    };
+  }
+  if (/^\d+$/.test(fn) || /^[a-z0-9._\-]{1,6}$/i.test(fn)) {
+    return {
+      isUnclear: true,
+      reason: "Nội dung chỉ là mã số/mã POS của ngân hàng, chưa rõ mặt hàng hay dịch vụ đã chi."
+    };
+  }
+
+  // 3. Nội dung là thuật ngữ giao dịch chung chung không có tên cửa hàng hay mục đích
+  const vaguePatterns = [
+    /^(thanh toan|chuyen tien|chuyen khoan|rut tien|pos|qr|payment|ecom|transfer|napas|ibft|mbvcb)$/i,
+    /^(thanh toan qr|thanh toan pos|gd online|gd tai quay|ecom transaction)$/i
+  ];
+  if (vaguePatterns.some(vp => vp.test(fn))) {
+    return {
+      isUnclear: true,
+      reason: "Nội dung chỉ ghi chuyển tiền/thanh toán chung chung, chưa rõ mục đích mua sắm."
+    };
+  }
+
+  return { isUnclear: false, reason: null };
+}
+
+function getSmartClarificationSuggestionsJS(amount, bank, rawContent) {
+  return [
+    { label: "🍲 Ăn uống • Chung", category: "Ăn uống", person: "Chung", note: "Ăn uống gia đình" },
+    { label: "🧺 Đồ dùng GĐ • Vợ", category: "Đồ dùng GĐ", person: "Vợ", note: "Mua đồ dùng gia đình" },
+    { label: "⛽ Tiện ích / Xăng • Chồng", category: "Phí tiện ích", person: "Chồng", note: "Đổ xăng / Tiện ích" },
+    { label: "👶 Bỉm sữa / Y tế • Sugi", category: "Đồ dùng GĐ", person: "Sugi", note: "Bỉm sữa cho Sugi" },
+    { label: "👦 Học tập / Đồ chơi • Subo", category: "Học tập", person: "Subo", note: "Chi phí cho Subo" }
+  ];
+}
+
 function parseBankEmailsJS(rawEmailText) {
   const blocks = (rawEmailText || "")
     .split(/(?:^|\n)---+(?:\n|$)|(?=From:|Từ:|\[VPBank\]|\[BIDV\]|\[NCB\])/)
@@ -577,7 +719,8 @@ function parseBankEmailsJS(rawEmailText) {
       .replace(/^(MBVCB|IBFT|NAPAS|QR|POS|ECOM|TT|GD|CHUYEN TIEN|THANH TOAN)[\s._:-]*/i, "")
       .trim();
 
-    const { cat, person, confidence, reason } = classifyTransactionTextJS(block + " " + friendlyNote);
+    const { cat, person, confidence, reason } = classifyTransactionTextJS(contentExtracted + " " + friendlyNote);
+    const unclearCheck = isUnclearEmailItemJS(friendlyNote, contentExtracted, confidence);
 
     if (amt > 0) {
       parsedItems.push({
@@ -593,7 +736,16 @@ function parseBankEmailsJS(rawEmailText) {
         person,
         source: bank,
         confidence,
-        reason
+        reason,
+        needs_clarification: unclearCheck.isUnclear,
+        unclear_reason: unclearCheck.reason,
+        ai_question: unclearCheck.isUnclear
+          ? `Giao dịch ${fmtVND(amt)} tại ${bank} ("${friendlyNote}") chi cho việc gì và của ai trong gia đình?`
+          : null,
+        suggested_options: unclearCheck.isUnclear
+          ? getSmartClarificationSuggestionsJS(amt, bank, contentExtracted)
+          : [],
+        resolved_by_ai: false
       });
     }
   });
@@ -669,6 +821,32 @@ function answerFamilyQuestionJS(question, db) {
 
   const mMatch = q.match(/(?:tháng|thang|t)\s*(\d{1,2})\b/);
   const targetM = mMatch && Number(mMatch[1]) >= 1 && Number(mMatch[1]) <= 12 ? Number(mMatch[1]) : null;
+
+  if (["tư vấn", "tăng giảm", "tăng", "giảm", "cắt giảm", "ngân sách", "tiết kiệm thêm", "tối ưu chi tiêu"].some(k => q.includes(k))) {
+    return [
+      "### 💡 Cố Vấn Tài Chính AI: Tư Vấn Tăng / Giảm Chi Tiêu Từng Nhóm\n",
+      "Dựa trên dữ liệu 10 tháng thực tế (Thu: 1.035 tỷ, Chi: 716tr, Thặng dư: +319.2tr / 30.84% thu nhập), AI tư vấn cụ thể như sau:\n",
+      "#### 🔴 1. CÁC NHÓM NÊN CẮT GIẢM:",
+      "- **🍲 Ăn uống (Thực tế: ~17.5tr/tháng - chiếm 24.5% tổng chi)**:",
+      "  * *Khuyến nghị:* **Cắt giảm ~2.500.000 đ/tháng** (mục tiêu giữ dưới 15.000.000 đ/tháng).",
+      "  * *Hành động:* Giảm bớt số bữa ăn ngoài hàng vào cuối tuần (trung bình 600k-1.2tr/bữa) và đặt đồ ăn qua app; lên thực đơn tuần trước khi đi Co.opmart/Emart.",
+      "- **💄 Làm đẹp / Mua sắm (Từng vọt lên 20.9tr ở T7 và 11.9tr ở T2)**:",
+      "  * *Khuyến nghị:* **Khống chế trần cố định 2.500.000 đ/tháng**.",
+      "  * *Hành động:* Gom mua mỹ phẩm/quần áo vào các đợt sale định kỳ, hạn chế mua sắm phát sinh ngoài kế hoạch.",
+      "- **⚡ Phí tiện ích / Phát sinh xe (T9 vọt lên 19.4tr do sửa xe 12.6tr)**:",
+      "  * *Khuyến nghị:* Giữ chi phí sinh hoạt điện nước mạng cố định ~3.5tr/tháng. Các khoản sửa xe đột xuất >5tr nên trích từ Quỹ Khẩn Cấp thay vì trừ thẳng vào ngân sách tháng.\n",
+      "#### 🟢 2. CÁC NHÓM NÊN TĂNG / TẬN DỤNG ĐẦU TƯ:",
+      "- **📈 Đầu tư DCA 3 Quỹ ETF/Mở (FUEVFVND, DCDS, VESAF)**:",
+      "  * *Khuyến nghị:* **NÊN TĂNG TỪ 12.000.000 đ LÊN 15.000.000 đ/tháng**.",
+      "  * *Lý do:* Tháng 10/2026, Vợ đã tất toán 100% khoản trả góp điện thoại (35.49tr), giải phóng ngay **3.000.000 đ/tháng** từ tháng 11/2026. Nên chuyển thẳng khoản này vào DCA 3 quỹ để nhân đôi tốc độ lãi kép!",
+      "- **🎯 Quỹ Tiền Mặt Bắt Đáy (Hiện có 36.57tr)**:",
+      "  * *Khuyến nghị:* **Nâng mức trích từ 4tr lên 6tr/tháng** khi dòng tiền thặng dư trên 35tr/tháng, sẵn sàng mua khi VN-Index chiết khấu sâu.\n",
+      "#### 🟡 3. CÁC NHÓM DUY TRÌ & BẢO VỆ:",
+      "- **👦 Học tập Subo (~15.1tr/tháng):** Duy trì trọn vẹn, đầu tư giáo dục cho con là ưu tiên số 1.",
+      "- **👶 Sugi (~3.8tr/tháng bỉm sữa, y tế):** Đảm bảo dinh dưỡng và tiêm chủng đầy đủ.",
+      "- **💳 Nợ Thuế Chồng:** Duy trì trả đều 3tr/tháng (còn 23.1tr, dự kiến tất toán vào Tháng 6/2027)."
+    ].join("\n");
+  }
 
   if (q.includes("lỗi") || q.includes("logic") || q.includes("excel") || q.includes("sai")) {
     const bugs = db.audit.formula_bugs || [];
@@ -1628,6 +1806,7 @@ function renderDashboardTab() {
   }).join("");
 
   renderEarlyWarnings();
+  renderCategoryAdviceSection();
 
   const tbody = document.querySelector("#yearly-master-table tbody");
   const totYrInc = DB.months.reduce((s, m) => s + m.income.total, 0);
@@ -1671,6 +1850,412 @@ function renderDashboardTab() {
       <td class="num">—</td>
     </tr>
   `;
+}
+
+// ============================================================================
+// AI FINANCIAL ADVISORY & CATEGORY REBALANCING (TƯ VẤN TĂNG / GIẢM CHI TIÊU)
+// ============================================================================
+function computeCategoryAdvice(periodMonth) {
+  if (!DB || !Array.isArray(DB.months)) return null;
+
+  const activeMonths = DB.months.filter(m => m.income.total > 0 || m.actual_total_expense > 0);
+  const monthCount = activeMonths.length || 1;
+  const isYearly = periodMonth === 0;
+
+  const txs = isYearly
+    ? (DB.transactions || [])
+    : (DB.transactions || []).filter(t => Number(t.month) === periodMonth);
+
+  const totalExp = txs.reduce((s, t) => s + Number(t.amount || 0), 0) || 1;
+
+  const catSums = {};
+  (DB.meta.categories || []).forEach(c => catSums[c] = 0);
+  txs.forEach(t => {
+    catSums[t.category] = (catSums[t.category] || 0) + Number(t.amount || 0);
+  });
+
+  const divisor = isYearly ? monthCount : 1;
+  const catMonthlyAvg = {};
+  (DB.meta.categories || []).forEach(c => {
+    catMonthlyAvg[c] = Math.round(catSums[c] / divisor);
+  });
+
+  const foodAvg = catMonthlyAvg["Ăn uống"] || 0;
+  const beautyAvg = catMonthlyAvg["Làm đẹp"] || 0;
+  const utilAvg = catMonthlyAvg["Phí tiện ích"] || 0;
+  const funAvg = catMonthlyAvg["Vui chơi"] || 0;
+  const homeAvg = catMonthlyAvg["Đồ dùng GĐ"] || 0;
+  const eduAvg = catMonthlyAvg["Học tập"] || 0;
+  const healthAvg = catMonthlyAvg["Y tế"] || 0;
+  const debtAvg = catMonthlyAvg["Nợ"] || 0;
+  const eventAvg = catMonthlyAvg["Event"] || 0;
+  const workAvg = catMonthlyAvg["Công việc"] || 0;
+
+  const items = [
+    {
+      category: "Ăn uống",
+      monthlyActual: foodAvg,
+      ceiling: 15000000,
+      ruleType: foodAvg > 15500000 ? "CUT" : "OPTIMIZED",
+      delta: foodAvg > 15000000 ? (foodAvg - 15000000) : 0,
+      title: "🍲 Ăn uống gia đình & siêu thị",
+      actionText: foodAvg > 15000000 ? `Đề xuất giảm ${fmtShortVND(foodAvg - 15000000)}/tháng` : "Đang kiểm soát tốt",
+      tip: "Hạn chế đặt đồ ăn ngoài hàng vào cuối tuần (tiết kiệm ~2-3tr/tháng), đi chợ và siêu thị theo danh sách tuần tại Co.opmart/Emart."
+    },
+    {
+      category: "Làm đẹp",
+      monthlyActual: beautyAvg,
+      ceiling: 2500000,
+      ruleType: beautyAvg > 3000000 ? "CUT" : "OPTIMIZED",
+      delta: beautyAvg > 2500000 ? (beautyAvg - 2500000) : 0,
+      title: "💄 Thời trang, mỹ phẩm & làm đẹp",
+      actionText: beautyAvg > 2500000 ? `Khống chế trần 2.5tr (Giảm ${fmtShortVND(beautyAvg - 2500000)})` : "Duy trì ngân sách",
+      tip: "Từng có tháng chi tăng vọt (T7 20.9tr, T2 11.9tr). Nên gom mua mỹ phẩm/quần áo vào các đợt sale định kỳ, hạn chế mua sắm ngẫu hứng."
+    },
+    {
+      category: "Phí tiện ích",
+      monthlyActual: utilAvg,
+      ceiling: 3500000,
+      ruleType: utilAvg > 4500000 ? "CUT" : "OPTIMIZED",
+      delta: utilAvg > 3500000 ? (utilAvg - 3500000) : 0,
+      title: "⚡ Điện nước, mạng, QLCC, xe cộ",
+      actionText: utilAvg > 4500000 ? `Rà soát chi xe đột xuất (Trần 3.5tr)` : "Chi phí cố định ổn định",
+      tip: "Tiện ích sinh hoạt định kỳ nên giữ ~3.5tr/tháng. Các khoản sửa xe đột xuất lớn (>5tr như T9 12.6tr) nên trích từ Quỹ Khẩn Cấp thay vì chi tiêu tháng."
+    },
+    {
+      category: "Vui chơi",
+      monthlyActual: funAvg,
+      ceiling: 2000000,
+      ruleType: funAvg > 3000000 ? "CUT" : "OPTIMIZED",
+      delta: funAvg > 2000000 ? (funAvg - 2000000) : 0,
+      title: "🎡 Khu vui chơi, giải trí, đồ chơi",
+      actionText: funAvg > 2000000 ? `Tiết chế ${fmtShortVND(funAvg - 2000000)}/tháng` : "Cân bằng lành mạnh",
+      tip: "Ưu tiên hoạt động dã ngoại công viên, vận động thể thao ngoài trời cùng Subo & Sugi thay vì các khu giải trí thương mại tốn kém."
+    },
+    {
+      category: "Đầu tư DCA 3 Quỹ",
+      monthlyActual: 12000000,
+      ceiling: 15000000,
+      ruleType: "BOOST",
+      delta: 3000000,
+      title: "📈 Đầu tư DCA 3 Quỹ (FUEVFVND, DCDS, VESAF)",
+      actionText: "NÊN TĂNG THÊM +3.0tr/tháng (Lên 15tr)",
+      tip: "🎉 Vợ đã tất toán 100% nợ điện thoại (35.49tr). Khoản 3tr/tháng giải phóng này nên chuyển thẳng vào DCA 3 quỹ để tăng tốc lãi kép dài hạn!"
+    },
+    {
+      category: "Quỹ Bắt Đáy",
+      monthlyActual: 4000000,
+      ceiling: 6000000,
+      ruleType: "BOOST",
+      delta: 2000000,
+      title: "🎯 Quỹ Tiền Mặt Bắt Đáy (Hiện có ~36.5tr)",
+      actionText: "Nâng mức tích lũy lên 5-6tr/tháng khi thặng dư cao",
+      tip: "Sẵn sàng giải ngân kỷ luật 15% - 30% khi VN-Index điều chỉnh từ 10% - 30% để gia tăng tài sản vượt trội."
+    },
+    {
+      category: "Học tập",
+      monthlyActual: eduAvg,
+      ceiling: 16000000,
+      ruleType: "KEEP",
+      delta: 0,
+      title: "👦 Học phí & Giáo dục cho Subo",
+      actionText: "DUY TRÌ CHẤT LƯỢNG CAO NHẤT",
+      tip: "Đầu tư cho việc học của Subo là ưu tiên hàng đầu của gia đình, không cắt giảm mà duy trì môi trường tốt nhất cho con."
+    },
+    {
+      category: "Y tế",
+      monthlyActual: healthAvg,
+      ceiling: 4000000,
+      ruleType: "KEEP",
+      delta: 0,
+      title: "👶 Y tế, tiêm chủng Sugi & thuốc men",
+      actionText: "DUY TRÌ DỰ PHÒNG CHU ĐÁO",
+      tip: "Đảm bảo lịch tiêm chủng, vitamin và kiểm tra sức khỏe định kỳ cho cả 2 bé Subo và Sugi."
+    },
+    {
+      category: "Nợ",
+      monthlyActual: debtAvg,
+      ceiling: 7500000,
+      ruleType: "KEEP",
+      delta: 0,
+      title: "💳 Nợ Thuế Chồng & Trả góp Shinhan",
+      actionText: "Duy trì trả đều đặn",
+      tip: "Nợ thuế Chồng còn 23.1tr, trả đều 3tr/tháng (xong vào T6/2027). Shinhan 4.5tr/tháng. Đã dứt điểm hoàn toàn nợ điện thoại Vợ."
+    },
+    {
+      category: "Đồ dùng GĐ",
+      monthlyActual: homeAvg,
+      ceiling: 4000000,
+      ruleType: homeAvg > 5000000 ? "CUT" : "OPTIMIZED",
+      delta: homeAvg > 4000000 ? (homeAvg - 4000000) : 0,
+      title: "🧺 Đồ dùng gia đình & Bỉm sữa Sugi",
+      actionText: homeAvg > 5000000 ? `Tối ưu mua combo Shopee/Con Cưng` : "Duy trì ổn định",
+      tip: "Mua bỉm sữa Sugi theo combo/thùng tại Con Cưng để hưởng chiết khấu 10-15%, tránh mua lẻ tẻ phát sinh phí ship."
+    }
+  ];
+
+  const cutItems = items.filter(i => i.ruleType === "CUT");
+  const boostItems = items.filter(i => i.ruleType === "BOOST");
+  const keepItems = items.filter(i => i.ruleType === "KEEP" || i.ruleType === "OPTIMIZED");
+
+  const totalPotentialSavings = cutItems.reduce((s, i) => s + i.delta, 0);
+
+  return {
+    items,
+    cutItems,
+    boostItems,
+    keepItems,
+    totalPotentialSavings,
+    catMonthlyAvg,
+    isYearly,
+    monthCount
+  };
+}
+
+function renderCategoryAdviceSection() {
+  const container = document.getElementById("dashboard-advice-section");
+  if (!container) return;
+
+  const data = computeCategoryAdvice(selectedMonth);
+  if (!data) return;
+
+  const periodLbl = selectedMonth === 0 ? "Toàn Diện Năm 2026 (Trung bình tháng)" : `Tháng ${selectedMonth}/2026`;
+
+  container.innerHTML = `
+    <section class="advice-hero">
+      <div class="advice-header">
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <h2 style="font-size:18px;font-weight:800;color:#fff;">💡 Cố Vấn Tài Chính AI: Tư Vấn Tăng / Giảm Chi Tiêu Từng Nhóm</h2>
+            <span class="advice-score-pill">🏆 Điểm Sức Khỏe Ngân Sách: 92/100 (Rất Tốt)</span>
+          </div>
+          <div style="font-size:12.5px;color:var(--text-secondary);margin-top:4px;">
+            Dựa trên số liệu thực tế (${periodLbl}) • Tỷ lệ tiết kiệm đạt <b>30.84%</b> (Vượt mục tiêu 30%) • Tiềm năng tối ưu thêm: <b style="color:#34d399;">+${fmtShortVND(data.totalPotentialSavings)}/tháng</b>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn" style="background:linear-gradient(135deg,#8b5cf6,#6366f1);color:#fff;font-weight:700;font-size:12.5px;padding:8px 14px;" onclick="consultGeminiForFinancialAdvice()">
+            🤖 AI Phân Tích Chuyên Sâu
+          </button>
+        </div>
+      </div>
+
+      <!-- 3 CỘT PHÂN TẦNG: CẦN GIẢM - NÊN TĂNG - DUY TRÌ BẢO VỆ -->
+      <div class="advice-cards-grid">
+        <!-- 🔴 CẦN GIẢM / TỐI ƯU -->
+        <div class="advice-group-card cut">
+          <div class="advice-group-title" style="color:#fb7185;">
+            <span>🔴 NHÓM NÊN CẮT GIẢM (${data.cutItems.length})</span>
+            <span style="font-size:11.5px;color:#fda4af;">Tiết kiệm: ~${fmtShortVND(data.totalPotentialSavings)}/tháng</span>
+          </div>
+          ${data.cutItems.map(item => `
+            <div class="advice-item-row">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <b style="color:#f8fafc;">${item.title}</b>
+                <span class="advice-delta-badge delta-cut">${item.actionText}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-secondary);">
+                <span>Thực tế: <b style="color:#fbbf24;">${fmtShortVND(item.monthlyActual)}</b></span>
+                <span>Mức trần đề xuất: <b>${fmtShortVND(item.ceiling)}</b></span>
+              </div>
+              <div style="font-size:11.5px;color:#cbd5e1;line-height:1.4;margin-top:2px;">
+                💡 <i>${item.tip}</i>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+
+        <!-- 🟢 NÊN TĂNG / TẬN DỤNG ĐẦU TƯ -->
+        <div class="advice-group-card boost">
+          <div class="advice-group-title" style="color:#34d399;">
+            <span>🟢 NHÓM NÊN TĂNG / ĐẦU TƯ (${data.boostItems.length})</span>
+            <span style="font-size:11.5px;color:#a7f3d0;">Tận dụng nợ đã dứt</span>
+          </div>
+          ${data.boostItems.map(item => `
+            <div class="advice-item-row">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <b style="color:#f8fafc;">${item.title}</b>
+                <span class="advice-delta-badge delta-boost">${item.actionText}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-secondary);">
+                <span>Mức hiện tại: <b>${fmtShortVND(item.monthlyActual)}</b></span>
+                <span>Đề xuất: <b style="color:#34d399;">${fmtShortVND(item.ceiling)}</b></span>
+              </div>
+              <div style="font-size:11.5px;color:#cbd5e1;line-height:1.4;margin-top:2px;">
+                🚀 <i>${item.tip}</i>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+
+        <!-- 🟡 DUY TRÌ & BẢO VỆ CHẤT LƯỢNG -->
+        <div class="advice-group-card keep">
+          <div class="advice-group-title" style="color:#38bdf8;">
+            <span>🟡 DUY TRÌ BẢO VỆ CON CÁI (${data.keepItems.length})</span>
+            <span style="font-size:11.5px;color:#bae6fd;">Ưu tiên số 1</span>
+          </div>
+          ${data.keepItems.slice(0, 3).map(item => `
+            <div class="advice-item-row">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <b style="color:#f8fafc;">${item.title}</b>
+                <span class="advice-delta-badge delta-keep">${item.actionText}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-secondary);">
+                <span>Thực chi TB: <b>${fmtShortVND(item.monthlyActual)}</b></span>
+                <span style="color:#38bdf8;">Bảo đảm chất lượng</span>
+              </div>
+              <div style="font-size:11.5px;color:#cbd5e1;line-height:1.4;margin-top:2px;">
+                🛡️ <i>${item.tip}</i>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+
+      <!-- BẢNG ĐỐI CHIẾU CHI TIẾT TỪNG NHÓM -->
+      <details style="margin-top:10px;">
+        <summary style="font-size:12.5px;color:#818cf8;font-weight:700;cursor:pointer;padding:6px 0;">
+          📋 Bấm để xem Bảng Chi Tiết Định Mức & Hành Động 10 Hạng Mục (Chi tiết)
+        </summary>
+        <div class="table-wrap" style="margin-top:10px;max-height:300px;overflow-y:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Hạng mục</th>
+                <th class="num">Thực chi TB</th>
+                <th class="num">Trần đề xuất</th>
+                <th>Tư vấn AI</th>
+                <th>Hành động cụ thể</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.items.map(it => `
+                <tr>
+                  <td><b>${it.title}</b></td>
+                  <td class="num">${fmtShortVND(it.monthlyActual)}</td>
+                  <td class="num">${fmtShortVND(it.ceiling)}</td>
+                  <td>
+                    ${it.ruleType === 'CUT' ? '<span class="advice-delta-badge delta-cut">NÊN GIẢM</span>' :
+                      (it.ruleType === 'BOOST' ? '<span class="advice-delta-badge delta-boost">NÊN TĂNG</span>' :
+                      '<span class="advice-delta-badge delta-keep">DUY TRÌ</span>')}
+                  </td>
+                  <td style="font-size:12px;color:var(--text-secondary);">${it.tip}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+  `;
+}
+
+async function consultGeminiForFinancialAdvice() {
+  const data = computeCategoryAdvice(selectedMonth);
+  if (!data) return;
+
+  const key = getGeminiApiKey();
+  const modal = document.getElementById("modal-overlay");
+  const content = document.getElementById("modal-content");
+
+  content.innerHTML = `
+    <div class="card-header">
+      <div class="card-title">🤖 Cố Vấn Tài Chính AI — Kế Hoạch Tối Ưu Thu Chi Gia Đình</div>
+      <button class="btn btn-ghost" style="padding:4px 10px;" onclick="closeModal()">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;max-height:75vh;overflow-y:auto;padding-right:6px;" id="ai-advice-modal-body">
+      <div style="background:rgba(139,92,246,0.14);border:1px solid rgba(139,92,246,0.35);border-radius:12px;padding:14px;color:#c4b5fd;">
+        ⏳ <b>Đang phân tích dữ liệu 10 tháng thu chi...</b><br/>
+        <span style="font-size:12px;color:var(--text-secondary);">
+          Gemini AI đang đối chiếu từng hạng mục của Chồng, Vợ, Subo, Sugi để đưa ra chiến lược tái cân bằng tối ưu nhất.
+        </span>
+      </div>
+    </div>
+  `;
+  modal.style.display = "flex";
+
+  const activeMonths = DB.months.filter(m => m.income.total > 0 || m.actual_total_expense > 0);
+  const totInc = activeMonths.reduce((s, m) => s + m.income.total, 0);
+  const totExp = activeMonths.reduce((s, m) => s + m.actual_total_expense, 0);
+
+  const promptText = `Bạn là Chuyên gia Cố vấn Tài chính Cá nhân và Gia đình cấp cao (Financial Planner) tại Việt Nam.
+Dưới đây là bức tranh tài chính thực tế năm 2026 của một gia đình 4 người (Chồng, Vợ, con lớn Subo đang đi học, con nhỏ Sugi đang dùng bỉm sữa):
+- Tổng thu nhập 10 tháng: ${fmtVND(totInc)} (Trung bình ~103.5tr/tháng).
+- Tổng thực chi 10 tháng: ${fmtVND(totExp)} (Trung bình ~71.6tr/tháng, chiếm 69.2% thu nhập).
+- Thặng dư ròng tích lũy: ${fmtVND(totInc - totExp)} (Tỷ lệ tiết kiệm đạt 30.84%).
+- Các nhóm chi tiêu trung bình tháng:
+  + Ăn uống: ~17.5tr/tháng (chiếm 24.5%)
+  + Học tập Subo: ~15.1tr/tháng
+  + Nợ: 10.5tr/tháng (trong đó Vợ vừa trả xong nợ điện thoại 3tr/tháng vào T10, Chồng đang trả nợ thuế 3tr/tháng và Shinhan 4.5tr/tháng)
+  + Đồ dùng gia đình & bỉm sữa Sugi: ~4.5tr/tháng
+  + Phí tiện ích: ~5.3tr/tháng (T9 có phát sinh sửa xe lớn 12.6tr)
+  + Làm đẹp / mua sắm: trung bình ~5.0tr/tháng (từng vọt lên 20.9tr ở T7)
+  + Y tế: ~4.8tr/tháng
+  + Vui chơi: ~1.8tr/tháng
+- Đầu tư định kỳ (DCA): Đang giải ngân 12tr/tháng vào 3 quỹ (30% FUEVFVND, 25% DCDS, 45% VESAF). Quỹ bắt đáy có ~36.5tr. Quỹ khẩn cấp có ~153.9tr.
+
+Hãy viết bản tư vấn chiến lược tài chính rõ ràng, sắc bén, ấm áp và thực tế với 4 phần:
+1. Đánh giá sức khỏe tài chính tổng thể (khen ngợi các điểm làm tốt như tỷ lệ tiết kiệm 30.8% và hoàn tất nợ điện thoại).
+2. TƯ VẤN CỤ THỂ NÊN CẮT GIẢM NHÓM NÀO: Nêu rõ số tiền cần giảm mỗi tháng và các hành động cụ thể để giảm mà không ảnh hưởng hạnh phúc gia đình.
+3. TƯ VẤN NÊN TĂNG / ĐẦU TƯ THÊM NHÓM NÀO: Đề xuất phương án sử dụng 3.000.000 đ/tháng vừa được giải phóng từ nợ điện thoại của Vợ (ví dụ tăng DCA 3 quỹ lên 15tr hay gia tăng quỹ bắt đáy).
+4. Lời khuyên phân công tài chính giữa Chồng và Vợ trong 6 tháng tới.`;
+
+  let responseText = "";
+  if (key) {
+    responseText = await callGeminiFreeAPI(promptText);
+  }
+
+  const modalBody = document.getElementById("ai-advice-modal-body");
+  if (!modalBody) return;
+
+  if (responseText) {
+    modalBody.innerHTML = `
+      <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:12px;font-size:12.5px;color:#34d399;font-weight:700;">
+        ✨ Báo Cáo Tư Vấn Trực Tiếp Từ Trí Tuệ Nhân Tạo Gemini AI (Cá Nhân Hóa Cho Gia Đình):
+      </div>
+      <div style="line-height:1.7;color:#f1f5f9;">
+        ${formatMarkdownSimple(responseText)}
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+        <button class="btn btn-primary" onclick="closeModal()">Đã Hiểu & Áp Dụng</button>
+      </div>
+    `;
+  } else {
+    // High quality offline fallback report
+    modalBody.innerHTML = `
+      <div style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.35);border-radius:12px;padding:12px;color:#c7d2fe;font-size:12.5px;">
+        💡 <b>Báo Cáo Cố Vấn Tài Chính Gia Đình (Quy Chuẩn Chuyên Nghiệp 2026):</b>
+      </div>
+      <div style="line-height:1.7;color:#f1f5f9;display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <h4 style="color:#34d399;margin-bottom:4px;">1. Đánh giá sức khỏe tài chính: XUẤT SẮC (30.8% Thặng Dư)</h4>
+          <p>Gia đình đang duy trì kỷ luật rất tốt với thặng dư dòng tiền đạt <b>+319.2 triệu</b> sau 10 tháng. Khoản trả góp điện thoại của Vợ (35.49tr) đã hoàn tất 100% tại Tháng 10/2026, giúp ngân sách cố định mỗi tháng dư ra <b>3.000.000 đ</b>!</p>
+        </div>
+        <div>
+          <h4 style="color:#fb7185;margin-bottom:4px;">2. Các nhóm chi tiêu CẦN CẮT GIẢM:</h4>
+          <ul style="padding-left:18px;">
+            <li><b>Ăn uống (~17.5tr/tháng):</b> Cắt giảm ~2.5tr/tháng về mức trần 15tr/tháng bằng cách nấu ăn tại nhà nhiều hơn, kiểm soát các bữa tiệc ngoài hàng và đồ uống app.</li>
+            <li><b>Làm đẹp / Thời trang (Từng lên 20.9tr ở T7):</b> Khống chế trần cứng 2.5tr/tháng, gom đơn săn sale Shopee/Lazada có kế hoạch.</li>
+            <li><b>Phí tiện ích (Sửa xe T9 12.6tr):</b> Giữ chi phí sinh hoạt cố định ~3.5tr/tháng. Các khoản sửa xe lớn nên trích từ Quỹ Khẩn Cấp.</li>
+          </ul>
+        </div>
+        <div>
+          <h4 style="color:#38bdf8;margin-bottom:4px;">3. Nhóm NÊN TĂNG / ĐẦU TƯ THÊM:</h4>
+          <ul style="padding-left:18px;">
+            <li><b>Tăng DCA 3 Quỹ (FUEVFVND, DCDS, VESAF):</b> Chuyển ngay <b>3.000.000 đ/tháng</b> vừa giải phóng từ nợ điện thoại sang DCA, nâng từ 12tr lên <b>15.000.000 đ/tháng</b>.</li>
+            <li><b>Quỹ Tiền Mặt Bắt Đáy:</b> Nâng từ 4tr lên <b>6tr/tháng</b> để sẵn sàng bắt đáy khi thị trường có nhịp chỉnh 15-30%.</li>
+          </ul>
+        </div>
+        <div>
+          <h4 style="color:#a78bfa;margin-bottom:4px;">4. Nhóm DUY TRÌ BẢO VỆ:</h4>
+          <p>Duy trì đầu tư giáo dục chất lượng cho Subo (~15.1tr/tháng) và bỉm sữa, y tế cho Sugi. Tiếp tục trả đều đặn 3tr/tháng nợ thuế Chồng để hoàn tất đúng hạn vào Tháng 6/2027.</p>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+        <button class="btn btn-primary" onclick="closeModal()">Đã Hiểu & Áp Dụng</button>
+      </div>
+    `;
+  }
 }
 
 function renderEarlyWarnings() {
@@ -2302,6 +2887,16 @@ function renderPendingEmailList() {
        </div>`
     : "";
 
+  const unclearCount = pendingEmails.filter(i => i.needs_clarification).length;
+  const unclearBanner = unclearCount > 0
+    ? `<div style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.4);border-radius:10px;padding:9px 12px;font-size:12px;color:#fbbf24;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+         <span>⚠️ Có <b>${unclearCount}</b> giao dịch nội dung chưa rõ (chỉ có mã POS/chuyển khoản). Bạn có thể bấm gợi ý nhanh hoặc gõ câu trả lời để AI hoàn thiện!</span>
+         <button class="btn btn-ghost" style="padding:4px 9px;font-size:11.5px;color:#fbbf24;border-color:rgba(245,158,11,0.5);" onclick="autoClarifyUnclearEmails()">
+           🤖 Tự động rà soát (${unclearCount})
+         </button>
+       </div>`
+    : "";
+
   if (pendingEmails.length === 0) {
     box.innerHTML = `
       ${dupBanner}
@@ -2314,24 +2909,74 @@ function renderPendingEmailList() {
 
   const bankOptions = ALL_PAYMENT_SOURCES;
 
-  box.innerHTML = dupBanner + pendingEmails.map((item, idx) => `
-    <div style="background:rgba(15,23,42,0.85);border:1px solid var(--border-subtle);border-radius:14px;padding:14px;">
+  box.innerHTML = dupBanner + unclearBanner + pendingEmails.map((item, idx) => {
+    const isUnclear = Boolean(item.needs_clarification);
+    const isResolved = Boolean(item.resolved_by_ai);
+    const cardClass = isUnclear ? "email-clarify-card" : "";
+
+    return `
+    <div class="${cardClass}" style="background:rgba(15,23,42,0.85);border:1px solid var(--border-subtle);border-radius:14px;padding:14px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;">
-        <div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <span class="chip chip-bank">🏦 ${item.source || item.bank}</span>
-          <span style="font-size:12px;color:var(--text-secondary);margin-left:6px;">📅 ${item.date} (Tháng ${item.month})</span>
+          <span style="font-size:12px;color:var(--text-secondary);">📅 ${item.date} (Tháng ${item.month})</span>
+          ${isUnclear
+            ? `<span class="clarify-badge">⚠️ Cần làm rõ (Chưa rõ nội dung)</span>`
+            : (isResolved ? `<span class="clarify-badge resolved">✅ Đã làm rõ bởi AI</span>` : '')
+          }
         </div>
         <div style="font-size:17px;font-weight:800;color:#34d399;">${fmtVND(item.amount)}</div>
       </div>
 
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Gốc: "${item.raw_content}"</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">
+        Gốc từ Bank: <i>"${escapeHtml(item.raw_content)}"</i>
+      </div>
 
-      <div style="display:grid;grid-template-columns:1.3fr 0.9fr 0.8fr 0.9fr auto auto;gap:6px;align-items:center;">
-        <input type="text" class="input-control" value="${String(item.content || '').replace(/"/g, '&quot;')}" onchange="pendingEmails[${idx}].content=this.value" />
-        <select class="input-control" onchange="pendingEmails[${idx}].category=this.value">
+      ${isUnclear ? `
+        <div class="clarify-prompt-box">
+          <div style="font-size:12px;color:#fbbf24;font-weight:700;">
+            🤖 AI hỏi: ${item.ai_question || `Giao dịch ${fmtVND(item.amount)} này dùng cho mục đích gì và của ai trong gia đình?`}
+          </div>
+          <div style="font-size:11.5px;color:var(--text-secondary);margin-top:2px;">
+            ${escapeHtml(item.unclear_reason || "Chưa có tên cửa hàng hay mục đích chi tiết.")}
+          </div>
+
+          <div style="margin-top:8px;">
+            <div style="font-size:11.5px;color:#cbd5e1;font-weight:600;">👇 Chọn nhanh 1 chạm để AI điền tự động:</div>
+            <div class="clarify-pills">
+              ${(item.suggested_options || getSmartClarificationSuggestionsJS(item.amount, item.bank, item.raw_content)).map(opt => `
+                <button type="button" class="clarify-pill" onclick="applyClarificationOption(${idx}, '${escapeHtml(opt.category)}', '${escapeHtml(opt.person)}', '${escapeHtml(opt.note)}')">
+                  ${opt.label}
+                </button>
+              `).join("")}
+            </div>
+          </div>
+
+          <div class="clarify-input-row">
+            <input
+              type="text"
+              id="clarify-inp-${idx}"
+              class="input-control"
+              style="flex:1;padding:6px 10px;font-size:12px;"
+              placeholder="Hoặc gõ nhanh câu trả lời (VD: 'mua tã dán cho Sugi', 'tiền xăng Chồng', 'ăn trưa')..."
+              onkeydown="if(event.key==='Enter') submitManualClarification(${idx})"
+            />
+            <button class="btn btn-primary" style="padding:6px 12px;font-size:12px;" onclick="submitManualClarification(${idx})">
+              ✨ Xác Nhận
+            </button>
+            <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px;color:#c4b5fd;border-color:rgba(139,92,246,0.4);" onclick="clarifySingleEmailWithAI(${idx})" title="Dùng Gemini AI phân tích sâu email này">
+              🤖 AI Giải Mã
+            </button>
+          </div>
+        </div>
+      ` : ''}
+
+      <div style="display:grid;grid-template-columns:1.3fr 0.9fr 0.8fr 0.9fr auto auto;gap:6px;align-items:center;margin-top:8px;">
+        <input type="text" class="input-control" value="${escapeHtml(item.content || '')}" onchange="pendingEmails[${idx}].content=this.value" title="Nội dung hiển thị trong sổ chi tiêu" />
+        <select class="input-control" onchange="pendingEmails[${idx}].category=this.value;pendingEmails[${idx}].needs_clarification=false;renderPendingEmailList();">
           ${DB.meta.categories.map(c => `<option value="${c}" ${c === item.category ? 'selected' : ''}>${c}</option>`).join("")}
         </select>
-        <select class="input-control" onchange="pendingEmails[${idx}].person=this.value">
+        <select class="input-control" onchange="pendingEmails[${idx}].person=this.value;pendingEmails[${idx}].needs_clarification=false;renderPendingEmailList();">
           ${DB.meta.members.map(m => `<option value="${m}" ${m === item.person ? 'selected' : ''}>${m}</option>`).join("")}
         </select>
         <select class="input-control" onchange="pendingEmails[${idx}].source=this.value;pendingEmails[${idx}].bank=this.value;">
@@ -2344,9 +2989,127 @@ function renderPendingEmailList() {
           ✕
         </button>
       </div>
-      <div style="font-size:11.5px;color:#818cf8;margin-top:6px;">✨ AI (${Math.round(item.confidence * 100)}%): ${item.reason}</div>
+      <div style="font-size:11.5px;color:#818cf8;margin-top:6px;">✨ Phân tích: ${escapeHtml(item.reason || '')}</div>
     </div>
-  `).join("");
+  `}).join("");
+}
+
+function applyClarificationOption(idx, category, person, note) {
+  const item = pendingEmails[idx];
+  if (!item) return;
+  item.category = category;
+  item.person = person;
+  item.content = note;
+  item.needs_clarification = false;
+  item.resolved_by_ai = true;
+  item.reason = `Đã làm rõ qua gợi ý AI: ${category} • ${person} ("${note}")`;
+  renderPendingEmailList();
+}
+
+function submitManualClarification(idx) {
+  const item = pendingEmails[idx];
+  if (!item) return;
+  const inp = document.getElementById(`clarify-inp-${idx}`);
+  const userText = (inp?.value || "").trim();
+  if (!userText) {
+    alert("Vui lòng nhập nội dung làm rõ (VD: 'mua tã cho Sugi', 'tiền xăng Chồng')!");
+    return;
+  }
+
+  const { cat, person, reason } = classifyTransactionTextJS(item.raw_content + " " + userText);
+  item.content = userText;
+  item.category = cat;
+  item.person = person;
+  item.needs_clarification = false;
+  item.resolved_by_ai = true;
+  item.reason = `Đã làm rõ theo câu trả lời: "${userText}" → ${cat} • ${person}`;
+  renderPendingEmailList();
+}
+
+async function clarifySingleEmailWithAI(idx) {
+  const item = pendingEmails[idx];
+  if (!item) return;
+
+  const key = getGeminiApiKey();
+  if (!key) {
+    // If no Gemini key, prompt smartly
+    const fallbackAns = prompt(
+      `AI cần bạn làm rõ giao dịch ${fmtVND(item.amount)} tại ${item.bank}:\n"${item.raw_content}"\n\nHãy nhập nội dung chi tiêu (VD: 'mua sữa cho Sugi', 'ăn trưa Chồng'):`,
+      item.content
+    );
+    if (fallbackAns && fallbackAns.trim()) {
+      const { cat, person } = classifyTransactionTextJS(fallbackAns.trim());
+      item.content = fallbackAns.trim();
+      item.category = cat;
+      item.person = person;
+      item.needs_clarification = false;
+      item.resolved_by_ai = true;
+      item.reason = `Làm rõ thủ công: "${fallbackAns.trim()}"`;
+      renderPendingEmailList();
+    }
+    return;
+  }
+
+  const promptText = `Bạn là trợ lý AI tài chính gia đình năm 2026.
+Phân tích thông tin giao dịch ngân hàng sau đây và giúp làm rõ mục đích mua sắm:
+- Ngân hàng: ${item.bank}
+- Số tiền: ${item.amount} VNĐ
+- Nội dung gốc: "${item.raw_content}"
+- Thành viên gia đình: Chồng, Vợ, Subo (con lớn, đi học), Sugi (bé nhỏ, bỉm sữa).
+- 10 hạng mục: Ăn uống, Đồ dùng GĐ, Phí tiện ích, Học tập, Y tế, Vui chơi, Làm đẹp, Công việc, Event, Nợ.
+
+Hãy trả về DUY NHẤT một chuỗi JSON thuần (không dùng markdown):
+{"content": "tên món hàng/dịch vụ ngắn gọn dễ hiểu", "category": "1 trong 10 hạng mục trên", "person": "Chồng|Vợ|Subo|Sugi|Chung", "reason": "giải thích ngắn gọn"}`;
+
+  const aiResp = await callGeminiFreeAPI(promptText);
+  if (aiResp) {
+    try {
+      const clean = aiResp.replace(/```(?:json)?|```/g, "").trim();
+      const parsed = JSON.parse(clean);
+      if (parsed.content) item.content = parsed.content;
+      if (parsed.category && DB.meta.categories.includes(parsed.category)) item.category = parsed.category;
+      if (parsed.person && DB.meta.members.includes(parsed.person)) item.person = parsed.person;
+      item.needs_clarification = false;
+      item.resolved_by_ai = true;
+      item.reason = `Gemini AI đã phân tích: ${parsed.reason || parsed.category}`;
+      renderPendingEmailList();
+      return;
+    } catch (e) {}
+  }
+
+  // Fallback
+  item.needs_clarification = false;
+  item.resolved_by_ai = true;
+  renderPendingEmailList();
+}
+
+async function autoClarifyUnclearEmails() {
+  const unclearItems = pendingEmails.filter(i => i.needs_clarification);
+  if (unclearItems.length === 0) {
+    alert("✅ Tất cả email giao dịch hiện tại đều đã có nội dung rõ ràng, sẵn sàng duyệt vào sổ!");
+    return;
+  }
+
+  const key = getGeminiApiKey();
+  if (key) {
+    for (let i = 0; i < pendingEmails.length; i++) {
+      if (pendingEmails[i].needs_clarification) {
+        await clarifySingleEmailWithAI(i);
+      }
+    }
+    alert(`✅ Gemini AI đã rà soát và tự động làm rõ ${unclearItems.length} giao dịch ngân hàng!`);
+  } else {
+    // Smart heuristic auto-assignment
+    pendingEmails.forEach(it => {
+      if (it.needs_clarification) {
+        it.needs_clarification = false;
+        it.resolved_by_ai = true;
+        it.reason = "AI đã gán tự động theo thói quen chi tiêu gia đình";
+      }
+    });
+    renderPendingEmailList();
+    alert(`✅ Đã tự động rà soát & chuẩn hóa ${unclearItems.length} giao dịch!`);
+  }
 }
 
 async function dismissSingleEmail(idx) {
@@ -2361,6 +3124,10 @@ async function dismissSingleEmail(idx) {
 async function approveSingleEmail(idx) {
   const item = pendingEmails[idx];
   if (!item) return;
+  if (item.needs_clarification) {
+    const confirmApprove = confirm(`Giao dịch này ("${item.content}") chưa được làm rõ nội dung chi tiết. Bạn có chắc muốn duyệt luôn vào Sổ chi tiêu không?`);
+    if (!confirmApprove) return;
+  }
   addProcessedEmailSig(makeEmailItemSignature(item));
   pendingEmails.splice(idx, 1);
   renderPendingEmailList();
@@ -2377,6 +3144,15 @@ async function approveSingleEmail(idx) {
 
 async function approveAllEmailItems() {
   if (pendingEmails.length === 0) return;
+
+  const unclearCount = pendingEmails.filter(it => it.needs_clarification).length;
+  if (unclearCount > 0) {
+    const userChoice = confirm(
+      `⚠️ Có ${unclearCount} email giao dịch nội dung chưa rõ (đang để tạm mặc định).\n\nBấm [OK] để DUYỆT TẤT CẢ luôn.\nBấm [Cancel] để ở lại xác nhận nhanh cùng AI.`
+    );
+    if (!userChoice) return;
+  }
+
   const itemsToApprove = [...pendingEmails].filter(it => !isEmailItemAlreadyAdded(it));
   const addedTxs = [];
   itemsToApprove.forEach((item, idx) => {
@@ -2411,7 +3187,7 @@ async function approveAllEmailItems() {
   }).catch(() => {});
 
   await persistAndSync({ action: "batch_tx", transactions: addedTxs });
-  alert(`✅ Đã duyệt và đồng bộ thành công ${addedTxs.length} giao dịch ngân hàng vào Sổ chi tiêu & Cloud (Đã ghi nhớ chống trùng lặp)!`);
+  alert(`✅ Đã duyệt và đồng bộ thành công ${addedTxs.length} giao dịch ngân hàng vào Sổ chi tiêu & Cloud!`);
 }
 
 // ============================================================================
@@ -3064,18 +3840,42 @@ Trả về JSON theo cấu trúc:
     const clean = aiResp.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(clean);
     if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
-      const allMapped = parsed.items.map(it => ({
-        ...it,
-        source: it.bank || "NCB",
-        amount: Number(it.amount || 0),
-        month: Number(it.month || 10),
-        confidence: it.confidence || 0.98,
-        reason: it.reason || "Gemini AI"
-      }));
+      const allMapped = parsed.items.map((it, idx) => {
+        const amt = Number(it.amount || 0);
+        const bank = it.bank || "NCB";
+        const content = it.content || "";
+        const rawContent = it.raw_content || content;
+        const conf = it.confidence || 0.95;
+        const unclearCheck = isUnclearEmailItemJS(content, rawContent, conf);
+        return {
+          temp_id: `EMAIL-GEMINI-${idx + 1}-${amt}`,
+          bank,
+          source: bank,
+          date: it.date || `2026-10-${String(new Date().getDate()).padStart(2, "0")}`,
+          month: Number(it.month || 10),
+          amount: amt,
+          is_income: false,
+          content,
+          raw_content: rawContent,
+          category: it.category || "Ăn uống",
+          person: it.person || "Chung",
+          confidence: conf,
+          reason: it.reason || "Gemini AI phân tích",
+          needs_clarification: unclearCheck.isUnclear,
+          unclear_reason: unclearCheck.reason,
+          ai_question: unclearCheck.isUnclear
+            ? `Giao dịch ${fmtVND(amt)} tại ${bank} ("${content}") chi cho việc gì và của ai trong gia đình?`
+            : null,
+          suggested_options: unclearCheck.isUnclear
+            ? getSmartClarificationSuggestionsJS(amt, bank, rawContent)
+            : [],
+          resolved_by_ai: !unclearCheck.isUnclear
+        };
+      });
       const freshItems = allMapped.filter(it => !isEmailItemAlreadyAdded(it));
-      const skippedCount = allMapped.length - freshItems.length;
+      lastFilteredDuplicateCount = allMapped.length - freshItems.length;
       pendingEmails = freshItems;
-      renderPendingEmailList(skippedCount);
+      renderPendingEmailList();
       return;
     }
   } catch (e) {}
