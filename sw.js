@@ -1,4 +1,4 @@
-const CACHE_NAME = "family-wealth-2026-v17-ai-email";
+const CACHE_NAME = "family-wealth-2026-v18-ai-email";
 const ASSETS = [
   "./",
   "./index.html",

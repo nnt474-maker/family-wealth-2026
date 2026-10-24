@@ -1568,7 +1568,7 @@ async function pullFromGoogleSheetCloud(silent = true) {
 
 async function initApp() {
   // Tự động kiểm tra phiên bản & thanh tẩy cache cũ trên máy đã cài PWA
-  const APP_BUILD_TAG = "v5.5.1-ai-email-scanner-2026";
+  const APP_BUILD_TAG = "v5.5.2-ai-email-scanner-2026";
   if (localStorage.getItem("FAMILY_BUILD_TAG") !== APP_BUILD_TAG) {
     localStorage.setItem("FAMILY_BUILD_TAG", APP_BUILD_TAG);
     if ("caches" in window) {
@@ -1578,7 +1578,7 @@ async function initApp() {
 
   // Register PWA Service Worker với cơ chế tự động làm mới ngay khi có bản mới
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("./sw.js?v=5.5.1").then(reg => {
+    navigator.serviceWorker.register("./sw.js?v=5.5.2").then(reg => {
       reg.addEventListener("updatefound", () => {
         const newWorker = reg.installing;
         if (newWorker) {
@@ -3386,23 +3386,27 @@ function renderPendingEmailList() {
         </div>
       ` : ''}
 
-      <div style="display:grid;grid-template-columns:1.3fr 0.9fr 0.8fr 0.9fr auto auto;gap:6px;align-items:center;margin-top:8px;">
-        <input type="text" class="input-control" value="${escapeHtml(item.content || '')}" onchange="pendingEmails[${idx}].content=this.value" title="Nội dung hiển thị trong sổ chi tiêu" />
-        <select class="input-control" onchange="pendingEmails[${idx}].category=this.value;pendingEmails[${idx}].needs_clarification=false;renderPendingEmailList();">
-          ${DB.meta.categories.map(c => `<option value="${c}" ${c === item.category ? 'selected' : ''}>${c}</option>`).join("")}
-        </select>
-        <select class="input-control" onchange="pendingEmails[${idx}].person=this.value;pendingEmails[${idx}].needs_clarification=false;renderPendingEmailList();">
-          ${DB.meta.members.map(m => `<option value="${m}" ${m === item.person ? 'selected' : ''}>${m}</option>`).join("")}
-        </select>
-        <select class="input-control" onchange="pendingEmails[${idx}].source=this.value;pendingEmails[${idx}].bank=this.value;">
-          ${bankOptions.map(b => `<option value="${b}" ${b === (item.source || item.bank) ? 'selected' : ''}>${b}</option>`).join("")}
-        </select>
-        <button class="btn btn-primary" style="padding:8px 10px;font-size:12px;" onclick="approveSingleEmail(${idx})" title="Duyệt vào sổ">
-          ✔ Duyệt
-        </button>
-        <button class="btn btn-ghost" style="padding:8px 8px;font-size:12px;color:#fb7185;" onclick="dismissSingleEmail(${idx})" title="Bỏ qua và không hiện lại">
-          ✕
-        </button>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px;">
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input type="text" class="input-control" style="flex:1;font-size:13px;padding:8px 12px;" value="${escapeHtml(item.content || '')}" onchange="pendingEmails[${idx}].content=this.value" placeholder="Tên tóm tắt nội dung chi tiêu..." title="Nội dung hiển thị trong sổ chi tiêu" />
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <select class="input-control" style="flex:1.2;min-width:110px;padding:7px 10px;font-size:12px;" onchange="pendingEmails[${idx}].category=this.value;pendingEmails[${idx}].needs_clarification=false;renderPendingEmailList();" title="Hạng mục chi tiêu">
+            ${DB.meta.categories.map(c => `<option value="${c}" ${c === item.category ? 'selected' : ''}>${c}</option>`).join("")}
+          </select>
+          <select class="input-control" style="flex:1;min-width:85px;padding:7px 10px;font-size:12px;" onchange="pendingEmails[${idx}].person=this.value;pendingEmails[${idx}].needs_clarification=false;renderPendingEmailList();" title="Người chi / Người thụ hưởng">
+            ${DB.meta.members.map(m => `<option value="${m}" ${m === item.person ? 'selected' : ''}>${m}</option>`).join("")}
+          </select>
+          <select class="input-control" style="flex:1.1;min-width:95px;padding:7px 10px;font-size:12px;" onchange="pendingEmails[${idx}].source=this.value;pendingEmails[${idx}].bank=this.value;" title="Nguồn tiền / Thẻ / Ngân hàng">
+            ${bankOptions.map(b => `<option value="${b}" ${b === (item.source || item.bank) ? 'selected' : ''}>${b}</option>`).join("")}
+          </select>
+          <button class="btn btn-primary" style="padding:7px 12px;font-size:12px;white-space:nowrap;" onclick="approveSingleEmail(${idx})" title="Duyệt vào sổ chi tiêu">
+            ✔ Duyệt
+          </button>
+          <button class="btn btn-ghost" style="padding:7px 10px;font-size:12px;color:#fb7185;white-space:nowrap;" onclick="dismissSingleEmail(${idx})" title="Bỏ qua và không hiện lại">
+            ✕
+          </button>
+        </div>
       </div>
       <div style="font-size:11.5px;color:#818cf8;margin-top:6px;">✨ Phân tích: ${escapeHtml(item.reason || '')}</div>
     </div>
