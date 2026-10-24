@@ -788,7 +788,7 @@ function getSmartClarificationSuggestionsJS(amount, bank, rawContent) {
 
 function parseBankEmailsJS(rawEmailText) {
   const blocks = (rawEmailText || "")
-    .split(/(?:^|\n)---+(?:\n|$)|(?=From:|Từ:|\[VPBank\]|\[BIDV\]|\[NCB\])/)
+    .split(/(?:^|\n)---+(?:\n|$)|(?=(?:From|Từ|Sender)\s*:)/i)
     .map(b => b.trim())
     .filter(Boolean);
 
@@ -848,8 +848,11 @@ function parseBankEmailsJS(rawEmailText) {
     const unclearCheck = isUnclearEmailItemJS(friendlyNote, contentExtracted, confidence);
 
     const minDate = getEmailStartDate();
-    if (minDate && dateStr < minDate) {
-      return; // Bỏ qua giao dịch cũ trước ngày bắt đầu (VD: bỏ qua T10, bắt đầu từ 01/11/2026)
+    const nowStr = new Date().toISOString().slice(0, 10);
+    // Chỉ lọc bỏ nếu ngày bắt đầu nhỏ hơn hoặc bằng hôm nay (đã qua ngày đó).
+    // Nếu ngày bắt đầu ở tương lai (VD: đặt trước 01/11 nhưng đang test trong T10), không chặn để người dùng test thoải mái!
+    if (minDate && minDate <= nowStr && dateStr < minDate) {
+      return;
     }
 
     if (amt > 0) {

@@ -326,7 +326,7 @@ def parse_bank_emails(raw_email_text, min_date="2026-11-01"):
     Splits by '---' or email headers or processes line-by-line / block-by-block.
     Filters out transactions before min_date (defaults to 2026-11-01).
     """
-    blocks = [b.strip() for b in re.split(r'(?:^|\n)---+(?:\n|$)|(?=From:|Từ:|\[VPBank\]|\[BIDV\]|\[NCB\])', raw_email_text) if b.strip()]
+    blocks = [b.strip() for b in re.split(r'(?:^|\n)---+(?:\n|$)|(?=(?:From|Từ|Sender)\s*:)', raw_email_text, flags=re.IGNORECASE) if b.strip()]
     if not blocks:
         blocks = [raw_email_text.strip()]
 
@@ -396,8 +396,9 @@ def parse_bank_emails(raw_email_text, min_date="2026-11-01"):
         cat, person, conf, reason = classify_transaction_text(content_extracted + " " + friendly_note)
         is_unclear, unclear_msg = is_unclear_email_transaction(friendly_note, content_extracted, conf)
 
-        # Skip emails before min_date (e.g. before 2026-11-01)
-        if min_date and date_str < min_date:
+        # Skip emails before min_date if min_date has already passed in calendar
+        today_str = datetime.date.today().strftime("%Y-%m-%d")
+        if min_date and min_date <= today_str and date_str < min_date:
             continue
 
         if amt > 0:
