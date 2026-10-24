@@ -21,8 +21,38 @@ const STORAGE_WARNINGS_COLLAPSED_KEY = "FAMILY_WARNINGS_COLLAPSED_2026";
 const STORAGE_AI_MODEL_KEY = "FAMILY_AI_MODEL_2026";
 const STORAGE_AI_BASE_URL_KEY = "FAMILY_AI_BASE_URL_2026";
 
+function normalizeClaudeModelName(input) {
+  const raw = String(input || "").trim();
+  if (!raw) return "claude-sonnet-5-5";
+  const lower = raw.toLowerCase().replace(/[\s_]+/g, "-");
+
+  if (/^(?:claude-)?sonnet-?5[-.]?5$/i.test(lower) || lower === "sonnet-5.5" || lower === "sonnet-5-5" || lower === "5.5" || lower === "sonnet5.5") {
+    return "claude-sonnet-5-5";
+  }
+  if (/^(?:claude-)?haiku-?5[-.]?5$/i.test(lower) || lower === "haiku-5.5" || lower === "haiku5.5") {
+    return "claude-haiku-5-5";
+  }
+  if (/^(?:claude-)?opus-?5[-.]?5$/i.test(lower) || lower === "opus-5.5" || lower === "opus5.5") {
+    return "claude-opus-5-5";
+  }
+  if (/^(?:claude-)?sonnet-?3[-.]?7$/i.test(lower) || lower === "sonnet-3.7" || lower === "sonnet3.7") {
+    return "claude-3-7-sonnet-20250219";
+  }
+  if (/^(?:claude-)?sonnet-?3[-.]?5$/i.test(lower) || lower === "sonnet-3.5" || lower === "sonnet3.5") {
+    return "claude-3-5-sonnet-20241022";
+  }
+  if (/^(?:claude-)?haiku-?3[-.]?5$/i.test(lower) || lower === "haiku-3.5" || lower === "haiku3.5") {
+    return "claude-3-5-haiku-20241022";
+  }
+  if (/^sonnet/i.test(lower) && !lower.startsWith("claude-")) {
+    return `claude-${lower}`;
+  }
+  return raw;
+}
+
 function getAISelectedModel() {
-  return (localStorage.getItem(STORAGE_AI_MODEL_KEY) || (DB && DB.meta && DB.meta.ai_model) || "claude-3-5-sonnet-20241022").trim();
+  const stored = (localStorage.getItem(STORAGE_AI_MODEL_KEY) || (DB && DB.meta && DB.meta.ai_model) || "claude-sonnet-5-5").trim();
+  return normalizeClaudeModelName(stored);
 }
 
 function getAIBaseUrl() {
@@ -1241,9 +1271,14 @@ function getAIProviderName(key) {
   if (!key) return "";
   const model = (getAISelectedModel() || "").toLowerCase();
   if (key.startsWith("sk-ant-") || model.includes("claude") || model.includes("sonnet") || model.includes("haiku") || model.includes("opus")) {
+    if (model.includes("5-5") || model.includes("5.5")) {
+      if (model.includes("haiku")) return "Claude Haiku 5.5";
+      if (model.includes("opus")) return "Claude Opus 5.5";
+      return "Claude Sonnet 5.5";
+    }
     if (model.includes("3.7") || model.includes("3-7")) return "Claude 3.7 Sonnet";
     if (model.includes("haiku")) return "Claude Haiku";
-    return "Claude 3.5 Sonnet";
+    return "Claude Sonnet 5.5";
   }
   if (key.startsWith("AIza") || model.includes("gemini")) return "Gemini AI";
   if (key.startsWith("gsk_") || model.includes("groq") || model.includes("llama")) return "Groq AI";
@@ -1507,7 +1542,7 @@ async function pullFromGoogleSheetCloud(silent = true) {
 
 async function initApp() {
   // Tự động kiểm tra phiên bản & thanh tẩy cache cũ trên máy đã cài PWA
-  const APP_BUILD_TAG = "v3.5.2-claude-sonnet-2026";
+  const APP_BUILD_TAG = "v5.5.0-claude-sonnet-2026";
   if (localStorage.getItem("FAMILY_BUILD_TAG") !== APP_BUILD_TAG) {
     localStorage.setItem("FAMILY_BUILD_TAG", APP_BUILD_TAG);
     if ("caches" in window) {
@@ -1517,7 +1552,7 @@ async function initApp() {
 
   // Register PWA Service Worker với cơ chế tự động làm mới ngay khi có bản mới
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("./sw.js?v=3.5.2").then(reg => {
+    navigator.serviceWorker.register("./sw.js?v=5.5.0").then(reg => {
       reg.addEventListener("updatefound", () => {
         const newWorker = reg.installing;
         if (newWorker) {
@@ -3809,21 +3844,65 @@ function compressImageForOCR(file, maxDimension = 1600, quality = 0.85) {
   });
 }
 
+let cachedDiscoveredAnthropicModels = null;
+
+async function discoverAnthropicModels(apiKey) {
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/models?limit=50", {
+      method: "GET",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      }
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && Array.isArray(data?.data)) {
+      const ids = data.data.map(m => m.id).filter(Boolean);
+      if (ids.length > 0) {
+        cachedDiscoveredAnthropicModels = ids;
+        return { ok: true, models: ids };
+      }
+    }
+    return { ok: false, models: [] };
+  } catch (e) {
+    return { ok: false, models: [] };
+  }
+}
+
 // ============================================================================
-// ANTHROPIC CLAUDE API CLIENT (SUPPORTS CLAUDE 3.5 / 3.7 SONNET & CUSTOM PROXY)
+// ANTHROPIC CLAUDE API CLIENT (SUPPORTS CLAUDE SONNET 5.5, 3.7 & CUSTOM PROXY)
 // ============================================================================
 async function callAnthropicClaudeAPI(apiKey, promptText, imageBase64 = null, mimeType = "image/jpeg", preferredModel = null, customBaseUrl = "") {
-  const modelCandidate = (preferredModel || getAISelectedModel() || "").trim();
+  const rawCandidate = (preferredModel || getAISelectedModel() || "").trim();
+  const normalizedCandidate = normalizeClaudeModelName(rawCandidate);
+
+  // If apiKey is Anthropic official and we haven't discovered models yet, attempt discovery
+  if (apiKey.startsWith("sk-ant-") && (!cachedDiscoveredAnthropicModels || cachedDiscoveredAnthropicModels.length === 0)) {
+    try { await discoverAnthropicModels(apiKey); } catch (e) {}
+  }
+
   const defaultModels = [
-    "claude-3-5-sonnet-20241022",
+    "claude-sonnet-5-5",
+    "claude-haiku-5-5",
+    "claude-opus-5-5",
     "claude-3-7-sonnet-20250219",
+    "claude-3-5-sonnet-20241022",
     "claude-3-5-haiku-20241022",
     "claude-3-haiku-20240307"
   ];
 
   const models = [];
-  if (modelCandidate) {
-    models.push(modelCandidate);
+  if (normalizedCandidate) {
+    models.push(normalizedCandidate);
+  }
+  if (rawCandidate && !models.includes(rawCandidate)) {
+    models.push(rawCandidate);
+  }
+  if (Array.isArray(cachedDiscoveredAnthropicModels)) {
+    cachedDiscoveredAnthropicModels.forEach(m => {
+      if (!models.includes(m)) models.push(m);
+    });
   }
   for (const m of defaultModels) {
     if (!models.includes(m)) models.push(m);
@@ -3893,7 +3972,16 @@ async function callAnthropicClaudeAPI(apiKey, promptText, imageBase64 = null, mi
           if (res.ok && data.content && Array.isArray(data.content)) {
             const text = data.content.filter(p => p.type === "text").map(p => p.text).join("\n");
             if (text) {
-              const simpleName = model.replace("-20241022", "").replace("-20250219", "").replace("-20240307", "");
+              let simpleName = model
+                .replace(/^claude-/, "")
+                .replace("-20241022", "")
+                .replace("-20250219", "")
+                .replace("-20240307", "");
+              if (model === "claude-sonnet-5-5") simpleName = "Sonnet 5.5";
+              else if (model === "claude-haiku-5-5") simpleName = "Haiku 5.5";
+              else if (model === "claude-opus-5-5") simpleName = "Opus 5.5";
+              else if (model.includes("3-7") || model.includes("3.7")) simpleName = "Sonnet 3.7";
+              else if (model.includes("3-5") || model.includes("3.5")) simpleName = "Sonnet 3.5";
               return { ok: true, text, model: `Claude (${simpleName})`, error: null };
             }
           } else {
@@ -4187,29 +4275,32 @@ function openGeminiSettingsModal() {
   const content = document.getElementById("modal-content");
 
   const predefinedModels = [
-    "claude-3-5-sonnet-20241022",
+    "claude-sonnet-5-5",
+    "claude-haiku-5-5",
+    "claude-opus-5-5",
     "claude-3-7-sonnet-20250219",
-    "claude-3-5-haiku-20241022",
+    "claude-3-5-sonnet-20241022",
     "gemini-2.5-flash",
     "gemini-2.0-flash",
     "gpt-4o-mini"
   ];
   const isCustom = currentModel && !predefinedModels.includes(currentModel);
-  const selectedDropdown = isCustom ? "custom" : (currentModel || "claude-3-5-sonnet-20241022");
+  const selectedDropdown = isCustom ? "custom" : (currentModel || "claude-sonnet-5-5");
   const customModelVal = isCustom ? currentModel : "";
 
   content.innerHTML = `
     <div class="card-header">
-      <div class="card-title">🤖 Cài Đặt Não AI (Claude 3.5/3.7 Sonnet • Gemini • OpenAI / Proxy)</div>
+      <div class="card-title">🤖 Cài Đặt Não AI (Claude Sonnet 5.5 • Gemini • OpenAI / Proxy)</div>
       <button class="btn btn-ghost" style="padding:4px 10px;" onclick="closeModal()">✕</button>
     </div>
     <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;max-height:80vh;overflow-y:auto;padding-right:4px;">
       <div style="background:linear-gradient(135deg, rgba(245,158,11,0.18), rgba(168,85,247,0.18));border:1px solid rgba(245,158,11,0.5);border-radius:12px;padding:12px;line-height:1.55;">
-        <div style="font-weight:700;color:#fbbf24;margin-bottom:4px;font-size:14px;">🌟 Khuyên Dùng: Não AI Claude Sonnet (Đọc Bill Siêu Thị & Hóa Đơn Chuẩn 99%)</div>
+        <div style="font-weight:700;color:#fbbf24;margin-bottom:4px;font-size:14px;">🌟 Khuyên Dùng: Não AI Claude Sonnet 5.5 (Đỉnh Cao Nhận Diện Hóa Đơn & Bill Siêu Thị)</div>
         <div style="color:var(--text-secondary);font-size:12px;">
-          • <b>Khả năng đọc ảnh hóa đơn / bill siêu thị:</b> Claude 3.5 Sonnet đứng đầu thế giới về OCR tiếng Việt, nhận diện đúng từng món hàng & số tiền mờ nhăn chuẩn 99%.<br/>
-          • <b>Cách lấy mã Claude chính hãng:</b> Mở <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:#fbbf24;font-weight:700;text-decoration:underline;">👉 console.anthropic.com/settings/keys</a> → Bấm <b>Create Key</b> (mã bắt đầu bằng <code>sk-ant-api03-...</code>).<br/>
-          • <b>Nếu bạn có mã API bên thứ 3 (Sonnet 5.5 / Proxy / OneAPI / OpenAI-HK):</b> Dán mã vào ô bên dưới, chọn model tương ứng và điền Base URL (nếu có).
+          • <b>Khả năng đọc ảnh hóa đơn / bill:</b> Claude Sonnet 5.5 là thế hệ AI mới nhất của Anthropic, đứng đầu thế giới về OCR tiếng Việt, nhận diện đúng từng món hàng & số tiền mờ nhăn chuẩn 99%.<br/>
+          • <b>Tên mã định danh chuẩn:</b> Máy chủ Anthropic quy định tên mã chính thức là <code>claude-sonnet-5-5</code> (hệ thống tự động hỗ trợ dù bạn gõ <code>sonnet 5.5</code> hay <code>sonnet-5.5</code>).<br/>
+          • <b>Cách lấy mã Claude chính hãng:</b> Mở <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:#fbbf24;font-weight:700;text-decoration:underline;">👉 console.anthropic.com/settings/keys</a> → Bấm <b>Create Key</b> (mã <code>sk-ant-...</code>).<br/>
+          • <b>Nếu bạn dùng API bên thứ 3 (Proxy / OneAPI / OpenAI-HK):</b> Dán mã vào ô bên dưới, chọn model tương ứng và điền Base URL.
         </div>
       </div>
 
@@ -4228,19 +4319,21 @@ function openGeminiSettingsModal() {
       <div>
         <label style="font-weight:700;display:block;margin-bottom:4px;">🧠 Chọn Dòng Não AI (Model):</label>
         <select id="modal-ai-model-select" class="input-control" style="width:100%;font-size:13px;" onchange="onAiModelSelectChange()">
-          <option value="claude-3-5-sonnet-20241022" ${selectedDropdown === "claude-3-5-sonnet-20241022" ? "selected" : ""}>👑 Claude 3.5 Sonnet (Khuyên Dùng - Đọc Bill Siêu Thị Chuẩn 99%)</option>
-          <option value="claude-3-7-sonnet-20250219" ${selectedDropdown === "claude-3-7-sonnet-20250219" ? "selected" : ""}>⚡ Claude 3.7 Sonnet (Bản Mới Nhất - Phân Tích Thông Minh Cực Nhanh)</option>
-          <option value="claude-3-5-haiku-20241022" ${selectedDropdown === "claude-3-5-haiku-20241022" ? "selected" : ""}>🍃 Claude 3.5 Haiku (Siêu Tốc Độ - Tiết Kiệm Token)</option>
+          <option value="claude-sonnet-5-5" ${selectedDropdown === "claude-sonnet-5-5" ? "selected" : ""}>👑 Claude Sonnet 5.5 (Khuyên Dùng - Đọc Bill Siêu Đỉnh Chuẩn 99%)</option>
+          <option value="claude-haiku-5-5" ${selectedDropdown === "claude-haiku-5-5" ? "selected" : ""}>⚡ Claude Haiku 5.5 (Siêu Tốc Độ - Tiết Kiệm Token)</option>
+          <option value="claude-opus-5-5" ${selectedDropdown === "claude-opus-5-5" ? "selected" : ""}>🏆 Claude Opus 5.5 (Tư Duy Sâu Cực Mạnh)</option>
+          <option value="claude-3-7-sonnet-20250219" ${selectedDropdown === "claude-3-7-sonnet-20250219" ? "selected" : ""}>🌟 Claude 3.7 Sonnet</option>
+          <option value="claude-3-5-sonnet-20241022" ${selectedDropdown === "claude-3-5-sonnet-20241022" ? "selected" : ""}>💎 Claude 3.5 Sonnet</option>
           <option value="gemini-2.5-flash" ${selectedDropdown === "gemini-2.5-flash" ? "selected" : ""}>✨ Google Gemini 2.5 Flash (Miễn Phí 0đ từ Google AI Studio)</option>
           <option value="gemini-2.0-flash" ${selectedDropdown === "gemini-2.0-flash" ? "selected" : ""}>✨ Google Gemini 2.0 Flash</option>
           <option value="gpt-4o-mini" ${selectedDropdown === "gpt-4o-mini" ? "selected" : ""}>🤖 OpenAI GPT-4o Mini</option>
-          <option value="custom" ${selectedDropdown === "custom" ? "selected" : ""}>⚙️ Tự Nhập Tên Model Khác (VD: sonnet 5.5, claude-3-5-sonnet...)</option>
+          <option value="custom" ${selectedDropdown === "custom" ? "selected" : ""}>⚙️ Tự Nhập Tên Model Khác (Hệ thống tự động nhận dạng sonnet 5.5...)</option>
         </select>
       </div>
 
       <div id="custom-model-wrapper" style="display:${isCustom ? "block" : "none"};">
         <label style="font-weight:700;display:block;margin-bottom:4px;">✏️ Nhập Tên Model Cụ Thể (nếu nhà cung cấp API yêu cầu):</label>
-        <input type="text" id="modal-ai-custom-model" class="input-control" style="width:100%;font-family:monospace;font-size:13px;" value="${customModelVal}" placeholder="VD: claude-3-5-sonnet, sonnet-5.5, claude-3-7-sonnet..." />
+        <input type="text" id="modal-ai-custom-model" class="input-control" style="width:100%;font-family:monospace;font-size:13px;" value="${customModelVal}" placeholder="VD: sonnet-5.5, claude-sonnet-5-5, claude-3-5-sonnet..." />
       </div>
 
       <div>
@@ -4266,13 +4359,17 @@ async function testAndSaveGeminiKey() {
   const inpEl = document.getElementById("modal-gemini-key-input");
   if (inpEl && val) inpEl.value = val;
 
-  const modelSelect = document.getElementById("modal-ai-model-select")?.value || "claude-3-5-sonnet-20241022";
+  const modelSelect = document.getElementById("modal-ai-model-select")?.value || "claude-sonnet-5-5";
   const customModelVal = (document.getElementById("modal-ai-custom-model")?.value || "").trim();
   const baseUrlVal = (document.getElementById("modal-ai-base-url")?.value || "").trim().replace(/\/+$/, "");
 
   let finalModel = modelSelect;
   if (modelSelect === "custom") {
-    finalModel = customModelVal || "claude-3-5-sonnet-20241022";
+    finalModel = normalizeClaudeModelName(customModelVal) || "claude-sonnet-5-5";
+    const inpCustom = document.getElementById("modal-ai-custom-model");
+    if (inpCustom && finalModel !== customModelVal) inpCustom.value = finalModel;
+  } else {
+    finalModel = normalizeClaudeModelName(modelSelect);
   }
 
   // Always save immediately without rejecting any key format!
@@ -4303,7 +4400,7 @@ async function testAndSaveGeminiKey() {
 
   if (diag.text) {
     if (statusEl) {
-      statusEl.innerHTML = `<span style="color:#34d399;font-weight:700;">✅ Kết nối AI thành công (${diag.model})! Đã đồng bộ sang Cloud cho cả 2 vợ chồng.</span>`;
+      statusEl.innerHTML = `<span style="color:#34d399;font-weight:700;">✅ Kết nối Não AI thành công (${diag.model})! Đã đồng bộ sang Cloud cho cả 2 vợ chồng.</span>`;
     }
     setTimeout(() => {
       closeModal();
@@ -4313,10 +4410,11 @@ async function testAndSaveGeminiKey() {
     if (statusEl) {
       statusEl.innerHTML = `
         <div style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.4);border-radius:10px;padding:10px;color:#fcd34d;">
-          ✅ <b>Đã lưu mã API và cấu hình vào hệ thống!</b><br/>
-          <span style="font-size:11.5px;color:var(--text-secondary);">
-            Phản hồi kiểm tra thử: <code>${diag.error || "Không thể kết nối"}</code>.<br/>
-            <i>(Nếu dùng mã Claude chính hãng Anthropic, mã bắt đầu bằng <code>sk-ant-...</code>. Nếu dùng qua cổng proxy trung gian, hãy kiểm tra lại Base URL và tên model).</i>
+          ⚠️ <b>Chưa kết nối được với model:</b> <code>${finalModel}</code><br/>
+          <span style="font-size:11.5px;color:var(--text-secondary);display:block;margin-top:4px;line-height:1.5;">
+            Phản hồi từ máy chủ AI: <code>${diag.error || "Không thể kết nối"}</code>.<br/>
+            • <b>Tên định danh chính thức:</b> Anthropic quy định mã model là <code>claude-sonnet-5-5</code>.<br/>
+            • <b>Kiểm tra số dư (Credits):</b> Nếu bạn dùng mã <code>sk-ant-...</code> chính hãng, hãy kiểm tra tài khoản trên <a href="https://console.anthropic.com/settings/plans" target="_blank" style="color:#60a5fa;text-decoration:underline;">console.anthropic.com/settings/plans</a> xem đã nạp số dư (Credit Balance > $0) chưa nhé!
           </span>
         </div>
       `;

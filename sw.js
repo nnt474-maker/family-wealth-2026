@@ -1,4 +1,4 @@
-const CACHE_NAME = "family-wealth-2026-v15-claude-sonnet";
+const CACHE_NAME = "family-wealth-2026-v16-claude-sonnet-5.5";
 const ASSETS = [
   "./",
   "./index.html",
