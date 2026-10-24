@@ -11,10 +11,13 @@
   <link rel="manifest" href="./manifest.json" />
   <link rel="icon" type="image/svg+xml" href="./icon.svg" />
   <link rel="apple-touch-icon" href="./icon.svg" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css?v=2.6" />
+  <link rel="stylesheet" href="./styles.css?v=3.5.2-claude" />
 </head>
 <body>
   <!-- FAMILY PIN LOCK SCREEN OVERLAY -->
@@ -123,6 +126,9 @@
         <button onclick="exportLatestExcelFile()" class="btn btn-ghost" style="width:100%;font-size:12.5px;padding:8px 10px;color:#34d399;border-color:rgba(16,185,129,0.35);">
           📥 Tải Excel Mới Nhất
         </button>
+        <button onclick="forceUpdateAppVersion()" class="btn btn-ghost" style="width:100%;font-size:12px;padding:7px 8px;color:#38bdf8;border-color:rgba(56,189,248,0.4);">
+          🔄 Cập Nhật App Mới Nhất
+        </button>
         <a href="https://docs.google.com/spreadsheets/d/1FtjpyD-DP4HS8z7uJoYDw9TKwBh3qSCwdXqy1eaQEEk/edit" target="_blank" class="btn btn-ghost" style="width:100%;font-size:12.5px;padding:8px 10px;">
           🔗 Mở Google Sheet Gốc
         </a>
@@ -146,6 +152,9 @@
             </button>
             <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px;border-radius:99px;" onclick="lockAppNow()" title="Khóa màn hình bằng mã PIN">
               🔒 Khóa PIN
+            </button>
+            <button class="btn btn-ghost" style="padding:5px 11px;font-size:12px;border-radius:99px;color:#38bdf8;border-color:rgba(56,189,248,0.4);" onclick="forceUpdateAppVersion()" title="Tải phiên bản mới nhất từ Cloud (Xóa sạch cache cũ)">
+              🔄 Tải Bản Mới
             </button>
           </div>
           <p id="page-subheading">Đồng bộ 2 vợ chồng • Hỗ trợ Não AI Claude 3.5 & Gemini Vision • Đọc Bill siêu thị, Email NCB/VPBank/BIDV & Sửa mọi nơi</p>
@@ -689,6 +698,6 @@
     <div class="card" style="width:100%;max-width:620px;border-color:var(--border-glow);max-height:92vh;overflow-y:auto;" id="modal-content"></div>
   </div>
 
-  <script src="./app.js?v=2.6"></script>
+  <script src="./app.js?v=3.5.2-claude"></script>
 </body>
 </html>

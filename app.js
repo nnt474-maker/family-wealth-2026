@@ -18,6 +18,35 @@ const STORAGE_GEMINI_KEY = "FAMILY_GEMINI_API_KEY_2026";
 const STORAGE_EMAIL_START_DATE_KEY = "FAMILY_EMAIL_START_DATE_2026";
 const STORAGE_TABLE_MODE_KEY = "FAMILY_TABLE_SPREADSHEET_MODE_2026";
 const STORAGE_WARNINGS_COLLAPSED_KEY = "FAMILY_WARNINGS_COLLAPSED_2026";
+const STORAGE_AI_MODEL_KEY = "FAMILY_AI_MODEL_2026";
+const STORAGE_AI_BASE_URL_KEY = "FAMILY_AI_BASE_URL_2026";
+
+function getAISelectedModel() {
+  return (localStorage.getItem(STORAGE_AI_MODEL_KEY) || (DB && DB.meta && DB.meta.ai_model) || "claude-3-5-sonnet-20241022").trim();
+}
+
+function getAIBaseUrl() {
+  return (localStorage.getItem(STORAGE_AI_BASE_URL_KEY) || (DB && DB.meta && DB.meta.ai_base_url) || "").trim();
+}
+
+async function forceUpdateAppVersion() {
+  const confirmed = confirm("Hệ thống sẽ xóa toàn bộ bộ nhớ cache trình duyệt/PWA và tải lại phiên bản mới nhất từ Cloud.\\n\\nDữ liệu sổ chi tiêu và cài đặt của gia đình bạn vẫn được bảo toàn 100% an toàn.\\n\\nBấm OK để cập nhật ngay!");
+  if (!confirmed) return;
+
+  try {
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+  } catch (e) {}
+
+  localStorage.removeItem("FAMILY_BUILD_VER_ACTIVE");
+  window.location.href = window.location.origin + window.location.pathname + "?v=" + Date.now();
+}
 
 function getEmailStartDate() {
   return localStorage.getItem(STORAGE_EMAIL_START_DATE_KEY) || "2026-11-01";
@@ -1210,9 +1239,14 @@ function getGeminiApiKey() {
 
 function getAIProviderName(key) {
   if (!key) return "";
-  if (key.startsWith("sk-ant-")) return "Claude AI (Sonnet)";
-  if (key.startsWith("AIza")) return "Gemini AI";
-  if (key.startsWith("gsk_")) return "Groq AI";
+  const model = (getAISelectedModel() || "").toLowerCase();
+  if (key.startsWith("sk-ant-") || model.includes("claude") || model.includes("sonnet") || model.includes("haiku") || model.includes("opus")) {
+    if (model.includes("3.7") || model.includes("3-7")) return "Claude 3.7 Sonnet";
+    if (model.includes("haiku")) return "Claude Haiku";
+    return "Claude 3.5 Sonnet";
+  }
+  if (key.startsWith("AIza") || model.includes("gemini")) return "Gemini AI";
+  if (key.startsWith("gsk_") || model.includes("groq") || model.includes("llama")) return "Groq AI";
   if (key.startsWith("sk-or-")) return "OpenRouter";
   if (key.startsWith("sk-")) return "Claude / OpenAI";
   return "AI Engine";
@@ -1247,6 +1281,8 @@ function buildCompactCloudState() {
     updated_at: new Date().toISOString(),
     family_pin: getFamilyPin(),
     gemini_api_key: getGeminiApiKey(),
+    ai_model: getAISelectedModel(),
+    ai_base_url: getAIBaseUrl(),
     processed_email_sigs: getProcessedEmailSigs(),
     mailboxes: getFamilyMailboxes(),
     custom_transactions: customTxs,
@@ -1274,6 +1310,14 @@ function applyCompactCloudState(cloudState) {
     DB.meta.gemini_api_key = String(cloudState.gemini_api_key);
     localStorage.setItem(STORAGE_GEMINI_KEY, String(cloudState.gemini_api_key));
     updateGeminiBadgeUI();
+  }
+  if (cloudState.ai_model) {
+    localStorage.setItem(STORAGE_AI_MODEL_KEY, String(cloudState.ai_model));
+    if (DB.meta) DB.meta.ai_model = String(cloudState.ai_model);
+  }
+  if (cloudState.ai_base_url) {
+    localStorage.setItem(STORAGE_AI_BASE_URL_KEY, String(cloudState.ai_base_url));
+    if (DB.meta) DB.meta.ai_base_url = String(cloudState.ai_base_url);
   }
   if (Array.isArray(cloudState.processed_email_sigs)) {
     cloudState.processed_email_sigs.forEach(s => addProcessedEmailSig(s));
@@ -1462,9 +1506,30 @@ async function pullFromGoogleSheetCloud(silent = true) {
 }
 
 async function initApp() {
-  // Register PWA Service Worker if supported
+  // Tự động kiểm tra phiên bản & thanh tẩy cache cũ trên máy đã cài PWA
+  const APP_BUILD_TAG = "v3.5.2-claude-sonnet-2026";
+  if (localStorage.getItem("FAMILY_BUILD_TAG") !== APP_BUILD_TAG) {
+    localStorage.setItem("FAMILY_BUILD_TAG", APP_BUILD_TAG);
+    if ("caches" in window) {
+      caches.keys().then(names => names.forEach(n => caches.delete(n)));
+    }
+  }
+
+  // Register PWA Service Worker với cơ chế tự động làm mới ngay khi có bản mới
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("./sw.js?v=2.7").then(reg => { try { reg.update(); } catch (e) {} }).catch(() => {});
+    navigator.serviceWorker.register("./sw.js?v=3.5.2").then(reg => {
+      reg.addEventListener("updatefound", () => {
+        const newWorker = reg.installing;
+        if (newWorker) {
+          newWorker.addEventListener("statechange", () => {
+            if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+              window.location.reload();
+            }
+          });
+        }
+      });
+      try { reg.update(); } catch (e) {}
+    }).catch(() => {});
   }
 
   // Check if URL has ?cloud=https://script.google.com/... auto-configuration link for spouse
@@ -1482,7 +1547,7 @@ async function initApp() {
   // Load initial database (try static ./data/family_db.json first, fallback to /api/data)
   let baseDb = null;
   try {
-    const res = await fetch("./data/family_db.json?v=2.6");
+    const res = await fetch("./data/family_db.json?v=3.5.2");
     if (res.ok) baseDb = await res.json();
   } catch (e) {}
 
@@ -3745,68 +3810,138 @@ function compressImageForOCR(file, maxDimension = 1600, quality = 0.85) {
 }
 
 // ============================================================================
-// ANTHROPIC CLAUDE API CLIENT (SUPPORTS CLAUDE 3.5 SONNET VISION OCR)
+// ANTHROPIC CLAUDE API CLIENT (SUPPORTS CLAUDE 3.5 / 3.7 SONNET & CUSTOM PROXY)
 // ============================================================================
-async function callAnthropicClaudeAPI(apiKey, promptText, imageBase64 = null, mimeType = "image/jpeg") {
-  const models = [
+async function callAnthropicClaudeAPI(apiKey, promptText, imageBase64 = null, mimeType = "image/jpeg", preferredModel = null, customBaseUrl = "") {
+  const modelCandidate = (preferredModel || getAISelectedModel() || "").trim();
+  const defaultModels = [
     "claude-3-5-sonnet-20241022",
+    "claude-3-7-sonnet-20250219",
     "claude-3-5-haiku-20241022",
-    "claude-3-haiku-20240307",
-    "claude-3-7-sonnet-20250219"
+    "claude-3-haiku-20240307"
   ];
 
+  const models = [];
+  if (modelCandidate) {
+    models.push(modelCandidate);
+  }
+  for (const m of defaultModels) {
+    if (!models.includes(m)) models.push(m);
+  }
+
+  const rawBase = (customBaseUrl || getAIBaseUrl() || "").trim().replace(/\/+$/, "");
+  const isCustomProxy = !!rawBase;
+
+  const endpointsToTry = [];
+  if (isCustomProxy) {
+    if (rawBase.endsWith("/messages")) {
+      endpointsToTry.push({ url: rawBase, format: "anthropic" });
+    } else if (rawBase.endsWith("/chat/completions")) {
+      endpointsToTry.push({ url: rawBase, format: "openai" });
+    } else {
+      endpointsToTry.push({ url: `${rawBase}/v1/messages`, format: "anthropic" });
+      endpointsToTry.push({ url: `${rawBase}/messages`, format: "anthropic" });
+      endpointsToTry.push({ url: `${rawBase}/v1/chat/completions`, format: "openai" });
+      endpointsToTry.push({ url: `${rawBase}/chat/completions`, format: "openai" });
+    }
+  } else {
+    endpointsToTry.push({ url: "https://api.anthropic.com/v1/messages", format: "anthropic" });
+  }
+
   let lastError = "";
-  for (const model of models) {
-    try {
-      const userContent = [];
-      if (imageBase64) {
-        userContent.push({
-          type: "image",
-          source: {
-            type: "base64",
-            media_type: mimeType || "image/jpeg",
-            data: imageBase64
+  for (const ep of endpointsToTry) {
+    for (const model of models) {
+      try {
+        if (ep.format === "anthropic") {
+          const userContent = [];
+          if (imageBase64) {
+            userContent.push({
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: mimeType || "image/jpeg",
+                data: imageBase64
+              }
+            });
           }
-        });
-      }
-      userContent.push({
-        type: "text",
-        text: promptText
-      });
+          userContent.push({
+            type: "text",
+            text: promptText
+          });
 
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true"
-        },
-        body: JSON.stringify({
-          model: model,
-          max_tokens: 2500,
-          messages: [{ role: "user", content: userContent }]
-        })
-      });
+          const headers = {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+            "anthropic-dangerous-direct-browser-access": "true"
+          };
+          if (!apiKey.startsWith("sk-ant-")) {
+            headers["Authorization"] = `Bearer ${apiKey}`;
+          }
 
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.content && Array.isArray(data.content)) {
-        const text = data.content.filter(p => p.type === "text").map(p => p.text).join("\n");
-        if (text) {
-          const simpleName = model.replace("-20241022", "").replace("-20250219", "").replace("-20240307", "");
-          return { ok: true, text, model: `Claude (${simpleName})`, error: null };
+          const res = await fetch(ep.url, {
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify({
+              model: model,
+              max_tokens: 2500,
+              messages: [{ role: "user", content: userContent }]
+            })
+          });
+
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.content && Array.isArray(data.content)) {
+            const text = data.content.filter(p => p.type === "text").map(p => p.text).join("\n");
+            if (text) {
+              const simpleName = model.replace("-20241022", "").replace("-20250219", "").replace("-20240307", "");
+              return { ok: true, text, model: `Claude (${simpleName})`, error: null };
+            }
+          } else {
+            const errMsg = data?.error?.message || (typeof data?.error === "string" ? data.error : "") || `HTTP ${res.status}`;
+            lastError = errMsg;
+            if (res.status === 401 || (data?.error && data.error.type === "authentication_error")) {
+              return { ok: false, text: null, model: null, error: `Lỗi xác thực Claude API: ${errMsg}` };
+            }
+          }
+        } else if (ep.format === "openai") {
+          const userContent = imageBase64
+            ? [
+                { type: "text", text: promptText },
+                { type: "image_url", image_url: { url: `data:${mimeType || "image/jpeg"};base64,${imageBase64}` } }
+              ]
+            : promptText;
+
+          const res = await fetch(ep.url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+              model: model,
+              messages: [{ role: "user", content: userContent }],
+              max_tokens: 2500,
+              temperature: 0.2
+            })
+          });
+
+          const data = await res.json().catch(() => ({}));
+          if (res.ok) {
+            const text = data?.choices?.[0]?.message?.content;
+            if (text) {
+              return { ok: true, text, model: `Proxy/Claude (${model})`, error: null };
+            }
+          } else {
+            const errMsg = data?.error?.message || `HTTP ${res.status}`;
+            lastError = errMsg;
+          }
         }
-      } else {
-        const errMsg = data?.error?.message || `HTTP ${res.status}`;
-        lastError = errMsg;
-        if (res.status === 401 || (data?.error && data.error.type === "authentication_error")) {
-          return { ok: false, text: null, model: null, error: `Lỗi xác thực Claude API: ${errMsg}` };
-        }
+      } catch (e) {
+        lastError = String(e.message || e);
       }
-    } catch (e) {
-      lastError = String(e.message || e);
     }
   }
+
   return { ok: false, text: null, model: null, error: lastError || "Không nhận được phản hồi từ máy chủ Claude API" };
 }
 
@@ -3871,15 +4006,25 @@ async function callAIWithDiagnostics(promptText, imageBase64 = null, mimeType = 
   const apiKey = cleanApiKeyInput(overrideKey !== null ? overrideKey : getGeminiApiKey());
   if (!apiKey) return { text: null, error: "Chưa nhập API Key" };
 
+  const selectedModel = getAISelectedModel();
+  const customBaseUrl = getAIBaseUrl();
+
   let firstRealError = "";
 
-  // 1. ANTHROPIC CLAUDE API (Mã bắt đầu bằng sk-ant-)
-  if (apiKey.startsWith("sk-ant-")) {
-    const claudeRes = await callAnthropicClaudeAPI(apiKey, promptText, imageBase64, mimeType);
+  // 1. ANTHROPIC CLAUDE HOẶC NGƯỜI DÙNG CẤU HÌNH CLAUDE / PROXY
+  const isClaudeKey = apiKey.startsWith("sk-ant-");
+  const isClaudeModel = /claude|sonnet|haiku|opus/i.test(selectedModel);
+  const hasCustomProxy = !!customBaseUrl;
+
+  if (isClaudeKey || hasCustomProxy || (isClaudeModel && !apiKey.startsWith("AIza"))) {
+    const claudeRes = await callAnthropicClaudeAPI(apiKey, promptText, imageBase64, mimeType, selectedModel, customBaseUrl);
     if (claudeRes.ok) {
       return { text: claudeRes.text, model: claudeRes.model, keyVerified: true, error: null };
     }
-    return { text: null, model: null, keyVerified: false, error: claudeRes.error };
+    if (isClaudeKey) {
+      return { text: null, model: null, keyVerified: false, error: claudeRes.error };
+    }
+    if (!firstRealError) firstRealError = claudeRes.error;
   }
 
   // 2. OpenAI / Groq / OpenRouter / DeepSeek
@@ -3888,10 +4033,10 @@ async function callAIWithDiagnostics(promptText, imageBase64 = null, mimeType = 
     if (apiKey.startsWith("gsk_")) {
       endpoints.push({ url: "https://api.groq.com/openai/v1/chat/completions", model: "llama-3.3-70b-versatile" });
     } else if (apiKey.startsWith("sk-or-")) {
-      endpoints.push({ url: "https://openrouter.ai/api/v1/chat/completions", model: "anthropic/claude-3.5-sonnet" });
+      endpoints.push({ url: "https://openrouter.ai/api/v1/chat/completions", model: selectedModel || "anthropic/claude-3.5-sonnet" });
       endpoints.push({ url: "https://openrouter.ai/api/v1/chat/completions", model: "google/gemini-2.0-flash-001" });
     } else {
-      endpoints.push({ url: "https://api.openai.com/v1/chat/completions", model: "gpt-4o-mini" });
+      endpoints.push({ url: "https://api.openai.com/v1/chat/completions", model: selectedModel && !isClaudeModel ? selectedModel : "gpt-4o-mini" });
       endpoints.push({ url: "https://api.deepseek.com/chat/completions", model: "deepseek-chat" });
     }
     for (const ep of endpoints) {
@@ -3926,7 +4071,7 @@ async function callAIWithDiagnostics(promptText, imageBase64 = null, mimeType = 
         if (!firstRealError) firstRealError = String(e.message || e);
       }
     }
-    if (firstRealError) {
+    if (firstRealError && !apiKey.startsWith("AIza")) {
       return { text: null, model: null, keyVerified: false, error: firstRealError };
     }
   }
@@ -3950,8 +4095,14 @@ async function callAIWithDiagnostics(promptText, imageBase64 = null, mimeType = 
       "gemini-2.0-flash",
       "gemini-2.5-flash-lite",
       "gemini-2.0-flash-lite",
-      "gemini-flash-latest"
+      "gemini-1.5-flash",
+      "gemini-1.5-flash-latest",
+      "gemini-1.5-pro"
     ];
+  }
+
+  if (selectedModel && selectedModel.startsWith("gemini") && !modelsToTry.includes(selectedModel)) {
+    modelsToTry = [selectedModel, ...modelsToTry];
   }
 
   // Filter out text-only gemma models if an image is attached
@@ -4015,43 +4166,93 @@ async function callGeminiFreeAPI(promptText, imageBase64 = null, mimeType = "ima
   return res.text;
 }
 
+function onAiModelSelectChange() {
+  const sel = document.getElementById("modal-ai-model-select");
+  const wrapper = document.getElementById("custom-model-wrapper");
+  if (!sel || !wrapper) return;
+  if (sel.value === "custom") {
+    wrapper.style.display = "block";
+    const inp = document.getElementById("modal-ai-custom-model");
+    if (inp) inp.focus();
+  } else {
+    wrapper.style.display = "none";
+  }
+}
+
 function openGeminiSettingsModal() {
   const currentKey = getGeminiApiKey();
+  const currentModel = getAISelectedModel();
+  const currentBaseUrl = getAIBaseUrl();
   const modal = document.getElementById("modal-overlay");
   const content = document.getElementById("modal-content");
 
+  const predefinedModels = [
+    "claude-3-5-sonnet-20241022",
+    "claude-3-7-sonnet-20250219",
+    "claude-3-5-haiku-20241022",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gpt-4o-mini"
+  ];
+  const isCustom = currentModel && !predefinedModels.includes(currentModel);
+  const selectedDropdown = isCustom ? "custom" : (currentModel || "claude-3-5-sonnet-20241022");
+  const customModelVal = isCustom ? currentModel : "";
+
   content.innerHTML = `
     <div class="card-header">
-      <div class="card-title">🤖 Cài Đặt Não AI (Anthropic Claude • Google Gemini • OpenAI)</div>
+      <div class="card-title">🤖 Cài Đặt Não AI (Claude 3.5/3.7 Sonnet • Gemini • OpenAI / Proxy)</div>
       <button class="btn btn-ghost" style="padding:4px 10px;" onclick="closeModal()">✕</button>
     </div>
     <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;max-height:80vh;overflow-y:auto;padding-right:4px;">
-      <div style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.45);border-radius:12px;padding:12px;line-height:1.55;">
-        <div style="font-weight:700;color:#fbbf24;margin-bottom:4px;">🌟 Khuyên Dùng: Não AI Claude (Anthropic Claude 3.5 Sonnet)</div>
+      <div style="background:linear-gradient(135deg, rgba(245,158,11,0.18), rgba(168,85,247,0.18));border:1px solid rgba(245,158,11,0.5);border-radius:12px;padding:12px;line-height:1.55;">
+        <div style="font-weight:700;color:#fbbf24;margin-bottom:4px;font-size:14px;">🌟 Khuyên Dùng: Não AI Claude Sonnet (Đọc Bill Siêu Thị & Hóa Đơn Chuẩn 99%)</div>
         <div style="color:var(--text-secondary);font-size:12px;">
           • <b>Khả năng đọc ảnh hóa đơn / bill siêu thị:</b> Claude 3.5 Sonnet đứng đầu thế giới về OCR tiếng Việt, nhận diện đúng từng món hàng & số tiền mờ nhăn chuẩn 99%.<br/>
-          • <b>Cách lấy mã Claude:</b> Mở trang <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:#fbbf24;font-weight:700;text-decoration:underline;">👉 console.anthropic.com/settings/keys</a> → <b>Create Key</b> (mã bắt đầu bằng <code>sk-ant-api03-...</code>).<br/>
-          • Dán trực tiếp vào ô bên dưới, hệ thống tự động kích hoạt não Claude Vision OCR!
+          • <b>Cách lấy mã Claude chính hãng:</b> Mở <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:#fbbf24;font-weight:700;text-decoration:underline;">👉 console.anthropic.com/settings/keys</a> → Bấm <b>Create Key</b> (mã bắt đầu bằng <code>sk-ant-api03-...</code>).<br/>
+          • <b>Nếu bạn có mã API bên thứ 3 (Sonnet 5.5 / Proxy / OneAPI / OpenAI-HK):</b> Dán mã vào ô bên dưới, chọn model tương ứng và điền Base URL (nếu có).
         </div>
       </div>
 
       <div style="background:rgba(15,23,42,0.8);border:1px solid var(--border-subtle);border-radius:12px;padding:12px;">
-        <div style="font-weight:700;color:#38bdf8;margin-bottom:6px;">🚀 Hoặc Dùng Google AI Studio (Gemini Free 0đ):</div>
-        <ol style="margin:0;padding-left:18px;color:var(--text-secondary);font-size:12px;line-height:1.6;">
-          <li>Mở trang: <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:#34d399;font-weight:700;text-decoration:underline;">👉 aistudio.google.com/app/apikey</a></li>
-          <li>Bấm <b>Copy API key</b> (hoặc <b>Create API key</b>) rồi dán vào ô bên dưới.</li>
-        </ol>
+        <div style="font-weight:700;color:#38bdf8;margin-bottom:4px;">🚀 Hoặc Dùng Google AI Studio (Gemini Miễn Phí 0đ):</div>
+        <div style="color:var(--text-secondary);font-size:12px;line-height:1.5;">
+          Mở trang: <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:#34d399;font-weight:700;text-decoration:underline;">👉 aistudio.google.com/app/apikey</a> → Bấm <b>Copy API key</b> rồi dán vào ô bên dưới.
+        </div>
       </div>
 
       <div>
-        <label style="font-weight:700;display:block;margin-bottom:4px;">🔑 Dán Mã API Key (Claude / Gemini / OpenAI) vào đây:</label>
-        <input type="text" id="modal-gemini-key-input" class="input-control" style="width:100%;font-family:monospace;font-size:13px;" value="${currentKey}" placeholder="Dán mã API Key Claude (sk-ant-...) hoặc Gemini (AIza...)..." />
+        <label style="font-weight:700;display:block;margin-bottom:4px;">🔑 Mã API Key (Claude / Gemini / OpenAI / Proxy):</label>
+        <input type="text" id="modal-gemini-key-input" class="input-control" style="width:100%;font-family:monospace;font-size:13px;" value="${currentKey}" placeholder="Dán mã API Key Claude (sk-ant-...) hoặc Gemini (AIza...) hoặc Proxy (sk-...)..." />
+      </div>
+
+      <div>
+        <label style="font-weight:700;display:block;margin-bottom:4px;">🧠 Chọn Dòng Não AI (Model):</label>
+        <select id="modal-ai-model-select" class="input-control" style="width:100%;font-size:13px;" onchange="onAiModelSelectChange()">
+          <option value="claude-3-5-sonnet-20241022" ${selectedDropdown === "claude-3-5-sonnet-20241022" ? "selected" : ""}>👑 Claude 3.5 Sonnet (Khuyên Dùng - Đọc Bill Siêu Thị Chuẩn 99%)</option>
+          <option value="claude-3-7-sonnet-20250219" ${selectedDropdown === "claude-3-7-sonnet-20250219" ? "selected" : ""}>⚡ Claude 3.7 Sonnet (Bản Mới Nhất - Phân Tích Thông Minh Cực Nhanh)</option>
+          <option value="claude-3-5-haiku-20241022" ${selectedDropdown === "claude-3-5-haiku-20241022" ? "selected" : ""}>🍃 Claude 3.5 Haiku (Siêu Tốc Độ - Tiết Kiệm Token)</option>
+          <option value="gemini-2.5-flash" ${selectedDropdown === "gemini-2.5-flash" ? "selected" : ""}>✨ Google Gemini 2.5 Flash (Miễn Phí 0đ từ Google AI Studio)</option>
+          <option value="gemini-2.0-flash" ${selectedDropdown === "gemini-2.0-flash" ? "selected" : ""}>✨ Google Gemini 2.0 Flash</option>
+          <option value="gpt-4o-mini" ${selectedDropdown === "gpt-4o-mini" ? "selected" : ""}>🤖 OpenAI GPT-4o Mini</option>
+          <option value="custom" ${selectedDropdown === "custom" ? "selected" : ""}>⚙️ Tự Nhập Tên Model Khác (VD: sonnet 5.5, claude-3-5-sonnet...)</option>
+        </select>
+      </div>
+
+      <div id="custom-model-wrapper" style="display:${isCustom ? "block" : "none"};">
+        <label style="font-weight:700;display:block;margin-bottom:4px;">✏️ Nhập Tên Model Cụ Thể (nếu nhà cung cấp API yêu cầu):</label>
+        <input type="text" id="modal-ai-custom-model" class="input-control" style="width:100%;font-family:monospace;font-size:13px;" value="${customModelVal}" placeholder="VD: claude-3-5-sonnet, sonnet-5.5, claude-3-7-sonnet..." />
+      </div>
+
+      <div>
+        <label style="font-weight:700;display:block;margin-bottom:4px;">🌐 Base URL Proxy API (Chỉ điền nếu dùng API trung gian bên thứ 3):</label>
+        <input type="text" id="modal-ai-base-url" class="input-control" style="width:100%;font-family:monospace;font-size:13px;" value="${currentBaseUrl}" placeholder="Để trống nếu dùng API Anthropic hoặc Google gốc (VD: https://api.openai-hk.com)" />
+        <span style="font-size:11px;color:var(--text-secondary);display:block;margin-top:2px;">* Để trống nếu bạn dùng key lấy trực tiếp từ trang chính hãng Anthropic hoặc Google AI Studio.</span>
       </div>
 
       <div id="gemini-test-status" style="font-size:12px;color:var(--text-secondary);"></div>
 
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-primary" style="flex:1;" onclick="testAndSaveGeminiKey()">💾 Lưu Mã API & Đồng Bộ Cloud</button>
+      <div style="display:flex;gap:8px;margin-top:6px;">
+        <button class="btn btn-primary" style="flex:1;" onclick="testAndSaveGeminiKey()">💾 Lưu Cài Đặt & Kiểm Tra Kết Nối AI</button>
         <button class="btn btn-ghost" onclick="closeModal()">Đóng</button>
       </div>
     </div>
@@ -4064,42 +4265,58 @@ async function testAndSaveGeminiKey() {
   const val = cleanApiKeyInput(rawInput);
   const inpEl = document.getElementById("modal-gemini-key-input");
   if (inpEl && val) inpEl.value = val;
-  const statusEl = document.getElementById("gemini-test-status");
+
+  const modelSelect = document.getElementById("modal-ai-model-select")?.value || "claude-3-5-sonnet-20241022";
+  const customModelVal = (document.getElementById("modal-ai-custom-model")?.value || "").trim();
+  const baseUrlVal = (document.getElementById("modal-ai-base-url")?.value || "").trim().replace(/\/+$/, "");
+
+  let finalModel = modelSelect;
+  if (modelSelect === "custom") {
+    finalModel = customModelVal || "claude-3-5-sonnet-20241022";
+  }
 
   // Always save immediately without rejecting any key format!
   localStorage.setItem(STORAGE_GEMINI_KEY, val);
-  if (DB && DB.meta) DB.meta.gemini_api_key = val;
+  localStorage.setItem(STORAGE_AI_MODEL_KEY, finalModel);
+  localStorage.setItem(STORAGE_AI_BASE_URL_KEY, baseUrlVal);
+
+  if (DB && DB.meta) {
+    DB.meta.gemini_api_key = val;
+    DB.meta.ai_model = finalModel;
+    DB.meta.ai_base_url = baseUrlVal;
+  }
   updateGeminiBadgeUI();
 
   if (!val) {
-    await persistAndSync({ action: "update_gemini_key", gemini_api_key: "" });
+    await persistAndSync({ action: "update_gemini_key", gemini_api_key: "", ai_model: finalModel, ai_base_url: baseUrlVal });
     closeModal();
     return;
   }
 
+  const statusEl = document.getElementById("gemini-test-status");
   if (statusEl) {
-    statusEl.innerHTML = `<span style="color:#38bdf8;">⏳ Đã lưu mã API! Đang thử kết nối tới máy chủ AI...</span>`;
+    statusEl.innerHTML = `<span style="color:#38bdf8;">⏳ Đã lưu cài đặt! Đang kiểm tra kết nối tới Não AI (${finalModel})...</span>`;
   }
 
-  await persistAndSync({ action: "update_gemini_key", gemini_api_key: val });
+  await persistAndSync({ action: "update_gemini_key", gemini_api_key: val, ai_model: finalModel, ai_base_url: baseUrlVal });
   const diag = await callAIWithDiagnostics("Trả lời đúng 1 từ: OK", null, "image/jpeg", val);
 
   if (diag.text) {
     if (statusEl) {
-      statusEl.innerHTML = `<span style="color:#34d399;font-weight:700;">✅ Kết nối AI thành công (Model: ${diag.model})! Đã đồng bộ sang Cloud cho cả 2 vợ chồng.</span>`;
+      statusEl.innerHTML = `<span style="color:#34d399;font-weight:700;">✅ Kết nối AI thành công (${diag.model})! Đã đồng bộ sang Cloud cho cả 2 vợ chồng.</span>`;
     }
     setTimeout(() => {
       closeModal();
-      alert(`🎉 Đã kích hoạt AI thành công (${diag.model})! Giờ bạn và vợ có thể dùng AI để quét ảnh Bill siêu thị, tách câu phức tạp, đọc Email ngân hàng và hỏi đáp AI.`);
-    }, 350);
+      alert(`🎉 Đã kích hoạt Não AI thành công (${diag.model})!\n\nGiờ bạn và vợ có thể chụp/tải ảnh Bill siêu thị, đọc hóa đơn tiếng Việt, phân loại chi tiêu tự động và hỏi đáp trợ lý gia đình.`);
+    }, 400);
   } else {
     if (statusEl) {
       statusEl.innerHTML = `
         <div style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.4);border-radius:10px;padding:10px;color:#fcd34d;">
-          ✅ <b>Đã lưu mã API của bạn vào hệ thống!</b><br/>
+          ✅ <b>Đã lưu mã API và cấu hình vào hệ thống!</b><br/>
           <span style="font-size:11.5px;color:var(--text-secondary);">
-            Phản hồi kiểm tra thử từ máy chủ Google/AI: <code>${diag.error}</code>.<br/>
-            <i>(Lưu ý: Ở bảng danh sách trên trang Google AI Studio, cột "Project" có mã dạng <code>gen-lang-client-...</code> là Mã Dự Án, còn bấm vào biểu tượng Copy ở cột <b>"API key"</b> mới là Mã Key thực tế).</i>
+            Phản hồi kiểm tra thử: <code>${diag.error || "Không thể kết nối"}</code>.<br/>
+            <i>(Nếu dùng mã Claude chính hãng Anthropic, mã bắt đầu bằng <code>sk-ant-...</code>. Nếu dùng qua cổng proxy trung gian, hãy kiểm tra lại Base URL và tên model).</i>
           </span>
         </div>
       `;
