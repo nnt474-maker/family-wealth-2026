@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css?v=5.5.0-claude-sonnet" />
+  <link rel="stylesheet" href="./styles.css?v=5.5.1-ai-email" />
 </head>
 <body>
   <!-- FAMILY PIN LOCK SCREEN OVERLAY -->
@@ -455,12 +455,12 @@
               </div>
             </div>
             <textarea id="raw-email-textarea" class="input-control" rows="7" style="width:100%;font-family:monospace;font-size:12.5px;margin-bottom:12px;" placeholder="Dán nội dung email hoặc thông báo biến động số dư từ NCB, VPBank, BIDV vào đây..."></textarea>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              <button class="btn btn-primary" onclick="parseEmailContent()">
-                ⚡ Bóc Tách Tức Thì (0ms)
+            <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:8px;">
+              <button class="btn btn-primary" style="background:linear-gradient(135deg,#8b5cf6,#6366f1);font-weight:700;padding:10px 14px;border:none;" onclick="processBankEmailsWithAI()">
+                🤖 Dùng Não AI Đọc & Phân Tích (Claude Sonnet)
               </button>
-              <button class="btn btn-ghost" style="border-color:rgba(139,92,246,0.45);color:#c4b5fd;" onclick="parseEmailWithGeminiAI()">
-                🤖 Dùng Não AI Bóc Tách Sâu (Claude / Gemini)
+              <button class="btn btn-ghost" style="padding:10px 12px;" onclick="loadSampleBankEmails()">
+                ⚡ Nạp Mẫu & Thử AI
               </button>
             </div>
           </div>
@@ -698,6 +698,6 @@
     <div class="card" style="width:100%;max-width:620px;border-color:var(--border-glow);max-height:92vh;overflow-y:auto;" id="modal-content"></div>
   </div>
 
-  <script src="./app.js?v=5.5.0-claude-sonnet"></script>
+  <script src="./app.js?v=5.5.1-ai-email"></script>
 </body>
 </html>

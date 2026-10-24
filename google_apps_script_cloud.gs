@@ -132,18 +132,37 @@ function updateTxRow(ss, tx) {
   }
 }
 
-function scanBankGmail() {
+function scanBankGmail(minDateStr) {
   try {
-    // Lọc biến động số dư ngân hàng bắt đầu từ 01/11/2026 theo yêu cầu
-    const q = '(from:vpbank OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "Quoc Dan" OR "biến động số dư") after:2026/10/31';
-    const threads = GmailApp.search(q, 0, 30);
+    let q = '(from:vpbank OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "Quoc Dan" OR "biến động số dư" OR "biendong" OR "thông báo số dư")';
+    let minTime = 0;
+    const now = new Date();
+
+    if (minDateStr && /^\d{4}-\d{2}-\d{2}$/.test(minDateStr)) {
+      const parts = minDateStr.split("-");
+      const targetDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 0, 0, 0);
+      if (targetDate.getTime() > now.getTime()) {
+        minTime = now.getTime() - 30 * 24 * 3600 * 1000;
+        const d30 = new Date(minTime);
+        q += ' after:' + Utilities.formatDate(d30, "GMT+7", "yyyy/MM/dd");
+      } else {
+        minTime = targetDate.getTime();
+        const prevDay = new Date(minTime - 24 * 3600 * 1000);
+        q += ' after:' + Utilities.formatDate(prevDay, "GMT+7", "yyyy/MM/dd");
+      }
+    } else {
+      const d30 = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
+      minTime = d30.getTime();
+      q += ' after:' + Utilities.formatDate(d30, "GMT+7", "yyyy/MM/dd");
+    }
+
+    const threads = GmailApp.search(q, 0, 35);
     const blocks = [];
-    const minTime = new Date("2026-11-01T00:00:00+07:00").getTime();
     for (let i = 0; i < threads.length; i++) {
       const msgs = threads[i].getMessages();
       for (let j = 0; j < msgs.length; j++) {
         const msg = msgs[j];
-        if (msg.getDate().getTime() < minTime) continue;
+        if (minTime > 0 && msg.getDate().getTime() < minTime) continue;
         const dt = Utilities.formatDate(msg.getDate(), "GMT+7", "dd/MM/yyyy HH:mm");
         const body = msg.getPlainBody() || msg.getBody().replace(/<[^>]+>/g, " ");
         blocks.push("From: " + msg.getFrom() + "\nSubject: " + msg.getSubject() + "\nDate: " + dt + "\n" + body.substring(0, 1000));
@@ -170,7 +189,8 @@ function doGet(e) {
   try {
     const action = (e && e.parameter && e.parameter.action) ? e.parameter.action : "pull";
     if (action === "scan_gmail") {
-      return sendResponse({ ok: true, raw_text: scanBankGmail() }, e);
+      const minDateParam = (e && e.parameter && e.parameter.start_date) ? e.parameter.start_date : null;
+      return sendResponse({ ok: true, raw_text: scanBankGmail(minDateParam) }, e);
     }
     const stored = loadCloudStateFromProps();
     const ss = getTargetSpreadsheet();

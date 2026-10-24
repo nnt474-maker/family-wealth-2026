@@ -248,17 +248,37 @@ function updateTxRow(ss, tx) {
   } catch (e) { return null; }
 }
 
-function scanBankGmail() {
+function scanBankGmail(minDateStr) {
   try {
-    const q = '(from:vpbank OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "Quoc Dan" OR "biến động số dư") after:2026/10/31';
-    const threads = GmailApp.search(q, 0, 30);
+    let q = '(from:vpbank OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "Quoc Dan" OR "biến động số dư" OR "biendong" OR "thông báo số dư")';
+    let minTime = 0;
+    const now = new Date();
+
+    if (minDateStr && /^\\d{4}-\\d{2}-\\d{2}$/.test(minDateStr)) {
+      const parts = minDateStr.split("-");
+      const targetDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 0, 0, 0);
+      if (targetDate.getTime() > now.getTime()) {
+        minTime = now.getTime() - 30 * 24 * 3600 * 1000;
+        const d30 = new Date(minTime);
+        q += ' after:' + Utilities.formatDate(d30, "GMT+7", "yyyy/MM/dd");
+      } else {
+        minTime = targetDate.getTime();
+        const prevDay = new Date(minTime - 24 * 3600 * 1000);
+        q += ' after:' + Utilities.formatDate(prevDay, "GMT+7", "yyyy/MM/dd");
+      }
+    } else {
+      const d30 = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
+      minTime = d30.getTime();
+      q += ' after:' + Utilities.formatDate(d30, "GMT+7", "yyyy/MM/dd");
+    }
+
+    const threads = GmailApp.search(q, 0, 35);
     const blocks = [];
-    const minTime = new Date("2026-11-01T00:00:00+07:00").getTime();
     for (let i = 0; i < threads.length; i++) {
       const msgs = threads[i].getMessages();
       for (let j = 0; j < msgs.length; j++) {
         const msg = msgs[j];
-        if (msg.getDate().getTime() < minTime) continue;
+        if (minTime > 0 && msg.getDate().getTime() < minTime) continue;
         const dt = Utilities.formatDate(msg.getDate(), "GMT+7", "dd/MM/yyyy HH:mm");
         const body = msg.getPlainBody() || msg.getBody().replace(/<[^>]+>/g, " ");
         blocks.push("From: " + msg.getFrom() + "\\nSubject: " + msg.getSubject() + "\\nDate: " + dt + "\\n" + body.substring(0, 1000));
@@ -278,7 +298,10 @@ function sendResponse(obj, e) {
 function doGet(e) {
   try {
     const action = (e && e.parameter && e.parameter.action) ? e.parameter.action : "pull";
-    if (action === "scan_gmail") return sendResponse({ ok: true, raw_text: scanBankGmail() }, e);
+    if (action === "scan_gmail") {
+      const minDateParam = (e && e.parameter && e.parameter.start_date) ? e.parameter.start_date : null;
+      return sendResponse({ ok: true, raw_text: scanBankGmail(minDateParam) }, e);
+    }
     const stored = loadCloudStateFromProps();
     const ss = getTargetSpreadsheet();
     return sendResponse({ ok: true, sheet_url: ss ? ss.getUrl() : null, updated_at: stored.updated_at, cloud_state: stored.cloud_state }, e);
@@ -1542,7 +1565,7 @@ async function pullFromGoogleSheetCloud(silent = true) {
 
 async function initApp() {
   // Tự động kiểm tra phiên bản & thanh tẩy cache cũ trên máy đã cài PWA
-  const APP_BUILD_TAG = "v5.5.0-claude-sonnet-2026";
+  const APP_BUILD_TAG = "v5.5.1-ai-email-scanner-2026";
   if (localStorage.getItem("FAMILY_BUILD_TAG") !== APP_BUILD_TAG) {
     localStorage.setItem("FAMILY_BUILD_TAG", APP_BUILD_TAG);
     if ("caches" in window) {
@@ -1552,7 +1575,7 @@ async function initApp() {
 
   // Register PWA Service Worker với cơ chế tự động làm mới ngay khi có bản mới
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("./sw.js?v=5.5.0").then(reg => {
+    navigator.serviceWorker.register("./sw.js?v=5.5.1").then(reg => {
       reg.addEventListener("updatefound", () => {
         const newWorker = reg.installing;
         if (newWorker) {
@@ -2961,18 +2984,22 @@ async function deleteMailbox(id) {
 
 let lastFilteredDuplicateCount = 0;
 
-function loadSampleBankEmails() {
+async function loadSampleBankEmails() {
   const raw = (DB && DB.sample_bank_emails) ? DB.sample_bank_emails : SAMPLE_BANK_EMAILS_DEFAULT;
-  document.getElementById("raw-email-textarea").value = raw;
-  parseEmailContent();
+  const textarea = document.getElementById("raw-email-textarea");
+  if (textarea) textarea.value = raw;
+  await processBankEmailsWithAI(raw, "Chung");
 }
 
-function parseEmailContent() {
-  const raw = document.getElementById("raw-email-textarea").value;
+function parseEmailContent(defaultOwner = "Chung") {
+  const raw = document.getElementById("raw-email-textarea")?.value || "";
   const allParsed = parseBankEmailsJS(raw);
   const freshItems = [];
   let dupCount = 0;
   allParsed.forEach(item => {
+    if (defaultOwner && defaultOwner !== "Chung" && item.person === "Chung") {
+      item.person = defaultOwner;
+    }
     if (isEmailItemAlreadyAdded(item)) {
       dupCount++;
     } else {
@@ -2984,10 +3011,149 @@ function parseEmailContent() {
   renderPendingEmailList();
 }
 
+async function processBankEmailsWithAI(rawText = null, defaultOwner = "Chung") {
+  const textarea = document.getElementById("raw-email-textarea");
+  let raw = (rawText !== null ? rawText : textarea?.value || "").trim();
+
+  if (!raw) {
+    const choice = confirm("Ô nội dung email ngân hàng đang trống.\n\n👉 Bạn có muốn nạp dữ liệu email ngân hàng mẫu (NCB, VPBank, BIDV) để thử Não AI phân tích ngay không?");
+    if (choice) {
+      await loadSampleBankEmails();
+      return;
+    }
+    return;
+  }
+
+  if (textarea && textarea.value !== raw) {
+    textarea.value = raw;
+  }
+
+  const key = getGeminiApiKey();
+  const provider = getAIProviderName(key) || "Não AI";
+
+  // Nếu chưa có API key, hỏi người dùng cài đặt hoặc chạy regex
+  if (!key) {
+    const choice = confirm("Bạn chưa cài đặt Mã Não AI (Claude Sonnet 5.5 / Gemini).\n\n• Bấm OK để mở cài đặt Não AI.\n• Bấm Hủy để bóc tách bằng bộ lọc regex tức thì.");
+    if (choice) {
+      openGeminiSettingsModal();
+      return;
+    } else {
+      parseEmailContent(defaultOwner);
+      return;
+    }
+  }
+
+  // Hiển thị trạng thái đang đọc email bằng AI trực tiếp trên giao diện
+  const listEl = document.getElementById("parsed-email-list");
+  if (listEl) {
+    listEl.innerHTML = `
+      <div style="background:linear-gradient(135deg,rgba(139,92,246,0.18),rgba(59,130,246,0.18));border:1px solid rgba(139,92,246,0.45);border-radius:14px;padding:26px;text-align:center;">
+        <div style="font-size:32px;margin-bottom:8px;">🤖 ⚡</div>
+        <div style="font-weight:700;color:#c4b5fd;font-size:15px;margin-bottom:4px;">
+          Não AI (${provider}) Đang Đọc & Phân Tích Toàn Bộ Hộp Thư...
+        </div>
+        <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.6;">
+          Đang tự động bóc tách số tiền, phân loại danh mục, nhận diện Chồng/Vợ và phát hiện các giao dịch cần làm rõ...
+        </div>
+      </div>
+    `;
+  }
+  updateCloudBadgeUI(`🤖 ${provider} đang đọc email...`);
+
+  const categoriesList = (DB?.meta?.categories || ["Ăn uống", "Học tập", "Phí tiện ích", "Đồ dùng GĐ", "Nợ", "Làm đẹp", "Y tế", "Vui chơi", "Event", "Công việc", "Chưa phân loại"]).join(", ");
+  const membersList = (DB?.meta?.members || ["Chồng", "Vợ", "Subo", "Sugi", "Chung"]).join(", ");
+
+  const prompt = `Bạn là trợ lý AI kế toán gia đình tài ba. Hãy đọc toàn bộ nội dung email/SMS ngân hàng (VPBank, BIDV, NCB, UOB...) dưới đây và trích xuất TẤT CẢ các giao dịch trừ tiền/chi tiêu hoặc nhận tiền sang định dạng JSON thuần (KHÔNG dùng markdown \`\`\`):
+
+Nội dung email/thông báo ngân hàng:
+${raw}
+
+Yêu cầu bóc tách từng giao dịch:
+1. "bank": Tên ngân hàng ("NCB", "VPBank", "BIDV", "UOB" hoặc ngân hàng ghi trên mail).
+2. "date": Ngày giao dịch định dạng YYYY-MM-DD.
+3. "amount": Số tiền nguyên VND (dương, không dấu chấm phẩy).
+4. "is_income": true nếu là tiền vào / nhận tiền, false nếu là chi tiêu / thanh toán.
+5. "content": Tên tóm tắt ngắn gọn, dễ hiểu nhất của giao dịch (VD: "Đi chợ WinMart", "Thanh toán tiền điện", "Grab chuyển khoản", "Rút tiền ATM", "Chuyển tiền mua sắm").
+6. "raw_content": Toàn bộ nội dung gốc trên thông báo của ngân hàng.
+7. "category": Chọn 1 trong các mục sau: ${categoriesList}. Nếu không rõ, ghi "Chưa phân loại".
+8. "person": Chọn 1 trong: ${membersList}. Mặc định là "${defaultOwner || 'Chung'}". (Nếu NCB thường là Vợ, nếu VPBank/BIDV thường là Chồng).
+9. "needs_clarification": true NẾU giao dịch có nội dung mơ hồ, chỉ có mã số chuyển khoản, mã máy POS lạ, hoặc chưa rõ mua gì/cho ai; false nếu nội dung đã rõ ràng.
+10. "ai_question": Nếu needs_clarification=true, đặt 1 câu hỏi ngắn gọn, thân thiện hỏi người dùng khoản tiền này chi cho việc gì.
+11. "suggested_options": Nếu needs_clarification=true, đưa ra 3-4 lựa chọn gợi ý 1 chạm nhanh. Mỗi lựa chọn gồm: {"label": "icon Tên gợi ý", "category": "Mục", "person": "Người", "note": "Nội dung ngắn"}.
+
+Trả về JSON đúng cấu trúc:
+{"items": [{"bank": "NCB", "date": "2026-10-24", "month": 10, "amount": 350000, "is_income": false, "content": "Tóm tắt giao dịch", "raw_content": "ND gốc từ bank", "category": "Ăn uống", "person": "Vợ", "needs_clarification": false, "ai_question": null, "suggested_options": []}]}`;
+
+  const aiResp = await callAIWithDiagnostics(prompt);
+  if (!aiResp || !aiResp.text) {
+    parseEmailContent(defaultOwner);
+    updateCloudBadgeUI("⚠️ AI bận, đã dùng bộ lọc nhanh");
+    return;
+  }
+
+  try {
+    const parsed = extractJsonFromAiResponse(aiResp.text);
+    if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
+      const allMapped = parsed.items.map((it, idx) => {
+        const amt = Number(it.amount || 0);
+        const bank = it.bank || "NCB";
+        const content = it.content || "";
+        const rawContent = it.raw_content || content;
+        const conf = it.confidence || 0.95;
+        const unclearCheck = isUnclearEmailItemJS(content, rawContent, conf);
+
+        const isUnclear = (typeof it.needs_clarification === "boolean")
+          ? (it.needs_clarification || unclearCheck.isUnclear)
+          : unclearCheck.isUnclear;
+
+        return {
+          temp_id: `EMAIL-AI-${idx + 1}-${amt}-${Date.now()}`,
+          bank,
+          source: bank,
+          date: it.date || `2026-10-${String(new Date().getDate()).padStart(2, "0")}`,
+          month: Number(it.month || (it.date ? parseInt(it.date.split("-")[1], 10) : 10)),
+          amount: amt,
+          is_income: Boolean(it.is_income),
+          content,
+          raw_content: rawContent,
+          category: it.category || "Ăn uống",
+          person: it.person || defaultOwner || "Chung",
+          confidence: conf,
+          reason: it.reason || `Não AI (${provider}) phân tích`,
+          needs_clarification: isUnclear,
+          unclear_reason: it.unclear_reason || unclearCheck.reason || "Nội dung chưa ghi rõ cửa hàng hoặc mục đích chi.",
+          ai_question: it.ai_question || (isUnclear
+            ? `Khoản ${fmtVND(amt)} tại ${bank} ("${content}") chi cho việc gì và của ai trong gia đình?`
+            : null),
+          suggested_options: (Array.isArray(it.suggested_options) && it.suggested_options.length > 0)
+            ? it.suggested_options
+            : (isUnclear ? getSmartClarificationSuggestionsJS(amt, bank, rawContent) : []),
+          resolved_by_ai: !isUnclear
+        };
+      });
+
+      const freshItems = allMapped.filter(it => !isEmailItemAlreadyAdded(it));
+      lastFilteredDuplicateCount = allMapped.length - freshItems.length;
+      pendingEmails = freshItems;
+      renderPendingEmailList();
+      updateCloudBadgeUI(`✅ Đã dùng ${provider} đọc xong ${pendingEmails.length} email`);
+      return;
+    }
+  } catch (e) {
+    console.warn("AI parse error:", e);
+  }
+
+  parseEmailContent(defaultOwner);
+}
+
 async function fetchGmailRawFromUrl(url) {
   let data = null;
+  const startDate = getEmailStartDate();
+  let queryUrl = `${url}?action=scan_gmail&t=${Date.now()}`;
+  if (startDate) queryUrl += `&start_date=${encodeURIComponent(startDate)}`;
+
   try {
-    const res = await fetch(`${url}?action=scan_gmail&t=${Date.now()}`, {
+    const res = await fetch(queryUrl, {
       method: "GET",
       redirect: "follow",
       credentials: "omit"
@@ -2996,7 +3162,7 @@ async function fetchGmailRawFromUrl(url) {
   } catch (e) {}
   if (!data) {
     try {
-      data = await fetchViaJsonp(`${url}?action=scan_gmail`);
+      data = await fetchViaJsonp(queryUrl);
     } catch (e) {}
   }
   return data;
@@ -3006,29 +3172,37 @@ async function scanSingleMailboxCloud(mbId) {
   const mailboxes = getFamilyMailboxes();
   const mb = mailboxes.find(m => m.id === mbId);
   const targetUrl = (mb && mb.script_url) ? mb.script_url : getCloudScriptUrl();
+  const mbLabel = mb ? mb.label : "Hộp thư";
+  const mbOwner = mb ? mb.owner : "Chung";
+
   if (!targetUrl) {
-    openAddMailboxModal(mbId);
+    const choice = confirm(`Hộp thư "${mbLabel}" chưa được gắn Link Google Apps Script Web App.\n\n👉 Bạn có muốn nạp dữ liệu email ngân hàng mẫu (NCB, VPBank, BIDV) để thử Não AI phân tích ngay không?\n\n(Bấm OK để nạp mẫu & chạy Não AI ngay, bấm Hủy để mở bảng cấu hình Link Apps Script)`);
+    if (choice) {
+      await loadSampleBankEmails();
+    } else {
+      openAddMailboxModal(mbId);
+    }
     return;
   }
-  updateCloudBadgeUI(`🔄 Đang quét ${mb ? mb.label : 'Gmail'}...`);
+
+  updateCloudBadgeUI(`🔄 Đang quét ${mbLabel}...`);
   const data = await fetchGmailRawFromUrl(targetUrl);
   if (data && data.ok) {
     if (!data.raw_text || !data.raw_text.trim()) {
-      alert(`Không tìm thấy email biến động số dư mới nào trong 30 ngày qua từ ${mb ? mb.label : 'hộp thư'}.`);
+      const choice = confirm(`Không tìm thấy email biến động số dư nào trong "${mbLabel}".\n\n👉 Bạn có muốn nạp dữ liệu email mẫu để thử Não AI phân tích ngay không?`);
+      if (choice) await loadSampleBankEmails();
     } else {
       document.getElementById("raw-email-textarea").value = data.raw_text;
-      parseEmailContent();
-      // Nếu hộp thư của Vợ (NCB), ưu tiên gán người chi mặc định là Vợ nếu AI để Chung
-      if (mb && mb.owner && mb.owner !== "Chung") {
-        pendingEmails.forEach(item => {
-          if (item.person === "Chung") item.person = mb.owner;
-        });
-        renderPendingEmailList();
-      }
+      await processBankEmailsWithAI(data.raw_text, mbOwner);
     }
     updateCloudBadgeUI("☁️ Đã quét hộp thư");
   } else {
-    alert("⚠️ Không thể kết nối Link Apps Script của hộp thư này. Hãy kiểm tra lại cấu hình hoặc cập nhật mã Apps Script V2!");
+    const choice = confirm(`Không thể kết nối Link Apps Script của "${mbLabel}".\n\n👉 Bạn có muốn nạp dữ liệu email mẫu để thử Não AI phân tích trước không?`);
+    if (choice) {
+      await loadSampleBankEmails();
+    } else {
+      openAddMailboxModal(mbId);
+    }
   }
 }
 
@@ -3045,7 +3219,12 @@ async function scanGmailViaCloud() {
   });
 
   if (urlsToScan.length === 0) {
-    openCloudSettingsModal();
+    const choice = confirm("Bạn chưa cấu hình Link Google Apps Script để đọc Gmail tự động trên Cloud.\n\n👉 Bạn có muốn nạp dữ liệu email ngân hàng mẫu (NCB, VPBank, BIDV) để thử Não AI phân tích ngay không?\n\n(Bấm OK để nạp mẫu & chạy Não AI ngay, bấm Hủy để mở bảng cấu hình Cloud)");
+    if (choice) {
+      await loadSampleBankEmails();
+    } else {
+      openCloudSettingsModal();
+    }
     return;
   }
 
@@ -3065,14 +3244,21 @@ async function scanGmailViaCloud() {
 
   if (anySuccess) {
     if (combinedTexts.length === 0) {
-      alert("Không tìm thấy email biến động số dư mới nào từ VPBank, BIDV, NCB trong 30 ngày qua.");
+      const choice = confirm("Không tìm thấy email biến động số dư mới nào từ VPBank, BIDV, NCB trong hộp thư.\n\n👉 Bạn có muốn nạp dữ liệu email mẫu để thử Não AI phân tích ngay không?");
+      if (choice) await loadSampleBankEmails();
     } else {
-      document.getElementById("raw-email-textarea").value = combinedTexts.join("\n---\n");
-      parseEmailContent();
+      const allRaw = combinedTexts.join("\n---\n");
+      document.getElementById("raw-email-textarea").value = allRaw;
+      await processBankEmailsWithAI(allRaw, "Chung");
     }
     updateCloudBadgeUI("☁️ Đã quét Gmail Cloud");
   } else {
-    alert("⚠️ Để dùng tính năng Quét Gmail tự động, hãy đảm bảo bạn đã dán Mã Apps Script V2 (mới nhất ở tab Kiểm Toán) và chọn 'Deploy -> New deployment' nhé!");
+    const choice = confirm("Không thể kết nối Link Google Apps Script. Bạn có muốn nạp dữ liệu email mẫu để thử Não AI trước không?");
+    if (choice) {
+      await loadSampleBankEmails();
+    } else {
+      openCloudSettingsModal();
+    }
   }
 }
 
@@ -4503,73 +4689,7 @@ Quy tắc:
 }
 
 async function parseEmailWithGeminiAI() {
-  const raw = (document.getElementById("raw-email-textarea")?.value || "").trim();
-  if (!raw) {
-    alert("Vui lòng dán nội dung Email hoặc tin nhắn SMS biến động số dư vào ô trống trước!");
-    return;
-  }
-  const key = getGeminiApiKey();
-  if (!key) {
-    openGeminiSettingsModal();
-    return;
-  }
-
-  const prompt = `Trích xuất tất cả các giao dịch trừ tiền/chi tiêu từ nội dung email/SMS ngân hàng sau sang JSON thuần (không markdown):
-Nội dung:
-${raw}
-
-Trả về JSON theo cấu trúc:
-{"items": [{"bank": "NCB|VPBank|BIDV|UOB|Tiền mặt|Chuyển khoản", "date": "2026-10-22", "month": 10, "amount": 485000, "content": "Nội dung rút gọn dễ hiểu", "raw_content": "Nội dung gốc", "category": "Ăn uống|Học tập|Phí tiện ích|Đồ dùng GĐ|Nợ|Làm đẹp|Y tế|Vui chơi|Event|Công việc", "person": "Chung|Chồng|Vợ|Subo|Sugi", "confidence": 0.98, "reason": "Gemini AI phân tích"}]}`;
-
-  const aiResp = await callGeminiFreeAPI(prompt);
-  if (!aiResp) {
-    parseEmailContent();
-    return;
-  }
-  try {
-    const clean = aiResp.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(clean);
-    if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
-      const allMapped = parsed.items.map((it, idx) => {
-        const amt = Number(it.amount || 0);
-        const bank = it.bank || "NCB";
-        const content = it.content || "";
-        const rawContent = it.raw_content || content;
-        const conf = it.confidence || 0.95;
-        const unclearCheck = isUnclearEmailItemJS(content, rawContent, conf);
-        return {
-          temp_id: `EMAIL-GEMINI-${idx + 1}-${amt}`,
-          bank,
-          source: bank,
-          date: it.date || `2026-10-${String(new Date().getDate()).padStart(2, "0")}`,
-          month: Number(it.month || 10),
-          amount: amt,
-          is_income: false,
-          content,
-          raw_content: rawContent,
-          category: it.category || "Ăn uống",
-          person: it.person || "Chung",
-          confidence: conf,
-          reason: it.reason || "Gemini AI phân tích",
-          needs_clarification: unclearCheck.isUnclear,
-          unclear_reason: unclearCheck.reason,
-          ai_question: unclearCheck.isUnclear
-            ? `Giao dịch ${fmtVND(amt)} tại ${bank} ("${content}") chi cho việc gì và của ai trong gia đình?`
-            : null,
-          suggested_options: unclearCheck.isUnclear
-            ? getSmartClarificationSuggestionsJS(amt, bank, rawContent)
-            : [],
-          resolved_by_ai: !unclearCheck.isUnclear
-        };
-      });
-      const freshItems = allMapped.filter(it => !isEmailItemAlreadyAdded(it));
-      lastFilteredDuplicateCount = allMapped.length - freshItems.length;
-      pendingEmails = freshItems;
-      renderPendingEmailList();
-      return;
-    }
-  } catch (e) {}
-  parseEmailContent();
+  return processBankEmailsWithAI();
 }
 
 // ============================================================================
