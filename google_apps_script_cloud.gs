@@ -89,7 +89,11 @@ function appendTxRow(ss, tx) {
     const colF = sheet.getRange("F4:F830").getValues();
     let targetRow = 4;
     for (let i = 0; i < colC.length; i++) {
-      if (!colC[i][0] && !colF[i][0]) {
+      const cVal = colC[i][0];
+      const fVal = colF[i][0];
+      const cEmpty = cVal === null || cVal === undefined || String(cVal).trim() === "";
+      const fEmpty = fVal === null || fVal === undefined || String(fVal).trim() === "";
+      if (cEmpty && fEmpty) {
         targetRow = i + 4;
         break;
       }
@@ -130,15 +134,20 @@ function updateTxRow(ss, tx) {
 
 function scanBankGmail() {
   try {
-    const q = '(from:vpbank OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "Quoc Dan" OR "biến động số dư") newer_than:30d';
-    const threads = GmailApp.search(q, 0, 20);
+    // Lọc biến động số dư ngân hàng bắt đầu từ 01/11/2026 theo yêu cầu
+    const q = '(from:vpbank OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "Quoc Dan" OR "biến động số dư") after:2026/10/31';
+    const threads = GmailApp.search(q, 0, 30);
     const blocks = [];
+    const minTime = new Date("2026-11-01T00:00:00+07:00").getTime();
     for (let i = 0; i < threads.length; i++) {
       const msgs = threads[i].getMessages();
-      const msg = msgs[msgs.length - 1];
-      const dt = Utilities.formatDate(msg.getDate(), "GMT+7", "dd/MM/yyyy HH:mm");
-      const body = msg.getPlainBody() || msg.getBody().replace(/<[^>]+>/g, " ");
-      blocks.push("From: " + msg.getFrom() + "\nSubject: " + msg.getSubject() + "\nDate: " + dt + "\n" + body.substring(0, 1000));
+      for (let j = 0; j < msgs.length; j++) {
+        const msg = msgs[j];
+        if (msg.getDate().getTime() < minTime) continue;
+        const dt = Utilities.formatDate(msg.getDate(), "GMT+7", "dd/MM/yyyy HH:mm");
+        const body = msg.getPlainBody() || msg.getBody().replace(/<[^>]+>/g, " ");
+        blocks.push("From: " + msg.getFrom() + "\nSubject: " + msg.getSubject() + "\nDate: " + dt + "\n" + body.substring(0, 1000));
+      }
     }
     return blocks.join("\n---\n");
   } catch (e) {

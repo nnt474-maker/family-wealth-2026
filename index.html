@@ -104,7 +104,7 @@
           VPBank • BIDV • NCB • UOB • Shopee
         </div>
         <button class="btn" id="sidebar-gemini-btn" style="width:100%;font-size:12.5px;padding:9px 10px;background:linear-gradient(135deg,#8b5cf6,#6366f1);color:#fff;font-weight:700;border:1px solid rgba(167,139,250,0.5);" onclick="openGeminiSettingsModal()">
-          🤖 Bật Gemini AI Free (0đ)
+          🤖 Cài Đặt Não AI (Claude / Gemini)
         </button>
         <button class="btn btn-emerald" style="width:100%;font-size:12.5px;padding:8px 10px;" onclick="openIncomeModal()">
           💰 Sửa Thu Nhập & ETF Tháng
@@ -120,9 +120,9 @@
             🔒 Khóa Sổ
           </button>
         </div>
-        <a href="./data/2026_FAMILY_NOTEBOOK_CHUAN_HOA.xlsx" download="2026_FAMILY_NOTEBOOK_CHUAN_HOA.xlsx" class="btn btn-ghost" style="width:100%;font-size:12.5px;padding:8px 10px;">
-          📥 Tải Excel Đã Chuẩn Hóa
-        </a>
+        <button onclick="exportLatestExcelFile()" class="btn btn-ghost" style="width:100%;font-size:12.5px;padding:8px 10px;color:#34d399;border-color:rgba(16,185,129,0.35);">
+          📥 Tải Excel Mới Nhất
+        </button>
         <a href="https://docs.google.com/spreadsheets/d/1FtjpyD-DP4HS8z7uJoYDw9TKwBh3qSCwdXqy1eaQEEk/edit" target="_blank" class="btn btn-ghost" style="width:100%;font-size:12.5px;padding:8px 10px;">
           🔗 Mở Google Sheet Gốc
         </a>
@@ -142,13 +142,13 @@
             </button>
             <button class="cloud-pill" onclick="openGeminiSettingsModal()" id="topbar-gemini-pill" style="background:rgba(139,92,246,0.16);border-color:rgba(139,92,246,0.45);color:#c4b5fd;">
               <span>🤖</span>
-              <span id="topbar-gemini-label">Gemini AI Free</span>
+              <span id="topbar-gemini-label">Não AI (Claude / Gemini)</span>
             </button>
             <button class="btn btn-ghost" style="padding:5px 10px;font-size:12px;border-radius:99px;" onclick="lockAppNow()" title="Khóa màn hình bằng mã PIN">
               🔒 Khóa PIN
             </button>
           </div>
-          <p id="page-subheading">Chạy độc lập trên Cloud 24/7 • Tích hợp Gemini AI Free • Tự động đọc Bill siêu thị, Email NCB/VPBank/BIDV & Cho phép sửa mọi nơi</p>
+          <p id="page-subheading">Đồng bộ 2 vợ chồng • Hỗ trợ Não AI Claude 3.5 & Gemini Vision • Đọc Bill siêu thị, Email NCB/VPBank/BIDV & Sửa mọi nơi</p>
         </div>
         <div class="topbar-actions">
           <div class="month-pills" id="month-selector">
@@ -254,12 +254,18 @@
             </div>
           </div>
 
-          <!-- Right: Early Warning System (Cảnh Báo Sớm) -->
-          <div class="card">
-            <div class="card-header">
+          <!-- Right: Early Warning System (Cảnh Báo Sớm - Có thể thu gọn) -->
+          <div class="card" id="card-early-warnings">
+            <div class="card-header" style="cursor:pointer;" onclick="toggleEarlyWarnings()">
               <div class="card-title">🚨 Hệ Thống Cảnh Báo Sớm & Nhắc Lịch Gia Đình</div>
-              <span class="chip chip-Chung">AI Radar</span>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span class="chip chip-Chung" id="early-warnings-badge">5 cảnh báo</span>
+                <button class="btn btn-ghost" id="btn-toggle-warnings" style="padding:2px 8px;font-size:11.5px;" onclick="event.stopPropagation();toggleEarlyWarnings()">
+                  🔼 Thu gọn
+                </button>
+              </div>
             </div>
+            <div id="warnings-collapsed-summary" style="display:none;margin-bottom:8px;" onclick="toggleEarlyWarnings()"></div>
             <div class="alert-list" id="early-warnings-list">
               <!-- Populated by JS -->
             </div>
@@ -315,7 +321,15 @@
         <div class="card">
           <div class="card-header">
             <div class="card-title">📝 Danh Sách Giao Dịch Chi Tiết (<span id="filtered-tx-count">0</span> khoản — Tổng: <span id="filtered-tx-sum" style="color:#34d399;">0 đ</span>)</div>
-            <button class="btn btn-primary" style="padding:8px 14px;font-size:12.5px;" onclick="openManualAddModal()">➕ Thêm Giao Dịch Chi Tiết</button>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <button class="btn btn-ghost" id="btn-toggle-table-mode" style="padding:6px 12px;font-size:12px;color:#38bdf8;border-color:rgba(56,189,248,0.4);" onclick="toggleTableSpreadsheetMode()">
+                📊 Kiểu Bảng Tính (Excel Grid)
+              </button>
+              <button class="btn btn-emerald" style="padding:6px 12px;font-size:12px;" onclick="exportLatestExcelFile()">
+                📥 Tải Excel Mới Nhất
+              </button>
+              <button class="btn btn-primary" style="padding:6px 14px;font-size:12.5px;" onclick="openManualAddModal()">➕ Thêm Giao Dịch</button>
+            </div>
           </div>
 
           <div class="filter-bar">
@@ -354,7 +368,7 @@
             </select>
           </div>
 
-          <div class="table-wrap" style="max-height:540px;overflow-y:auto;">
+          <div class="table-wrap" id="tx-table-wrap" style="max-height:540px;overflow-y:auto;">
             <table>
               <thead>
                 <tr>
@@ -387,6 +401,12 @@
             <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">
               Theo dõi biến động số dư từ <b>nhiều email khác nhau</b> (VD: Email Chồng nhận <b>VPBank, BIDV</b>; Email Vợ nhận <b>NCB</b>) hoặc chụp ảnh Bill / dán tin nhắn SMS ngân hàng.
             </p>
+
+            <div style="display:flex;align-items:center;gap:10px;background:rgba(15,23,42,0.65);border:1px solid var(--border-subtle);border-radius:10px;padding:8px 12px;margin-bottom:12px;flex-wrap:wrap;">
+              <span style="font-size:12.5px;color:#cbd5e1;font-weight:600;">📅 Bắt đầu lọc email từ ngày:</span>
+              <input type="date" id="email-start-date-input" class="input-control" style="padding:4px 8px;font-size:12px;color:#38bdf8;font-weight:700;" value="2026-11-01" onchange="updateEmailStartDate(this.value)" />
+              <span style="font-size:11.5px;color:#34d399;">✔ Bắt đầu từ 01/11 (Bỏ qua giao dịch cũ T10)</span>
+            </div>
 
             <!-- Multi-Mailbox List (Chồng + Vợ + Thêm mới) -->
             <div style="background:rgba(15,23,42,0.85);border:1px solid var(--border-subtle);border-radius:14px;padding:14px;margin-bottom:16px;">
@@ -431,7 +451,7 @@
                 ⚡ Bóc Tách Tức Thì (0ms)
               </button>
               <button class="btn btn-ghost" style="border-color:rgba(139,92,246,0.45);color:#c4b5fd;" onclick="parseEmailWithGeminiAI()">
-                🤖 Dùng Gemini AI Bóc Tách Sâu
+                🤖 Dùng Não AI Bóc Tách Sâu (Claude / Gemini)
               </button>
             </div>
           </div>
@@ -606,9 +626,9 @@
           <div class="card">
             <div class="card-header">
               <div class="card-title">🔍 7 Lỗi Công Thức & Logic Phát Hiện Trong 2 File Excel Gốc</div>
-              <a href="./data/2026_FAMILY_NOTEBOOK_CHUAN_HOA.xlsx" download="2026_FAMILY_NOTEBOOK_CHUAN_HOA.xlsx" class="btn btn-emerald" style="padding:8px 14px;font-size:12.5px;">
-                📥 Tải File Excel Đã Vá Toàn Bộ Lỗi
-              </a>
+              <button onclick="exportLatestExcelFile()" class="btn btn-emerald" style="padding:8px 14px;font-size:12.5px;">
+                📥 Tải File Excel Mới Nhất (Đầy Đủ Giao Dịch)
+              </button>
             </div>
             <div id="audit-bugs-list" style="display:flex;flex-direction:column;gap:12px;"></div>
           </div>

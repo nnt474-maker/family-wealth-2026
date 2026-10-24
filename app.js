@@ -15,6 +15,43 @@ const STORAGE_DEFAULT_SOURCE_KEY = "FAMILY_DEFAULT_SOURCE_2026";
 const STORAGE_DEFAULT_PERSON_KEY = "FAMILY_DEFAULT_PERSON_2026";
 const STORAGE_DEFAULT_CAT_KEY = "FAMILY_DEFAULT_CAT_2026";
 const STORAGE_GEMINI_KEY = "FAMILY_GEMINI_API_KEY_2026";
+const STORAGE_EMAIL_START_DATE_KEY = "FAMILY_EMAIL_START_DATE_2026";
+const STORAGE_TABLE_MODE_KEY = "FAMILY_TABLE_SPREADSHEET_MODE_2026";
+const STORAGE_WARNINGS_COLLAPSED_KEY = "FAMILY_WARNINGS_COLLAPSED_2026";
+
+function getEmailStartDate() {
+  return localStorage.getItem(STORAGE_EMAIL_START_DATE_KEY) || "2026-11-01";
+}
+
+function updateEmailStartDate(val) {
+  if (val) {
+    localStorage.setItem(STORAGE_EMAIL_START_DATE_KEY, val.trim());
+    const inp = document.getElementById("email-start-date-input");
+    if (inp) inp.value = val.trim();
+    parseEmailContent();
+  }
+}
+
+function isTableSpreadsheetMode() {
+  const saved = localStorage.getItem(STORAGE_TABLE_MODE_KEY);
+  return saved === null ? true : saved === "true"; // Mặc định mở kiểu bảng tính Excel Grid
+}
+
+function toggleTableSpreadsheetMode() {
+  const current = isTableSpreadsheetMode();
+  localStorage.setItem(STORAGE_TABLE_MODE_KEY, current ? "false" : "true");
+  renderTransactionsTab();
+}
+
+function isEarlyWarningsCollapsed() {
+  return localStorage.getItem(STORAGE_WARNINGS_COLLAPSED_KEY) === "true";
+}
+
+function toggleEarlyWarnings() {
+  const current = isEarlyWarningsCollapsed();
+  localStorage.setItem(STORAGE_WARNINGS_COLLAPSED_KEY, current ? "false" : "true");
+  renderEarlyWarnings();
+}
 
 const ALL_PAYMENT_SOURCES = [
   "Tiền mặt",
@@ -126,7 +163,9 @@ function appendTxRow(ss, tx) {
     const colF = sheet.getRange("F4:F830").getValues();
     let targetRow = 4;
     for (let i = 0; i < colC.length; i++) {
-      if (!colC[i][0] && !colF[i][0]) { targetRow = i + 4; break; }
+      const cEmpty = !colC[i][0] || String(colC[i][0]).trim() === "";
+      const fEmpty = !colF[i][0] || String(colF[i][0]).trim() === "";
+      if (cEmpty && fEmpty) { targetRow = i + 4; break; }
     }
     sheet.getRange(targetRow, 2, 1, 6).setValues([[
       tx.date || new Date(), tx.content || "", CAT_MAP[tx.category] || tx.category || "Ăn uống",
@@ -152,15 +191,19 @@ function updateTxRow(ss, tx) {
 
 function scanBankGmail() {
   try {
-    const q = '(from:vpbank OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "Quoc Dan" OR "biến động số dư") newer_than:30d';
-    const threads = GmailApp.search(q, 0, 20);
+    const q = '(from:vpbank OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "Quoc Dan" OR "biến động số dư") after:2026/10/31';
+    const threads = GmailApp.search(q, 0, 30);
     const blocks = [];
+    const minTime = new Date("2026-11-01T00:00:00+07:00").getTime();
     for (let i = 0; i < threads.length; i++) {
       const msgs = threads[i].getMessages();
-      const msg = msgs[msgs.length - 1];
-      const dt = Utilities.formatDate(msg.getDate(), "GMT+7", "dd/MM/yyyy HH:mm");
-      const body = msg.getPlainBody() || msg.getBody().replace(/<[^>]+>/g, " ");
-      blocks.push("From: " + msg.getFrom() + "\\nSubject: " + msg.getSubject() + "\\nDate: " + dt + "\\n" + body.substring(0, 1000));
+      for (let j = 0; j < msgs.length; j++) {
+        const msg = msgs[j];
+        if (msg.getDate().getTime() < minTime) continue;
+        const dt = Utilities.formatDate(msg.getDate(), "GMT+7", "dd/MM/yyyy HH:mm");
+        const body = msg.getPlainBody() || msg.getBody().replace(/<[^>]+>/g, " ");
+        blocks.push("From: " + msg.getFrom() + "\\nSubject: " + msg.getSubject() + "\\nDate: " + dt + "\\n" + body.substring(0, 1000));
+      }
     }
     return blocks.join("\\n---\\n");
   } catch (e) { return ""; }
@@ -722,6 +765,11 @@ function parseBankEmailsJS(rawEmailText) {
     const { cat, person, confidence, reason } = classifyTransactionTextJS(contentExtracted + " " + friendlyNote);
     const unclearCheck = isUnclearEmailItemJS(friendlyNote, contentExtracted, confidence);
 
+    const minDate = getEmailStartDate();
+    if (minDate && dateStr < minDate) {
+      return; // Bỏ qua giao dịch cũ trước ngày bắt đầu (VD: bỏ qua T10, bắt đầu từ 01/11/2026)
+    }
+
     if (amt > 0) {
       parsedItems.push({
         temp_id: `EMAIL-${idx + 1}-${Math.round(amt)}`,
@@ -992,11 +1040,23 @@ function getCloudScriptUrl() {
 
 function updateCloudBadgeUI(statusText, isConnected = true) {
   const topLbl = document.getElementById("topbar-cloud-label");
+  const topPill = document.getElementById("topbar-cloud-pill");
   const sideTxt = document.getElementById("sidebar-sync-text");
   const url = getCloudScriptUrl();
-  const label = statusText || (url ? "☁️ Đã nối Google Sheet (2 chiều)" : "☁️ Cloud Active (Lưu thiết bị)");
+  const label = statusText || (url ? "☁️ Đã nối Google Sheet (2 chiều)" : "⚠️ Chưa nối Google Sheet (Bấm nối)");
   if (topLbl) topLbl.textContent = label;
   if (sideTxt) sideTxt.textContent = label;
+  if (topPill) {
+    if (url) {
+      topPill.style.background = "rgba(16,185,129,0.14)";
+      topPill.style.borderColor = "rgba(16,185,129,0.45)";
+      topPill.style.color = "#6ee7b7";
+    } else {
+      topPill.style.background = "rgba(245,158,11,0.18)";
+      topPill.style.borderColor = "rgba(245,158,11,0.55)";
+      topPill.style.color = "#fcd34d";
+    }
+  }
 }
 
 function getDefaultMailboxes() {
@@ -1148,13 +1208,24 @@ function getGeminiApiKey() {
   return (localStorage.getItem(STORAGE_GEMINI_KEY) || (DB && DB.meta && DB.meta.gemini_api_key) || "").trim();
 }
 
+function getAIProviderName(key) {
+  if (!key) return "";
+  if (key.startsWith("sk-ant-")) return "Claude AI (Sonnet)";
+  if (key.startsWith("AIza")) return "Gemini AI";
+  if (key.startsWith("gsk_")) return "Groq AI";
+  if (key.startsWith("sk-or-")) return "OpenRouter";
+  if (key.startsWith("sk-")) return "Claude / OpenAI";
+  return "AI Engine";
+}
+
 function updateGeminiBadgeUI() {
   const lbl = document.getElementById("topbar-gemini-label");
   const pill = document.getElementById("topbar-gemini-pill");
   const sideBtn = document.getElementById("sidebar-gemini-btn");
   const key = getGeminiApiKey();
+  const provider = getAIProviderName(key);
   if (lbl) {
-    lbl.textContent = key ? "✨ Gemini AI: Đã Bật (Free)" : "🤖 Bật Gemini AI Free";
+    lbl.textContent = key ? `✨ ${provider}: Đã Bật` : "🤖 Cài Não AI (Claude / Gemini)";
   }
   if (pill) {
     pill.style.background = key ? "rgba(16,185,129,0.16)" : "rgba(139,92,246,0.16)";
@@ -1162,7 +1233,7 @@ function updateGeminiBadgeUI() {
     pill.style.color = key ? "#6ee7b7" : "#c4b5fd";
   }
   if (sideBtn) {
-    sideBtn.innerHTML = key ? "✨ Gemini AI: Đang Hoạt Động" : "🤖 Bật Gemini AI Free (0đ)";
+    sideBtn.innerHTML = key ? `✨ ${provider}: Đang Hoạt Động` : "🤖 Cài Não AI (Claude / Gemini)";
     sideBtn.style.background = key ? "linear-gradient(135deg,#059669,#10b981)" : "linear-gradient(135deg,#8b5cf6,#6366f1)";
   }
 }
@@ -1393,7 +1464,7 @@ async function pullFromGoogleSheetCloud(silent = true) {
 async function initApp() {
   // Register PWA Service Worker if supported
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("./sw.js?v=2.6").then(reg => { try { reg.update(); } catch (e) {} }).catch(() => {});
+    navigator.serviceWorker.register("./sw.js?v=2.7").then(reg => { try { reg.update(); } catch (e) {} }).catch(() => {});
   }
 
   // Check if URL has ?cloud=https://script.google.com/... auto-configuration link for spouse
@@ -2294,15 +2365,45 @@ function renderEarlyWarnings() {
     }
   ];
 
-  document.getElementById("early-warnings-list").innerHTML = warnings.map(w => `
-    <div class="alert-item ${w.type}">
-      <div style="font-size:20px;">${w.icon}</div>
-      <div>
-        <div style="font-weight:700;margin-bottom:2px;">${w.title}</div>
-        <div style="color:var(--text-secondary);font-size:12.5px;">${w.desc}</div>
-      </div>
-    </div>
-  `).join("");
+  const collapsed = isEarlyWarningsCollapsed();
+  const btn = document.getElementById("btn-toggle-warnings");
+  const summaryEl = document.getElementById("warnings-collapsed-summary");
+  const listEl = document.getElementById("early-warnings-list");
+  const badgeEl = document.getElementById("early-warnings-badge");
+
+  if (badgeEl) badgeEl.textContent = `${warnings.length} cảnh báo`;
+
+  if (collapsed) {
+    if (btn) btn.innerHTML = `🔽 Mở rộng (${warnings.length})`;
+    if (listEl) listEl.style.display = "none";
+    if (summaryEl) {
+      summaryEl.style.display = "block";
+      summaryEl.innerHTML = `
+        <div class="warnings-summary-pill" title="Bấm để mở rộng toàn bộ cảnh báo">
+          <div style="display:flex;align-items:center;gap:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+            <span>${warnings[0].icon}</span>
+            <span style="font-weight:700;font-size:12.5px;color:#cbd5e1;">${warnings[0].title}</span>
+          </div>
+          <span style="font-size:11.5px;color:#a5b4fc;font-weight:700;white-space:nowrap;margin-left:10px;">+${warnings.length - 1} khác 🔽</span>
+        </div>
+      `;
+    }
+  } else {
+    if (btn) btn.innerHTML = `🔼 Thu gọn`;
+    if (summaryEl) summaryEl.style.display = "none";
+    if (listEl) {
+      listEl.style.display = "flex";
+      listEl.innerHTML = warnings.map(w => `
+        <div class="alert-item ${w.type}">
+          <div style="font-size:20px;">${w.icon}</div>
+          <div>
+            <div style="font-weight:700;margin-bottom:2px;">${w.title}</div>
+            <div style="color:var(--text-secondary);font-size:12.5px;">${w.desc}</div>
+          </div>
+        </div>
+      `).join("");
+    }
+  }
 }
 
 // ============================================================================
@@ -2376,18 +2477,29 @@ function renderTransactionsTab() {
   document.getElementById("filtered-tx-count").textContent = filtered.length;
   document.getElementById("filtered-tx-sum").textContent = fmtVND(filteredSum);
 
+  const isSpreadsheet = isTableSpreadsheetMode();
+  const wrap = document.getElementById("tx-table-wrap");
+  if (wrap) wrap.classList.toggle("spreadsheet-grid", isSpreadsheet);
+
+  const toggleBtn = document.getElementById("btn-toggle-table-mode");
+  if (toggleBtn) {
+    toggleBtn.innerHTML = isSpreadsheet ? "📊 Kiểu Bảng Tính (Đang Bật)" : "📋 Kiểu Bảng Tính (Bấm Bật)";
+    toggleBtn.style.color = isSpreadsheet ? "#34d399" : "#38bdf8";
+    toggleBtn.style.borderColor = isSpreadsheet ? "rgba(16,185,129,0.4)" : "rgba(56,189,248,0.4)";
+  }
+
   const bankList = ALL_PAYMENT_SOURCES;
 
-  document.getElementById("tx-table-body").innerHTML = filtered.slice(0, 250).map(t => {
+  const rowsHtml = filtered.slice(0, 300).map(t => {
     const rowSources = bankList.includes(t.source) ? bankList : [t.source, ...bankList];
     return `
     <tr>
-      <td style="white-space:nowrap;color:var(--text-secondary);font-size:12px;">${t.date} <span style="opacity:0.6;">(T${t.month})</span></td>
+      <td style="white-space:nowrap;color:var(--text-secondary);font-size:12px;font-family:monospace;">${t.date} <span style="opacity:0.6;">(T${t.month})</span></td>
       <td>
         <input
           type="text"
           class="input-control"
-          style="width:100%;min-width:170px;padding:4px 8px;font-size:13px;font-weight:600;background:rgba(15,23,42,0.55);border-color:transparent;"
+          style="width:100%;min-width:170px;padding:4px 8px;font-size:13px;font-weight:600;background:rgba(15,23,42,0.55);"
           onfocus="this.style.borderColor='var(--primary)'"
           onblur="this.style.borderColor='transparent'"
           value="${String(t.content || '').replace(/"/g, '&quot;')}"
@@ -2428,7 +2540,7 @@ function renderTransactionsTab() {
         <input
           type="number"
           class="input-control"
-          style="width:110px;text-align:right;padding:4px 8px;font-size:13px;font-weight:700;color:#34d399;background:rgba(15,23,42,0.55);border-color:transparent;"
+          style="width:115px;text-align:right;padding:4px 8px;font-size:13px;font-weight:700;color:#34d399;background:rgba(15,23,42,0.55);"
           onfocus="this.style.borderColor='var(--primary)'"
           onblur="this.style.borderColor='transparent'"
           value="${t.amount}"
@@ -2442,6 +2554,20 @@ function renderTransactionsTab() {
       </td>
     </tr>
   `}).join("");
+
+  const totalRowHtml = `
+    <tr class="spreadsheet-total-row">
+      <td colspan="5" style="text-align:right;color:#cbd5e1;font-weight:700;font-size:12.5px;">
+        📊 TỔNG CỘNG (${filtered.length} KHOẢN):
+      </td>
+      <td class="num" style="color:#34d399;font-weight:800;font-size:14px;">
+        ${fmtVND(filteredSum)}
+      </td>
+      <td></td>
+    </tr>
+  `;
+
+  document.getElementById("tx-table-body").innerHTML = rowsHtml + (filtered.length > 0 ? totalRowHtml : "");
 }
 
 async function inlineUpdateTx(txId, field, newValue) {
@@ -3454,21 +3580,250 @@ function sendAiChat() {
 }
 
 // ============================================================================
-// MULTI-PROVIDER AI ENGINE (GEMINI / VERTEX / OPENAI / GROQ / OPENROUTER / DEEPSEEK)
+// DYNAMIC EXCEL EXPORT ENGINE (SHEETJS) - XUẤT 100% GIAO DỊCH MỚI NHẤT
+// ============================================================================
+function loadSheetJsScript() {
+  return new Promise((resolve, reject) => {
+    if (window.XLSX) return resolve(window.XLSX);
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+    s.onload = () => resolve(window.XLSX);
+    s.onerror = (e) => reject(new Error("Không thể tải thư viện XLSX: " + e));
+    document.head.appendChild(s);
+  });
+}
+
+async function exportLatestExcelFile() {
+  try {
+    updateCloudBadgeUI("⏳ Đang tạo file Excel mới nhất...");
+    const XLSX = await loadSheetJsScript();
+    const wb = XLSX.utils.book_new();
+
+    const txs = DB.transactions || [];
+    const sorted = [...txs].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+
+    // 1. MASTER Sheet
+    const masterData = [
+      ["BẢNG TỔNG HỢP THU CHI GIA ĐÌNH 2026 - TẤT CẢ GIAO DỊCH MỚI NHẤT"],
+      ["Ngày xuất file:", new Date().toLocaleString("vi-VN")],
+      ["Tổng số giao dịch:", txs.length],
+      [""],
+      ["Tháng", "Tổng Thu Nhập", "Thực Chi", "Thặng Dư", "Tỷ Lệ Tiết Kiệm", "DCA 3 Quỹ", "Quỹ Bắt Đáy"]
+    ];
+
+    (DB.months || []).forEach(m => {
+      const inc = m.income ? m.income.total : 0;
+      const exp = m.actual_total_expense || 0;
+      const sur = inc - exp;
+      const rate = inc > 0 ? ((sur / inc) * 100).toFixed(1) + "%" : "0%";
+      const dca = m.allocation ? m.allocation.dca_total : 0;
+      const dip = m.allocation ? m.allocation.dip_fund : 0;
+      masterData.push([`Tháng ${m.month}`, inc, exp, sur, rate, dca, dip]);
+    });
+
+    const wsMaster = XLSX.utils.aoa_to_sheet(masterData);
+    XLSX.utils.book_append_sheet(wb, wsMaster, "MASTER_2026");
+
+    // 2. Monthly Detail Sheets (T1..T12)
+    for (let m = 1; m <= 12; m++) {
+      const mTx = sorted.filter(t => Number(t.month) === m);
+      if (mTx.length === 0) continue;
+
+      const sheetRows = [
+        ["STT", "Ngày", "Nội dung chi tiêu", "Hạng mục", "Phân loại", "Số tiền (VNĐ)", "Nguồn tiền"]
+      ];
+
+      mTx.forEach((t, idx) => {
+        sheetRows.push([
+          idx + 1,
+          t.date || "",
+          t.content || "",
+          t.category || "",
+          t.person || "",
+          Number(t.amount || 0),
+          t.source || ""
+        ]);
+      });
+
+      const mSum = mTx.reduce((s, t) => s + Number(t.amount || 0), 0);
+      sheetRows.push(["", "", `TỔNG CỘNG THÁNG ${m}`, "", "", mSum, ""]);
+
+      const wsMonth = XLSX.utils.aoa_to_sheet(sheetRows);
+      XLSX.utils.book_append_sheet(wb, wsMonth, `T${m} - DETAIL`);
+    }
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const fileName = `2026_FAMILY_NOTEBOOK_CAP_NHAT_${todayStr}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    updateCloudBadgeUI();
+    alert(`🎉 Đã tải file Excel mới nhất (${fileName}) về máy của bạn!\nFile bao gồm đầy đủ toàn bộ ${txs.length} giao dịch (kể cả các giao dịch mới thêm).`);
+  } catch (err) {
+    console.error("Export Excel error:", err);
+    updateCloudBadgeUI();
+    const a = document.createElement("a");
+    a.href = "./data/2026_FAMILY_NOTEBOOK_CHUAN_HOA.xlsx";
+    a.download = "2026_FAMILY_NOTEBOOK_CHUAN_HOA.xlsx";
+    a.click();
+    alert("Đã tải file Excel chuẩn hóa về máy!");
+  }
+}
+
+// ============================================================================
+// HELPER: ROBUST JSON EXTRACTION & IMAGE RESIZING FOR OCR
+// ============================================================================
+function extractJsonFromAiResponse(text) {
+  if (!text) return null;
+  const raw = String(text).trim();
+  try { return JSON.parse(raw); } catch (e) {}
+
+  const clean = raw.replace(/```(?:json)?\s*/gi, "").replace(/```\s*/g, "").trim();
+  try { return JSON.parse(clean); } catch (e) {}
+
+  const firstBrace = clean.indexOf("{");
+  const lastBrace = clean.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    try {
+      return JSON.parse(clean.substring(firstBrace, lastBrace + 1));
+    } catch (e) {}
+  }
+
+  const firstBracket = clean.indexOf("[");
+  const lastBracket = clean.lastIndexOf("]");
+  if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+    try {
+      return JSON.parse(clean.substring(firstBracket, lastBracket + 1));
+    } catch (e) {}
+  }
+  return null;
+}
+
+function compressImageForOCR(file, maxDimension = 1600, quality = 0.85) {
+  return new Promise((resolve) => {
+    if (!file) return resolve({ dataUrl: "", base64: "", mimeType: "image/jpeg" });
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDimension || h > maxDimension) {
+          if (w > h) {
+            h = Math.round((h * maxDimension) / w);
+            w = maxDimension;
+          } else {
+            w = Math.round((w * maxDimension) / h);
+            h = maxDimension;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        resolve({
+          dataUrl,
+          base64: dataUrl.split(",")[1],
+          mimeType: "image/jpeg"
+        });
+      };
+      img.onerror = () => {
+        const rawUrl = String(e.target.result || "");
+        resolve({
+          dataUrl: rawUrl,
+          base64: rawUrl.includes(",") ? rawUrl.split(",")[1] : rawUrl,
+          mimeType: file.type || "image/jpeg"
+        });
+      };
+      img.src = e.target.result;
+    };
+    reader.onerror = () => {
+      resolve({ dataUrl: "", base64: "", mimeType: "image/jpeg" });
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// ============================================================================
+// ANTHROPIC CLAUDE API CLIENT (SUPPORTS CLAUDE 3.5 SONNET VISION OCR)
+// ============================================================================
+async function callAnthropicClaudeAPI(apiKey, promptText, imageBase64 = null, mimeType = "image/jpeg") {
+  const models = [
+    "claude-3-5-sonnet-20241022",
+    "claude-3-5-haiku-20241022",
+    "claude-3-haiku-20240307",
+    "claude-3-7-sonnet-20250219"
+  ];
+
+  let lastError = "";
+  for (const model of models) {
+    try {
+      const userContent = [];
+      if (imageBase64) {
+        userContent.push({
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: mimeType || "image/jpeg",
+            data: imageBase64
+          }
+        });
+      }
+      userContent.push({
+        type: "text",
+        text: promptText
+      });
+
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify({
+          model: model,
+          max_tokens: 2500,
+          messages: [{ role: "user", content: userContent }]
+        })
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.content && Array.isArray(data.content)) {
+        const text = data.content.filter(p => p.type === "text").map(p => p.text).join("\n");
+        if (text) {
+          const simpleName = model.replace("-20241022", "").replace("-20250219", "").replace("-20240307", "");
+          return { ok: true, text, model: `Claude (${simpleName})`, error: null };
+        }
+      } else {
+        const errMsg = data?.error?.message || `HTTP ${res.status}`;
+        lastError = errMsg;
+        if (res.status === 401 || (data?.error && data.error.type === "authentication_error")) {
+          return { ok: false, text: null, model: null, error: `Lỗi xác thực Claude API: ${errMsg}` };
+        }
+      }
+    } catch (e) {
+      lastError = String(e.message || e);
+    }
+  }
+  return { ok: false, text: null, model: null, error: lastError || "Không nhận được phản hồi từ máy chủ Claude API" };
+}
+
+// ============================================================================
+// MULTI-PROVIDER AI ENGINE (CLAUDE / GEMINI / OPENAI / GROQ / OPENROUTER)
 // ============================================================================
 function cleanApiKeyInput(raw) {
   let s = String(raw || "").trim();
   if (!s) return "";
-  // If user pasted a curl command or code snippet containing x-goog-api-key or key=... or Authorization: Bearer ...
   const mHeader = s.match(/x-goog-api-key\s*[:=]\s*['"]?([A-Za-z0-9._\-]+)['"]?/i);
   if (mHeader) return mHeader[1].trim();
   const mQuery = s.match(/[?&]key=([A-Za-z0-9._\-]+)/i);
   if (mQuery) return mQuery[1].trim();
   const mBearer = s.match(/Bearer\s+([A-Za-z0-9._\-]+)/i);
   if (mBearer) return mBearer[1].trim();
-  const mEnv = s.match(/(?:API_KEY|GEMINI_API_KEY|OPENAI_API_KEY)\s*=\s*['"]?([A-Za-z0-9._\-]+)['"]?/i);
+  const mEnv = s.match(/(?:API_KEY|GEMINI_API_KEY|OPENAI_API_KEY|ANTHROPIC_API_KEY|CLAUDE_API_KEY)\s*=\s*['"]?([A-Za-z0-9._\-]+)['"]?/i);
   if (mEnv) return mEnv[1].trim();
-  // Strip surrounding quotes or spaces
   return s.replace(/^['"`\s]+|['"`\s]+$/g, "").trim();
 }
 
@@ -3488,7 +3843,6 @@ async function discoverGeminiModels(apiKey) {
       .map(m => String(m.name || "").replace(/^models\//, ""))
       .filter(name => name && !/embedding|imagen|aqa|tts|audio|Moderation|robotics|computer-use|veo|lyria/i.test(name));
 
-    // Score models to prioritize fast, high-quota Flash models on Google AI Studio Free Tier
     const scoreModel = (name) => {
       const n = name.toLowerCase();
       if (n === "gemini-2.5-flash") return 100;
@@ -3519,12 +3873,22 @@ async function callAIWithDiagnostics(promptText, imageBase64 = null, mimeType = 
 
   let firstRealError = "";
 
-  // 1. Check if key is OpenAI / Groq / OpenRouter / DeepSeek style (starts with sk- or gsk_)
-  if ((apiKey.startsWith("sk-") || apiKey.startsWith("gsk_")) && !imageBase64) {
+  // 1. ANTHROPIC CLAUDE API (Mã bắt đầu bằng sk-ant-)
+  if (apiKey.startsWith("sk-ant-")) {
+    const claudeRes = await callAnthropicClaudeAPI(apiKey, promptText, imageBase64, mimeType);
+    if (claudeRes.ok) {
+      return { text: claudeRes.text, model: claudeRes.model, keyVerified: true, error: null };
+    }
+    return { text: null, model: null, keyVerified: false, error: claudeRes.error };
+  }
+
+  // 2. OpenAI / Groq / OpenRouter / DeepSeek
+  if (apiKey.startsWith("sk-") || apiKey.startsWith("gsk_")) {
     const endpoints = [];
     if (apiKey.startsWith("gsk_")) {
       endpoints.push({ url: "https://api.groq.com/openai/v1/chat/completions", model: "llama-3.3-70b-versatile" });
     } else if (apiKey.startsWith("sk-or-")) {
+      endpoints.push({ url: "https://openrouter.ai/api/v1/chat/completions", model: "anthropic/claude-3.5-sonnet" });
       endpoints.push({ url: "https://openrouter.ai/api/v1/chat/completions", model: "google/gemini-2.0-flash-001" });
     } else {
       endpoints.push({ url: "https://api.openai.com/v1/chat/completions", model: "gpt-4o-mini" });
@@ -3532,6 +3896,13 @@ async function callAIWithDiagnostics(promptText, imageBase64 = null, mimeType = 
     }
     for (const ep of endpoints) {
       try {
+        const userContent = imageBase64
+          ? [
+              { type: "text", text: promptText },
+              { type: "image_url", image_url: { url: `data:${mimeType};base64,${imageBase64}` } }
+            ]
+          : promptText;
+
         const res = await fetch(ep.url, {
           method: "POST",
           headers: {
@@ -3540,14 +3911,14 @@ async function callAIWithDiagnostics(promptText, imageBase64 = null, mimeType = 
           },
           body: JSON.stringify({
             model: ep.model,
-            messages: [{ role: "user", content: promptText }],
+            messages: [{ role: "user", content: userContent }],
             temperature: 0.2
           })
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
           const text = data?.choices?.[0]?.message?.content;
-          if (text) return { text, model: ep.model, error: null };
+          if (text) return { text, model: ep.model, keyVerified: true, error: null };
         } else {
           if (!firstRealError) firstRealError = data?.error?.message || `HTTP ${res.status}`;
         }
@@ -3555,9 +3926,12 @@ async function callAIWithDiagnostics(promptText, imageBase64 = null, mimeType = 
         if (!firstRealError) firstRealError = String(e.message || e);
       }
     }
+    if (firstRealError) {
+      return { text: null, model: null, keyVerified: false, error: firstRealError };
+    }
   }
 
-  // 2. Dynamically discover exact models available for this Google API key via ListModels
+  // 3. Dynamically discover exact models available for this Google API key via ListModels
   let modelsToTry = cachedDiscoveredGeminiModels;
   let keyVerifiedByListModels = false;
   if (!modelsToTry || modelsToTry.length === 0 || overrideKey !== null) {
@@ -3648,29 +4022,30 @@ function openGeminiSettingsModal() {
 
   content.innerHTML = `
     <div class="card-header">
-      <div class="card-title">🤖 Cài Đặt & Kích Hoạt AI (Google Gemini / OpenAI / Groq)</div>
+      <div class="card-title">🤖 Cài Đặt Não AI (Anthropic Claude • Google Gemini • OpenAI)</div>
       <button class="btn btn-ghost" style="padding:4px 10px;" onclick="closeModal()">✕</button>
     </div>
-    <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;">
-      <div style="background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.35);border-radius:12px;padding:12px;line-height:1.55;">
-        <div style="font-weight:700;color:#c4b5fd;margin-bottom:4px;">✨ Hỗ trợ mọi định dạng API Key (Không giới hạn định dạng):</div>
+    <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;max-height:80vh;overflow-y:auto;padding-right:4px;">
+      <div style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.45);border-radius:12px;padding:12px;line-height:1.55;">
+        <div style="font-weight:700;color:#fbbf24;margin-bottom:4px;">🌟 Khuyên Dùng: Não AI Claude (Anthropic Claude 3.5 Sonnet)</div>
         <div style="color:var(--text-secondary);font-size:12px;">
-          • Bạn có thể dán <b>bất kỳ mã API Key nào</b> từ <b>Google AI Studio (Gemini Free)</b>, <b>Google Cloud / Vertex</b>, hoặc cả <b>OpenAI / Groq / OpenRouter / DeepSeek</b>.<br/>
-          • Mã sau khi lưu sẽ được <b>đồng bộ tự động qua Google Sheet Cloud sang máy của Vợ</b> (chỉ cần 1 người nhập).
+          • <b>Khả năng đọc ảnh hóa đơn / bill siêu thị:</b> Claude 3.5 Sonnet đứng đầu thế giới về OCR tiếng Việt, nhận diện đúng từng món hàng & số tiền mờ nhăn chuẩn 99%.<br/>
+          • <b>Cách lấy mã Claude:</b> Mở trang <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:#fbbf24;font-weight:700;text-decoration:underline;">👉 console.anthropic.com/settings/keys</a> → <b>Create Key</b> (mã bắt đầu bằng <code>sk-ant-api03-...</code>).<br/>
+          • Dán trực tiếp vào ô bên dưới, hệ thống tự động kích hoạt não Claude Vision OCR!
         </div>
       </div>
 
       <div style="background:rgba(15,23,42,0.8);border:1px solid var(--border-subtle);border-radius:12px;padding:12px;">
-        <div style="font-weight:700;color:#38bdf8;margin-bottom:6px;">🚀 Nếu lấy mã từ Google AI Studio (Miễn phí):</div>
+        <div style="font-weight:700;color:#38bdf8;margin-bottom:6px;">🚀 Hoặc Dùng Google AI Studio (Gemini Free 0đ):</div>
         <ol style="margin:0;padding-left:18px;color:var(--text-secondary);font-size:12px;line-height:1.6;">
           <li>Mở trang: <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:#34d399;font-weight:700;text-decoration:underline;">👉 aistudio.google.com/app/apikey</a></li>
-          <li>Bấm vào nút <b>Copy API key</b> (hoặc <b>Create API key</b>) rồi dán trực tiếp vào ô bên dưới (App hiển thị rõ chữ để bạn dễ kiểm tra).</li>
+          <li>Bấm <b>Copy API key</b> (hoặc <b>Create API key</b>) rồi dán vào ô bên dưới.</li>
         </ol>
       </div>
 
       <div>
-        <label style="font-weight:700;display:block;margin-bottom:4px;">🔑 Dán Mã API Key của bạn vào đây:</label>
-        <input type="text" id="modal-gemini-key-input" class="input-control" style="width:100%;font-family:monospace;font-size:13px;" value="${currentKey}" placeholder="Dán mã API Key bất kỳ vào đây..." />
+        <label style="font-weight:700;display:block;margin-bottom:4px;">🔑 Dán Mã API Key (Claude / Gemini / OpenAI) vào đây:</label>
+        <input type="text" id="modal-gemini-key-input" class="input-control" style="width:100%;font-family:monospace;font-size:13px;" value="${currentKey}" placeholder="Dán mã API Key Claude (sk-ant-...) hoặc Gemini (AIza...)..." />
       </div>
 
       <div id="gemini-test-status" style="font-size:12px;color:var(--text-secondary);"></div>
@@ -4401,6 +4776,8 @@ function openReceiptScannerModal() {
   const defaultSrc = document.getElementById("quick-default-source")?.value || localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt";
   const geminiKey = getGeminiApiKey();
 
+  const aiProviderName = getAIProviderName(geminiKey) || "Não AI";
+
   scannedReceiptData = {
     storeName: "Siêu thị",
     saveMode: "total",
@@ -4428,8 +4805,8 @@ function openReceiptScannerModal() {
         </div>
         <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">
           ${geminiKey
-            ? `<span style="color:#34d399;font-weight:700;">✨ Đã bật Gemini Vision AI:</span> Tự động đọc siêu chuẩn từng món hàng, giá tiền và tổng hóa đơn chỉ trong 2 giây!`
-            : `Hỗ trợ đọc hóa đơn bằng OCR hoặc bấm <a href="javascript:void(0)" onclick="openGeminiSettingsModal()" style="color:#c4b5fd;font-weight:700;text-decoration:underline;">🤖 Bật Gemini AI Free (Miễn phí)</a> để đọc Bill siêu thị mờ/nhăn chuẩn 99%!`}
+            ? `<span style="color:#34d399;font-weight:700;">✨ Đã bật ${aiProviderName}:</span> Tự động đọc siêu chuẩn từng món hàng, giá tiền và tổng hóa đơn chỉ trong 1-2 giây!`
+            : `Hỗ trợ đọc hóa đơn bằng OCR hoặc bấm <a href="javascript:void(0)" onclick="openGeminiSettingsModal()" style="color:#c4b5fd;font-weight:700;text-decoration:underline;">🤖 Cài Não AI (Claude / Gemini)</a> để đọc Bill siêu thị mờ/nhăn chuẩn 99%!`}
         </div>
         <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
           <label class="btn btn-primary" style="cursor:pointer;padding:9px 14px;font-size:12.5px;">
@@ -4489,19 +4866,25 @@ async function handleReceiptImageSelected(file) {
   const barEl = document.getElementById("receipt-ocr-bar");
 
   if (previewArea) previewArea.style.display = "flex";
-  const dataUrl = await fileToBase64(file);
+  if (statusEl) statusEl.textContent = "⏳ Đang tối ưu hóa kích thước ảnh...";
+  if (barEl) barEl.style.width = "20%";
+
+  // Nén ảnh bằng Canvas xuống kích thước chuẩn để tải lên AI siêu nhanh (chỉ ~300KB thay vì 10MB)
+  const compressed = await compressImageForOCR(file, 1600, 0.85);
+  const dataUrl = compressed.dataUrl;
   if (imgEl) imgEl.src = dataUrl;
 
   const geminiKey = getGeminiApiKey();
+  const provider = getAIProviderName(geminiKey) || "Vision AI";
   const defaultSrc = document.getElementById("quick-default-source")?.value || localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt";
 
-  // 1. Try Gemini Vision AI (gemini-2.5-flash / gemini-2.0-flash / gemini-1.5-flash) if key is configured
+  // 1. Dùng Claude / Gemini Vision AI nếu đã cài API Key
   if (geminiKey) {
     try {
-      if (statusEl) statusEl.textContent = "✨ Đang dùng Gemini Vision AI đọc hóa đơn siêu thị / bill...";
+      if (statusEl) statusEl.textContent = `✨ Đang dùng ${provider} bóc tách chi tiết hóa đơn siêu thị / bill...`;
       if (barEl) barEl.style.width = "65%";
-      const base64Raw = dataUrl.split(",")[1];
-      const mimeType = file.type || "image/jpeg";
+      const base64Raw = compressed.base64;
+      const mimeType = compressed.mimeType || "image/jpeg";
       const visionPrompt = `Đây là ảnh chụp hóa đơn siêu thị hoặc bill chuyển khoản tại Việt Nam. Hãy trích xuất chính xác sang JSON thuần (không dùng markdown \`\`\`):
 {
   "storeName": "Tên siêu thị/cửa hàng hoặc ngân hàng",
@@ -4513,16 +4896,17 @@ async function handleReceiptImageSelected(file) {
 }`;
       const rawTxt = await callGeminiFreeAPI(visionPrompt, base64Raw, mimeType);
       if (rawTxt) {
-        const cleanJson = rawTxt.replace(/```json|```/g, "").trim();
-        const parsedAi = JSON.parse(cleanJson);
+        const parsedAi = extractJsonFromAiResponse(rawTxt);
         if (parsedAi && (parsedAi.totalAmount || (parsedAi.items && parsedAi.items.length > 0))) {
           if (barEl) barEl.style.width = "100%";
-          if (statusEl) statusEl.textContent = "✅ Gemini Vision AI đã bóc tách hóa đơn thành công!";
+          if (statusEl) statusEl.textContent = `✅ ${provider} đã bóc tách hóa đơn thành công!`;
           applyParsedReceiptResult(parsedAi);
           return;
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn("AI OCR Error:", e);
+    }
   }
 
   // 2. Built-in Client-side OCR (Tesseract.js Vietnamese)

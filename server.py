@@ -87,7 +87,11 @@ def append_tx_to_excel(tx):
         # Find first empty transaction row in Col C & F starting from row 4
         target_row = 4
         for r in range(4, 830):
-            if ws.cell(r, 3).value is None and ws.cell(r, 6).value is None:
+            v3 = ws.cell(r, 3).value
+            v6 = ws.cell(r, 6).value
+            empty3 = v3 is None or str(v3).strip() == ""
+            empty6 = v6 is None or str(v6).strip() == ""
+            if empty3 and empty6:
                 target_row = r
                 break
         try:
@@ -316,10 +320,11 @@ def parse_quick_input(raw_text, default_month=10):
     }
 
 
-def parse_bank_emails(raw_email_text):
+def parse_bank_emails(raw_email_text, min_date="2026-11-01"):
     """
     Parses 1 or multiple bank notification emails / SMS messages from VPBank, BIDV, NCB, UOB.
     Splits by '---' or email headers or processes line-by-line / block-by-block.
+    Filters out transactions before min_date (defaults to 2026-11-01).
     """
     blocks = [b.strip() for b in re.split(r'(?:^|\n)---+(?:\n|$)|(?=From:|Từ:|\[VPBank\]|\[BIDV\]|\[NCB\])', raw_email_text) if b.strip()]
     if not blocks:
@@ -390,6 +395,10 @@ def parse_bank_emails(raw_email_text):
 
         cat, person, conf, reason = classify_transaction_text(content_extracted + " " + friendly_note)
         is_unclear, unclear_msg = is_unclear_email_transaction(friendly_note, content_extracted, conf)
+
+        # Skip emails before min_date (e.g. before 2026-11-01)
+        if min_date and date_str < min_date:
+            continue
 
         if amt > 0:
             item_data = {
@@ -871,7 +880,8 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
 
         elif parsed.path == "/api/email/parse":
             raw_text = body.get("raw_text", SAMPLE_BANK_EMAILS)
-            parsed_list = parse_bank_emails(raw_text)
+            min_date = body.get("min_date", "2026-11-01")
+            parsed_list = parse_bank_emails(raw_text, min_date=min_date)
             self._send_json({"ok": True, "items": parsed_list})
             return
 
