@@ -18,7 +18,23 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css?v=7.0.0" />
+  <link rel="stylesheet" href="./styles.css?v=7.1.0" />
+  <script>
+    (function() {
+      var VER = "v7.1-taste-ledger";
+      if (localStorage.getItem("FAMILY_BUILD_VER_ACTIVE") !== VER) {
+        localStorage.setItem("FAMILY_BUILD_VER_ACTIVE", VER);
+        if ("caches" in window) {
+          caches.keys().then(function(ks) { ks.forEach(function(k) { caches.delete(k); }); });
+        }
+        if ("serviceWorker" in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(rs) {
+            rs.forEach(function(r) { r.unregister(); });
+          });
+        }
+      }
+    })();
+  </script>
 </head>
 <body>
   <!-- FAMILY PIN LOCK SCREEN OVERLAY -->
@@ -723,6 +739,6 @@
     <div class="card" style="width:100%;max-width:620px;border-color:var(--border-strong);max-height:92vh;overflow-y:auto;" id="modal-content"></div>
   </div>
 
-  <script src="./app.js?v=7.0.0"></script>
+  <script src="./app.js?v=7.1.0"></script>
 </body>
 </html>
