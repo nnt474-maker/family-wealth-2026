@@ -13,19 +13,39 @@ import openpyxl
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH = os.path.join(BASE_DIR, "data", "family_db.json")
+LOCAL_SECRETS_PATH = os.path.join(BASE_DIR, "data", "local_secrets.json")
 PARENT_DIR = os.path.dirname(BASE_DIR)
 FIXED_EXCEL_PATH = os.path.join(PARENT_DIR, "2026 - FAMILY NOTE BOOK (Da Chuan Hoa & Gop Dau Tu).xlsx")
 
 
 def load_db():
     with open(DATA_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+        db = json.load(f)
+    if os.path.exists(LOCAL_SECRETS_PATH):
+        try:
+            with open(LOCAL_SECRETS_PATH, "r", encoding="utf-8") as sf:
+                secrets = json.load(sf)
+            if secrets.get("gemini_api_key") and "meta" in db:
+                db["meta"]["gemini_api_key"] = secrets["gemini_api_key"]
+        except Exception:
+            pass
+    return db
 
 
 def save_db(db):
     db["meta"]["last_synced"] = datetime.datetime.now().isoformat()
+    api_key = db.get("meta", {}).get("gemini_api_key", "")
+    if api_key:
+        try:
+            with open(LOCAL_SECRETS_PATH, "w", encoding="utf-8") as sf:
+                json.dump({"gemini_api_key": api_key}, sf, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+    db_to_write = json.loads(json.dumps(db))
+    if "meta" in db_to_write and "gemini_api_key" in db_to_write["meta"]:
+        db_to_write["meta"]["gemini_api_key"] = ""
     with open(DATA_PATH, "w", encoding="utf-8") as f:
-        json.dump(db, f, ensure_ascii=False, indent=2)
+        json.dump(db_to_write, f, ensure_ascii=False, indent=2)
 
 
 def recompute_months(db):
@@ -60,9 +80,8 @@ def recompute_months(db):
     for h in holdings:
         code = h["code"]
         c_orders = [o for o in orders if o["code"] == code]
-        if c_orders:
-            h["invested"] = sum(float(o["amount"]) for o in c_orders)
-            h["units"] = round(sum(float(o["units"]) for o in c_orders), 2)
+        h["invested"] = sum(float(o["amount"]) for o in c_orders)
+        h["units"] = round(sum(float(o["units"]) for o in c_orders), 2)
         h["market_value"] = round(float(h["units"]) * float(h["current_nav"]))
         h["avg_cost"] = round(h["invested"] / h["units"]) if h["units"] > 0 else 0
         h["pnl"] = h["market_value"] - h["invested"]
@@ -71,6 +90,10 @@ def recompute_months(db):
     tot_mv = sum(h["market_value"] for h in holdings)
     for h in holdings:
         h["actual_weight"] = round(h["market_value"] / tot_mv, 4) if tot_mv > 0 else 0.0
+
+    db["investment"]["dip_fund_balance"] = sum(
+        float(m.get("allocation", {}).get("dip_fund", 0)) for m in db.get("months", [])
+    )
 
 
 def append_tx_to_excel(tx):
@@ -808,24 +831,59 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
             db = load_db()
             txs = db["transactions"]
             new_num = len(txs) + 1
+            tx_id = body.get("id") or f"TX2026-{new_num:04d}-{int(datetime.datetime.now().timestamp()) % 1000:03d}"
+            date_val = body.get("date") or datetime.datetime.now().strftime("2026-%m-%d")
+            try:
+                parsed_m = int(date_val.split("-")[1])
+            except Exception:
+                parsed_m = int(body.get("month", 10))
             tx = {
-                "id": f"TX2026-{new_num:04d}",
-                "month": int(body.get("month", 10)),
-                "date": body.get("date", datetime.datetime.now().strftime("2026-10-%d")),
-                "row": 0,
+                "id": tx_id,
+                "month": int(body.get("month") or parsed_m),
+                "date": date_val,
+                "row": int(body.get("row", 0)),
                 "content": body.get("content", "").strip(),
                 "category": body.get("category", "Ăn uống"),
                 "person": body.get("person", "Chung"),
                 "amount": float(body.get("amount", 0)),
-                "source": body.get("source", "VPBank"),
+                "source": body.get("source", "Tiền mặt"),
                 "was_unmatched_in_excel": False,
-                "issue_note": None
+                "issue_note": None,
+                "is_cloud_added": True,
+                "updated_at": datetime.datetime.now().isoformat()
             }
-            txs.insert(0, tx)
+            existing_idx = next((i for i, t in enumerate(txs) if t.get("id") == tx_id), -1)
+            if existing_idx >= 0:
+                txs[existing_idx] = tx
+            else:
+                txs.insert(0, tx)
             recompute_months(db)
             save_db(db)
             excel_synced = append_tx_to_excel(tx)
             self._send_json({"ok": True, "transaction": tx, "excel_synced": excel_synced, "db": db})
+            return
+
+        elif parsed.path == "/api/transactions/edit":
+            db = load_db()
+            tx_data = body.get("transaction") or body
+            tx_id = tx_data.get("id")
+            updated_tx = None
+            for t in db["transactions"]:
+                if t.get("id") == tx_id:
+                    t["content"] = str(tx_data.get("content", t.get("content", ""))).strip()
+                    t["amount"] = float(tx_data.get("amount", t.get("amount", 0)))
+                    t["date"] = str(tx_data.get("date", t.get("date", "")))
+                    t["month"] = int(tx_data.get("month", t.get("month", 10)))
+                    t["category"] = str(tx_data.get("category", t.get("category", "Ăn uống")))
+                    t["person"] = str(tx_data.get("person", t.get("person", "Chung")))
+                    t["source"] = str(tx_data.get("source", t.get("source", "Tiền mặt")))
+                    t["is_cloud_edited"] = True
+                    t["updated_at"] = datetime.datetime.now().isoformat()
+                    updated_tx = t
+                    break
+            recompute_months(db)
+            save_db(db)
+            self._send_json({"ok": True, "transaction": updated_tx, "db": db})
             return
 
         elif parsed.path == "/api/transactions/batch":
@@ -834,21 +892,33 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
             added = []
             for item in items:
                 new_num = len(db["transactions"]) + 1
+                tx_id = item.get("id") or f"TX2026-{new_num:04d}-{len(added)+1:02d}"
+                date_val = item.get("date") or datetime.datetime.now().strftime("2026-%m-%d")
+                try:
+                    parsed_m = int(date_val.split("-")[1])
+                except Exception:
+                    parsed_m = int(item.get("month", 10))
                 tx = {
-                    "id": f"TX2026-{new_num:04d}",
-                    "month": int(item.get("month", 10)),
-                    "date": item.get("date", datetime.datetime.now().strftime("2026-10-%d")),
+                    "id": tx_id,
+                    "month": int(item.get("month") or parsed_m),
+                    "date": date_val,
                     "row": 0,
                     "content": item.get("content", "").strip(),
                     "category": item.get("category", "Ăn uống"),
                     "person": item.get("person", "Chung"),
                     "amount": float(item.get("amount", 0)),
-                    "source": item.get("source", item.get("bank", "VPBank")),
+                    "source": item.get("source", item.get("bank", "Tiền mặt")),
                     "was_unmatched_in_excel": False,
-                    "issue_note": None
+                    "issue_note": None,
+                    "is_cloud_added": True,
+                    "updated_at": datetime.datetime.now().isoformat()
                 }
-                db["transactions"].insert(0, tx)
-                append_tx_to_excel(tx)
+                existing_idx = next((i for i, t in enumerate(db["transactions"]) if t.get("id") == tx_id), -1)
+                if existing_idx >= 0:
+                    db["transactions"][existing_idx] = tx
+                else:
+                    db["transactions"].insert(0, tx)
+                    append_tx_to_excel(tx)
                 added.append(tx)
             recompute_months(db)
             save_db(db)
@@ -859,6 +929,10 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
             db = load_db()
             tx_id = body.get("id")
             db["transactions"] = [t for t in db["transactions"] if t["id"] != tx_id]
+            if "deleted_tx_ids" not in db["meta"]:
+                db["meta"]["deleted_tx_ids"] = []
+            if tx_id and tx_id not in db["meta"]["deleted_tx_ids"]:
+                db["meta"]["deleted_tx_ids"].append(tx_id)
             recompute_months(db)
             save_db(db)
             self._send_json({"ok": True, "db": db})
@@ -869,14 +943,84 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
             m_num = int(body.get("month", 10))
             for m_obj in db["months"]:
                 if m_obj["month"] == m_num:
-                    m_obj["income"]["CK"] = float(body.get("CK", m_obj["income"]["CK"]))
-                    m_obj["income"]["VK"] = float(body.get("VK", m_obj["income"]["VK"]))
-                    m_obj["income"]["Subo"] = float(body.get("Subo", m_obj["income"]["Subo"]))
-                    m_obj["income"]["Sugi"] = float(body.get("Sugi", m_obj["income"]["Sugi"]))
+                    inc = m_obj["income"]
+                    for k in ["CK", "VK", "Subo", "Sugi", "husband_salary", "wife_salary", "husband_Allowance", "rent"]:
+                        if k in body:
+                            inc[k] = float(body[k])
+                    if "allocation" in body and isinstance(body["allocation"], dict):
+                        m_obj["allocation"].update(body["allocation"])
                     break
+            if "dca_orders" in body and isinstance(body["dca_orders"], list):
+                db["investment"]["dca_orders"] = body["dca_orders"]
             recompute_months(db)
             save_db(db)
             self._send_json({"ok": True, "db": db})
+            return
+
+        elif parsed.path == "/api/sync":
+            db = load_db()
+            cs = body.get("cloud_state") or {}
+            # 1. Merge deleted IDs
+            del_ids = set(db["meta"].get("deleted_tx_ids", []))
+            for did in cs.get("deleted_tx_ids", []):
+                if did:
+                    del_ids.add(did)
+            if body.get("action") == "delete_tx" and body.get("id"):
+                del_ids.add(body.get("id"))
+            db["meta"]["deleted_tx_ids"] = list(del_ids)
+            if del_ids:
+                db["transactions"] = [t for t in db["transactions"] if t.get("id") not in del_ids]
+
+            # 2. Merge edited transactions
+            edited_map = {t["id"]: t for t in cs.get("edited_transactions", []) if isinstance(t, dict) and t.get("id")}
+            if body.get("action") == "edit_tx" and isinstance(body.get("transaction"), dict):
+                tx_e = body["transaction"]
+                if tx_e.get("id"):
+                    edited_map[tx_e["id"]] = tx_e
+            for i, t in enumerate(db["transactions"]):
+                tid = t.get("id")
+                if tid in edited_map:
+                    db["transactions"][i] = {**t, **edited_map[tid], "is_cloud_edited": True}
+
+            # 3. Merge custom added transactions
+            existing_ids = {t.get("id") for t in db["transactions"]}
+            custom_txs = list(cs.get("custom_transactions", []))
+            if body.get("action") == "add_tx" and isinstance(body.get("transaction"), dict):
+                custom_txs.insert(0, body["transaction"])
+            for ct in reversed(custom_txs):
+                if isinstance(ct, dict) and ct.get("id") and ct["id"] not in existing_ids and ct["id"] not in del_ids:
+                    db["transactions"].insert(0, ct)
+                    existing_ids.add(ct["id"])
+
+            # 4. Merge months income & allocation
+            if isinstance(cs.get("months"), list):
+                for cm in cs["months"]:
+                    m_obj = next((x for x in db["months"] if x["month"] == cm.get("month")), None)
+                    if m_obj:
+                        if isinstance(cm.get("income"), dict):
+                            m_obj["income"].update(cm["income"])
+                        if isinstance(cm.get("allocation"), dict):
+                            m_obj["allocation"].update(cm["allocation"])
+
+            # 5. Merge investment & meta & email_config
+            if isinstance(cs.get("investment"), dict):
+                if isinstance(cs["investment"].get("dca_orders"), list):
+                    db["investment"]["dca_orders"] = cs["investment"]["dca_orders"]
+                if isinstance(cs["investment"].get("holdings_nav"), dict):
+                    for h in db["investment"]["holdings"]:
+                        if h["code"] in cs["investment"]["holdings_nav"]:
+                            h["current_nav"] = float(cs["investment"]["holdings_nav"][h["code"]])
+            if isinstance(cs.get("email_config"), dict):
+                db["email_config"] = {**(db.get("email_config") or {}), **cs["email_config"]}
+            for meta_k in ["family_pin", "gemini_api_key", "ai_model", "ai_base_url", "cloud_script_url"]:
+                if cs.get(meta_k) is not None and cs.get(meta_k) != "":
+                    db["meta"][meta_k] = cs[meta_k]
+                elif body.get(meta_k) is not None and body.get(meta_k) != "":
+                    db["meta"][meta_k] = body[meta_k]
+
+            recompute_months(db)
+            save_db(db)
+            self._send_json({"ok": True, "last_synced": db["meta"]["last_synced"]})
             return
 
         elif parsed.path == "/api/email/parse":
