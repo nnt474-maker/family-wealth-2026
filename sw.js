@@ -1,4 +1,4 @@
-const CACHE_NAME = "family-wealth-2026-v7.0-taste";
+const CACHE_NAME = "family-wealth-2026-v7.5-clean-vp";
 const CORE_ASSETS = [
   "./",
   "./index.html",

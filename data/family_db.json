@@ -3,7 +3,7 @@
     "title": "2026 - FAMILY NOTE BOOK & INVESTMENT OS",
     "google_sheet_id": "1FtjpyD-DP4HS8z7uJoYDw9TKwBh3qSCwdXqy1eaQEEk",
     "google_sheet_url": "https://docs.google.com/spreadsheets/d/1FtjpyD-DP4HS8z7uJoYDw9TKwBh3qSCwdXqy1eaQEEk/edit",
-    "last_synced": "2026-11-03T13:46:50.152998",
+    "last_synced": "2026-11-05T21:24:49.165155",
     "members": [
       "Chung",
       "Chồng",
@@ -24,12 +24,14 @@
       "Nợ"
     ],
     "banks": [
-      "VPBank",
+      "Tiền mặt",
+      "Chuyển khoản",
+      "Tiền mặt / Chuyển khoản",
+      "VPBank Step Up",
+      "VPBank Shopee",
       "BIDV",
       "NCB",
-      "VPBank Shopee",
-      "UOB",
-      "Tiền mặt / Chuyển khoản"
+      "UOB"
     ],
     "surplus_rule": {
       "accumulation_ratio": 0.8,
@@ -37,11 +39,36 @@
       "description": "Trong tổng tiền còn lại (Thu - Chi), 80% đưa vào Tích lũy/Đầu tư (N16 = SUM(N4:N15)*80%) và 20% là Tiền còn lại giữ linh hoạt."
     },
     "deleted_tx_ids": [
+      "TX2026-0889-TX-n03csbor",
+      "TX2026-0889-TX-mzrp2chb",
       "TX2026-0NaN-mw091dk2dkgu"
     ],
     "family_pin": "2026",
     "ai_model": "claude-sonnet-5-5",
-    "gemini_api_key": ""
+    "gemini_api_key": "",
+    "processed_email_sigs": [],
+    "mailboxes": [
+      {
+        "id": "MB-CHONG",
+        "label": " Email của Chồng (VPBank • BIDV • Google Sheet)",
+        "email": "nnt472@gmail.com",
+        "owner": "Chồng",
+        "default_bank": "VPBank Step Up",
+        "banks": "VPBank Step Up, BIDV, UOB",
+        "cloud_url": "",
+        "script_url": ""
+      },
+      {
+        "id": "MB-VO",
+        "label": "👩 Email của Vợ (Theo dõi NCB • Shopee)",
+        "email": "Email của Vợ (NCB)",
+        "owner": "Vợ",
+        "default_bank": "NCB",
+        "banks": "NCB, VPBank Shopee",
+        "cloud_url": "",
+        "script_url": ""
+      }
+    ]
   },
   "months": [
     {
@@ -52,7 +79,7 @@
         "VK": 27055000,
         "Subo": 720000,
         "Sugi": 0,
-        "total": 79975000,
+        "total": 79975000.0,
         "ck_parts": [
           37700000,
           8000000,
@@ -62,23 +89,24 @@
           26435000,
           200000,
           420000
-        ]
+        ],
+        "extras": []
       },
       "target_saving_rate": 0.3,
       "target_expense_rate": 0.7,
       "target_saving": 23992500,
       "target_expense": 55982500,
       "excel_reported_expense": 65203260,
-      "actual_total_expense": 65718260,
+      "actual_total_expense": 65718260.0,
       "discrepancy": 515000,
-      "remaining_actual": 14256740,
+      "remaining_actual": 14256740.0,
       "allocation": {
         "dca_total": 12000000,
         "dca_fuevfvnd": 3600000,
         "dca_dcds": 3000000,
         "dca_vesaf": 5400000,
         "dip_fund": 4000000,
-        "emergency_saving": 0,
+        "emergency_saving": 0.0,
         "status": "Đã mua"
       },
       "tx_count": 156
@@ -91,7 +119,7 @@
         "VK": 64300000,
         "Subo": 0,
         "Sugi": 0,
-        "total": 232226000,
+        "total": 232226000.0,
         "ck_parts": [
           40076000,
           119150000,
@@ -103,23 +131,24 @@
           30000000,
           700000,
           700000
-        ]
+        ],
+        "extras": []
       },
       "target_saving_rate": 0.3,
       "target_expense_rate": 0.7,
       "target_saving": 69667800,
       "target_expense": 162558200,
       "excel_reported_expense": 87760800,
-      "actual_total_expense": 87760800,
+      "actual_total_expense": 87760800.0,
       "discrepancy": 0,
-      "remaining_actual": 144465200,
+      "remaining_actual": 144465200.0,
       "allocation": {
         "dca_total": 12000000,
         "dca_fuevfvnd": 3600000,
         "dca_dcds": 3000000,
         "dca_vesaf": 5400000,
         "dip_fund": 4000000,
-        "emergency_saving": 128465200,
+        "emergency_saving": 128465200.0,
         "status": "Đã mua"
       },
       "tx_count": 109
@@ -132,7 +161,7 @@
         "VK": 33580000,
         "Subo": 3000000,
         "Sugi": 24200000,
-        "total": 99615000,
+        "total": 99615000.0,
         "ck_parts": [
           30835000,
           8000000
@@ -142,23 +171,24 @@
           200000,
           500000,
           30000000
-        ]
+        ],
+        "extras": []
       },
       "target_saving_rate": 0.3,
       "target_expense_rate": 0.7,
       "target_saving": 29884500,
       "target_expense": 69730500,
       "excel_reported_expense": 76911600,
-      "actual_total_expense": 76911600,
+      "actual_total_expense": 76911600.0,
       "discrepancy": 0,
-      "remaining_actual": 22703400,
+      "remaining_actual": 22703400.0,
       "allocation": {
         "dca_total": 12000000,
         "dca_fuevfvnd": 3600000,
         "dca_dcds": 3000000,
         "dca_vesaf": 5400000,
         "dip_fund": 4000000,
-        "emergency_saving": 6703400,
+        "emergency_saving": 6703400.0,
         "status": "Đã mua"
       },
       "tx_count": 110
@@ -171,7 +201,7 @@
         "VK": 33683000,
         "Subo": 0,
         "Sugi": 2000000,
-        "total": 82583000,
+        "total": 82583000.0,
         "ck_parts": [
           38900000,
           8000000
@@ -180,23 +210,24 @@
           30000000,
           500000,
           3183000
-        ]
+        ],
+        "extras": []
       },
       "target_saving_rate": 0.3,
       "target_expense_rate": 0.7,
       "target_saving": 24774900,
       "target_expense": 57808100,
       "excel_reported_expense": 58349000,
-      "actual_total_expense": 58779000,
+      "actual_total_expense": 58779000.0,
       "discrepancy": 430000,
-      "remaining_actual": 23804000,
+      "remaining_actual": 23804000.0,
       "allocation": {
         "dca_total": 12000000,
         "dca_fuevfvnd": 3600000,
         "dca_dcds": 3000000,
         "dca_vesaf": 5400000,
         "dip_fund": 4000000,
-        "emergency_saving": 7804000,
+        "emergency_saving": 7804000.0,
         "status": "Đã mua"
       },
       "tx_count": 87
@@ -209,30 +240,31 @@
         "VK": 30000000,
         "Subo": 0,
         "Sugi": 0,
-        "total": 89600000,
+        "total": 89600000.0,
         "ck_parts": [
           51600000,
           8000000
         ],
         "vk_parts": [
           30000000
-        ]
+        ],
+        "extras": []
       },
       "target_saving_rate": 0.3,
       "target_expense_rate": 0.7,
       "target_saving": 26880000,
       "target_expense": 62720000,
       "excel_reported_expense": 69748000,
-      "actual_total_expense": 69748000,
+      "actual_total_expense": 69748000.0,
       "discrepancy": 0,
-      "remaining_actual": 19852000,
+      "remaining_actual": 19852000.0,
       "allocation": {
         "dca_total": 12000000,
         "dca_fuevfvnd": 3600000,
         "dca_dcds": 3000000,
         "dca_vesaf": 5400000,
         "dip_fund": 4000000,
-        "emergency_saving": 3852000,
+        "emergency_saving": 3852000.0,
         "status": "Đã mua"
       },
       "tx_count": 83
@@ -245,7 +277,7 @@
         "VK": 35000000,
         "Subo": 700000,
         "Sugi": 1100000,
-        "total": 89747000,
+        "total": 89747000.0,
         "ck_parts": [
           44947000,
           8000000
@@ -253,23 +285,24 @@
         "vk_parts": [
           30000000,
           5000000
-        ]
+        ],
+        "extras": []
       },
       "target_saving_rate": 0.3,
       "target_expense_rate": 0.7,
       "target_saving": 26924100,
       "target_expense": 62822900,
       "excel_reported_expense": 71856000,
-      "actual_total_expense": 71856000,
+      "actual_total_expense": 71856000.0,
       "discrepancy": 0,
-      "remaining_actual": 17891000,
+      "remaining_actual": 17891000.0,
       "allocation": {
         "dca_total": 12000000,
         "dca_fuevfvnd": 3600000,
         "dca_dcds": 3000000,
         "dca_vesaf": 5400000,
         "dip_fund": 4000000,
-        "emergency_saving": 1891000,
+        "emergency_saving": 1891000.0,
         "status": "Đã mua"
       },
       "tx_count": 75
@@ -282,30 +315,31 @@
         "VK": 30000000,
         "Subo": 0,
         "Sugi": 0,
-        "total": 83700000,
+        "total": 83700000.0,
         "ck_parts": [
           45700000,
           8000000
         ],
         "vk_parts": [
           30000000
-        ]
+        ],
+        "extras": []
       },
       "target_saving_rate": 0.3,
       "target_expense_rate": 0.7,
       "target_saving": 25110000,
       "target_expense": 58590000,
       "excel_reported_expense": 80730000,
-      "actual_total_expense": 80730000,
+      "actual_total_expense": 80730000.0,
       "discrepancy": 0,
-      "remaining_actual": 2970000,
+      "remaining_actual": 2970000.0,
       "allocation": {
         "dca_total": 0,
         "dca_fuevfvnd": 0,
         "dca_dcds": 0,
         "dca_vesaf": 0,
         "dip_fund": 2970000,
-        "emergency_saving": 0,
+        "emergency_saving": 0.0,
         "status": "Đã mua"
       },
       "tx_count": 63
@@ -318,7 +352,7 @@
         "VK": 35000000,
         "Subo": 0,
         "Sugi": 0,
-        "total": 88454000,
+        "total": 88454000.0,
         "ck_parts": [
           45454000,
           8000000
@@ -326,23 +360,24 @@
         "vk_parts": [
           30000000,
           5000000
-        ]
+        ],
+        "extras": []
       },
       "target_saving_rate": 0.3,
       "target_expense_rate": 0.7,
       "target_saving": 26536200,
       "target_expense": 61917800,
       "excel_reported_expense": 67252000,
-      "actual_total_expense": 67252000,
+      "actual_total_expense": 67252000.0,
       "discrepancy": 0,
-      "remaining_actual": 21202000,
+      "remaining_actual": 21202000.0,
       "allocation": {
         "dca_total": 12000000,
         "dca_fuevfvnd": 3600000,
         "dca_dcds": 3000000,
         "dca_vesaf": 5400000,
         "dip_fund": 4000000,
-        "emergency_saving": 5202000,
+        "emergency_saving": 5202000.0,
         "status": "Đã mua"
       },
       "tx_count": 73
@@ -355,7 +390,7 @@
         "VK": 52100000,
         "Subo": 4000000,
         "Sugi": 0,
-        "total": 109600000,
+        "total": 109600000.0,
         "ck_parts": [
           45500000,
           8000000
@@ -363,23 +398,24 @@
         "vk_parts": [
           34100000,
           18000000
-        ]
+        ],
+        "extras": []
       },
       "target_saving_rate": 0.3,
       "target_expense_rate": 0.7,
       "target_saving": 32880000,
       "target_expense": 76720000,
       "excel_reported_expense": 95994000,
-      "actual_total_expense": 95994000,
+      "actual_total_expense": 95994000.0,
       "discrepancy": 0,
-      "remaining_actual": 13606000,
+      "remaining_actual": 13606000.0,
       "allocation": {
         "dca_total": 12000000,
         "dca_fuevfvnd": 3600000,
         "dca_dcds": 3000000,
         "dca_vesaf": 5400000,
         "dip_fund": 1606000,
-        "emergency_saving": 0,
+        "emergency_saving": 0.0,
         "status": "Đã mua"
       },
       "tx_count": 84
@@ -392,30 +428,31 @@
         "VK": 34783000,
         "Subo": 0,
         "Sugi": 0,
-        "total": 79783000,
+        "total": 79783000.0,
         "ck_parts": [
           45000000
         ],
         "vk_parts": [
           34283000,
           500000
-        ]
+        ],
+        "extras": []
       },
       "target_saving_rate": 0.3,
       "target_expense_rate": 0.7,
       "target_saving": 23934900,
       "target_expense": 55848100,
       "excel_reported_expense": 41288000,
-      "actual_total_expense": 41288000,
+      "actual_total_expense": 41288000.0,
       "discrepancy": 0,
-      "remaining_actual": 38495000,
+      "remaining_actual": 38495000.0,
       "allocation": {
         "dca_total": 12000000,
         "dca_fuevfvnd": 3600000,
         "dca_dcds": 3000000,
         "dca_vesaf": 5400000,
         "dip_fund": 4000000,
-        "emergency_saving": 22495000,
+        "emergency_saving": 22495000.0,
         "status": "Đã mua"
       },
       "tx_count": 48
@@ -428,9 +465,10 @@
         "VK": 0,
         "Subo": 0,
         "Sugi": 0,
-        "total": 0,
+        "total": 0.0,
         "ck_parts": [],
-        "vk_parts": []
+        "vk_parts": [],
+        "extras": []
       },
       "target_saving_rate": 0.3,
       "target_expense_rate": 0.7,
@@ -439,7 +477,7 @@
       "excel_reported_expense": 0,
       "actual_total_expense": 0,
       "discrepancy": 0,
-      "remaining_actual": 0,
+      "remaining_actual": 0.0,
       "allocation": {
         "dca_total": 0,
         "dca_fuevfvnd": 0,
@@ -459,9 +497,10 @@
         "VK": 0,
         "Subo": 0,
         "Sugi": 0,
-        "total": 0,
+        "total": 0.0,
         "ck_parts": [],
-        "vk_parts": []
+        "vk_parts": [],
+        "extras": []
       },
       "target_saving_rate": 0.3,
       "target_expense_rate": 0.7,
@@ -470,7 +509,7 @@
       "excel_reported_expense": 0,
       "actual_total_expense": 0,
       "discrepancy": 0,
-      "remaining_actual": 0,
+      "remaining_actual": 0.0,
       "allocation": {
         "dca_total": 0,
         "dca_fuevfvnd": 0,
@@ -499,7 +538,8 @@
       "source": "Tiền mặt / Chuyển khoản",
       "raw_source": "",
       "was_unmatched_in_excel": false,
-      "issue_note": null
+      "issue_note": null,
+      "is_cloud_edited": true
     },
     {
       "id": "TX2026-0002",
@@ -530,7 +570,7 @@
       "original_person": "Chung",
       "amount": 571000,
       "formula": "=286000+141000+144000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -547,7 +587,7 @@
       "original_person": "Chung",
       "amount": 422000,
       "formula": "=101000+162000+37000+15000+107000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -564,7 +604,7 @@
       "original_person": "Sugi",
       "amount": 674000,
       "formula": "=163000+511000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -666,7 +706,7 @@
       "original_person": "Chung",
       "amount": 39000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -683,7 +723,7 @@
       "original_person": "Chung",
       "amount": 477000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -717,7 +757,7 @@
       "original_person": "Chung",
       "amount": 83000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -734,7 +774,7 @@
       "original_person": "Chung",
       "amount": 53000,
       "formula": "=37000+16000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp-done",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -768,7 +808,7 @@
       "original_person": "Chung",
       "amount": 56000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -785,7 +825,7 @@
       "original_person": "Subo",
       "amount": 39000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -870,7 +910,7 @@
       "original_person": "Chung",
       "amount": 182000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp-done",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -887,7 +927,7 @@
       "original_person": "Subo",
       "amount": 162000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -904,7 +944,7 @@
       "original_person": "Chung",
       "amount": 860000,
       "formula": "=45000+815000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -921,7 +961,7 @@
       "original_person": "Chung",
       "amount": 86000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -955,7 +995,7 @@
       "original_person": "Chung",
       "amount": 1296000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp-done",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -989,7 +1029,7 @@
       "original_person": "Chung",
       "amount": 158000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1006,7 +1046,7 @@
       "original_person": "Chung",
       "amount": 589000,
       "formula": "=44213000-43624000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1159,7 +1199,7 @@
       "original_person": "Chung",
       "amount": 505000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1176,7 +1216,7 @@
       "original_person": "Subo",
       "amount": 235000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1210,7 +1250,7 @@
       "original_person": "Chung",
       "amount": 448000,
       "formula": "=155000+293000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp-done",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1312,7 +1352,7 @@
       "original_person": "Vợ",
       "amount": 68000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1329,7 +1369,7 @@
       "original_person": "Chung",
       "amount": 55000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1346,7 +1386,7 @@
       "original_person": "Chung",
       "amount": 145000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1363,7 +1403,7 @@
       "original_person": "Chung",
       "amount": 21000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1397,7 +1437,7 @@
       "original_person": "Chung",
       "amount": 256000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1414,7 +1454,7 @@
       "original_person": "Sugi",
       "amount": 361000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1431,7 +1471,7 @@
       "original_person": "Chung",
       "amount": 62000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": true,
       "issue_note": "Thiếu Hạng mục ở dòng 59 (spee: 62,000đ) -> Làm lệch bảng MASTER. Đã tự động gắn 'Đồ dùng GĐ'."
@@ -1448,7 +1488,7 @@
       "original_person": "Sugi",
       "amount": 374000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1465,7 +1505,7 @@
       "original_person": "Sugi",
       "amount": 756000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1482,7 +1522,7 @@
       "original_person": "Sugi",
       "amount": 228000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1499,7 +1539,7 @@
       "original_person": "Chung",
       "amount": 296000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1516,7 +1556,7 @@
       "original_person": "Chung",
       "amount": 367000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1533,7 +1573,7 @@
       "original_person": "Sugi",
       "amount": 212000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1550,7 +1590,7 @@
       "original_person": "Chung",
       "amount": 111000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1567,7 +1607,7 @@
       "original_person": "Chung",
       "amount": 239000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1584,7 +1624,7 @@
       "original_person": "Sugi",
       "amount": 150000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1601,7 +1641,7 @@
       "original_person": "Subo",
       "amount": 299000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1618,7 +1658,7 @@
       "original_person": "Chung",
       "amount": 236000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1652,7 +1692,7 @@
       "original_person": "Vợ",
       "amount": 35000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1669,7 +1709,7 @@
       "original_person": "Chung",
       "amount": 453000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": true,
       "issue_note": "Thiếu Hạng mục ở dòng 73 (spee: 453,000đ) -> Làm lệch bảng MASTER. Đã tự động gắn 'Đồ dùng GĐ'."
@@ -1686,7 +1726,7 @@
       "original_person": "Chung",
       "amount": 436000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1703,7 +1743,7 @@
       "original_person": "Sugi",
       "amount": 161000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1720,7 +1760,7 @@
       "original_person": "Sugi",
       "amount": 109000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1737,7 +1777,7 @@
       "original_person": "Subo",
       "amount": 116000,
       "formula": "=225000-F76",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1754,7 +1794,7 @@
       "original_person": "Chung",
       "amount": 94000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1771,7 +1811,7 @@
       "original_person": "Chung",
       "amount": 147000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1788,7 +1828,7 @@
       "original_person": "Chung",
       "amount": 60000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1805,7 +1845,7 @@
       "original_person": "Chung",
       "amount": 104000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1873,7 +1913,7 @@
       "original_person": "Vợ",
       "amount": 34000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1890,7 +1930,7 @@
       "original_person": "Chồng",
       "amount": 72000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1907,7 +1947,7 @@
       "original_person": "Chung",
       "amount": 193000,
       "formula": "=89000+104000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1958,7 +1998,7 @@
       "original_person": "Chung",
       "amount": 215000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -1992,7 +2032,7 @@
       "original_person": "Chung",
       "amount": 102000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2043,7 +2083,7 @@
       "original_person": "Chồng",
       "amount": 88000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2060,7 +2100,7 @@
       "original_person": "Subo",
       "amount": 123000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2077,7 +2117,7 @@
       "original_person": "Chung",
       "amount": 906000,
       "formula": "=115000+791000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2094,7 +2134,7 @@
       "original_person": "Chung",
       "amount": 194000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2111,7 +2151,7 @@
       "original_person": "Chung",
       "amount": 83000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2145,7 +2185,7 @@
       "original_person": "Chung",
       "amount": 192000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2162,7 +2202,7 @@
       "original_person": "Chung",
       "amount": 25000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2179,7 +2219,7 @@
       "original_person": "Chung",
       "amount": 176000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2196,7 +2236,7 @@
       "original_person": "Chung",
       "amount": 47000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2230,7 +2270,7 @@
       "original_person": "Chung",
       "amount": 38000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2247,7 +2287,7 @@
       "original_person": "Chồng",
       "amount": 69000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2264,7 +2304,7 @@
       "original_person": "Chung",
       "amount": 257000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2281,7 +2321,7 @@
       "original_person": "Chung",
       "amount": 45000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2298,7 +2338,7 @@
       "original_person": "Chung",
       "amount": 48000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2366,7 +2406,7 @@
       "original_person": "Chung",
       "amount": 23000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2383,7 +2423,7 @@
       "original_person": "Chung",
       "amount": 140000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2400,7 +2440,7 @@
       "original_person": "Chung",
       "amount": 101000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2434,7 +2474,7 @@
       "original_person": "Chung",
       "amount": 919000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2451,7 +2491,7 @@
       "original_person": "Chung",
       "amount": 40000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2468,7 +2508,7 @@
       "original_person": "Chung",
       "amount": 40000,
       "formula": null,
-      "source": "VP - DONE",
+      "source": "VPBank Step Up",
       "raw_source": "vp - done",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2485,7 +2525,7 @@
       "original_person": "Chung",
       "amount": 818000,
       "formula": "=748000+70000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2502,7 +2542,7 @@
       "original_person": "Chung",
       "amount": 846000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2519,7 +2559,7 @@
       "original_person": "Chung",
       "amount": 178000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2536,7 +2576,7 @@
       "original_person": "Chung",
       "amount": 129000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2553,7 +2593,7 @@
       "original_person": "Sugi",
       "amount": 74000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2570,7 +2610,7 @@
       "original_person": "Chung",
       "amount": 45000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2587,7 +2627,7 @@
       "original_person": "Chung",
       "amount": 90000,
       "formula": null,
-      "source": "VP -DONE",
+      "source": "VPBank Step Up",
       "raw_source": "vp -done",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2604,7 +2644,7 @@
       "original_person": "Chung",
       "amount": 28000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2621,7 +2661,7 @@
       "original_person": "Chung",
       "amount": 34000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2638,7 +2678,7 @@
       "original_person": "Chung",
       "amount": 41000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2655,7 +2695,7 @@
       "original_person": "Chung",
       "amount": 43000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2706,7 +2746,7 @@
       "original_person": "Chung",
       "amount": 28000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2723,7 +2763,7 @@
       "original_person": "Chồng",
       "amount": 310000,
       "formula": "=146000+164000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2740,7 +2780,7 @@
       "original_person": "Chung",
       "amount": 707000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2757,7 +2797,7 @@
       "original_person": "Chồng",
       "amount": 62000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2774,7 +2814,7 @@
       "original_person": "Chung",
       "amount": 43000,
       "formula": null,
-      "source": "VP DONE",
+      "source": "VPBank Step Up",
       "raw_source": "vp done",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2791,7 +2831,7 @@
       "original_person": "Chung",
       "amount": 28000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2808,7 +2848,7 @@
       "original_person": "Chung",
       "amount": 314000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2825,7 +2865,7 @@
       "original_person": "Chung",
       "amount": 185000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2842,7 +2882,7 @@
       "original_person": "Chung",
       "amount": 43000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2859,7 +2899,7 @@
       "original_person": "Chung",
       "amount": 28000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2876,7 +2916,7 @@
       "original_person": "Chung",
       "amount": 312000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2893,7 +2933,7 @@
       "original_person": "Chung",
       "amount": 43000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2910,7 +2950,7 @@
       "original_person": "Vợ",
       "amount": 74000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2927,7 +2967,7 @@
       "original_person": "Chung",
       "amount": 33000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2944,7 +2984,7 @@
       "original_person": "Chung",
       "amount": 124000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2961,7 +3001,7 @@
       "original_person": "Chung",
       "amount": 80000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -2978,7 +3018,7 @@
       "original_person": "Chung",
       "amount": 13000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3097,7 +3137,7 @@
       "original_person": "Chung",
       "amount": 79000,
       "formula": "=60000+19000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp-done",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3148,7 +3188,7 @@
       "original_person": "Subo",
       "amount": 38000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3165,7 +3205,7 @@
       "original_person": "Chung",
       "amount": 193000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3182,7 +3222,7 @@
       "original_person": "Chung",
       "amount": 266000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3216,7 +3256,7 @@
       "original_person": "Sugi",
       "amount": 100000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3233,7 +3273,7 @@
       "original_person": "Sugi",
       "amount": 112000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3250,7 +3290,7 @@
       "original_person": "Chung",
       "amount": 272000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3267,7 +3307,7 @@
       "original_person": "Chung",
       "amount": 35000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3284,7 +3324,7 @@
       "original_person": "Subo",
       "amount": 297000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3301,7 +3341,7 @@
       "original_person": "Subo",
       "amount": 463000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3318,7 +3358,7 @@
       "original_person": "Subo",
       "amount": 718000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3335,7 +3375,7 @@
       "original_person": "Chung",
       "amount": 531000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3352,7 +3392,7 @@
       "original_person": "Chung",
       "amount": 199000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3369,7 +3409,7 @@
       "original_person": "Chung",
       "amount": 471000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3386,7 +3426,7 @@
       "original_person": "Sugi",
       "amount": 121000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3403,7 +3443,7 @@
       "original_person": "Sugi",
       "amount": 156000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3420,7 +3460,7 @@
       "original_person": "Vợ",
       "amount": 53000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3471,7 +3511,7 @@
       "original_person": "Chung",
       "amount": 229000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3488,7 +3528,7 @@
       "original_person": "Vợ",
       "amount": 77000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3505,7 +3545,7 @@
       "original_person": "Chung",
       "amount": 649000,
       "formula": "=136000+513000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3522,7 +3562,7 @@
       "original_person": "Chung",
       "amount": 245000,
       "formula": "=77000+168000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3539,7 +3579,7 @@
       "original_person": "Chung",
       "amount": 579000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3556,7 +3596,7 @@
       "original_person": "Chung",
       "amount": 84000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3573,7 +3613,7 @@
       "original_person": "Chung",
       "amount": 22000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3590,7 +3630,7 @@
       "original_person": "Subo",
       "amount": 28000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3607,7 +3647,7 @@
       "original_person": "Chung",
       "amount": 690000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3641,7 +3681,7 @@
       "original_person": "Chung",
       "amount": 523000,
       "formula": "=510000+13000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3658,7 +3698,7 @@
       "original_person": "Chung",
       "amount": 831000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3675,7 +3715,7 @@
       "original_person": "Sugi",
       "amount": 198000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3692,7 +3732,7 @@
       "original_person": "Subo",
       "amount": 20000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp-done",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3947,7 +3987,7 @@
       "original_person": "Chung",
       "amount": 572000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3964,7 +4004,7 @@
       "original_person": "Subo",
       "amount": 45000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3981,7 +4021,7 @@
       "original_person": "Chung",
       "amount": 80000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -3998,7 +4038,7 @@
       "original_person": "Subo",
       "amount": 63000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4015,7 +4055,7 @@
       "original_person": "Chung",
       "amount": 2320000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp-done",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4066,7 +4106,7 @@
       "original_person": "Sugi",
       "amount": 470000,
       "formula": "=320000+150000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4151,7 +4191,7 @@
       "original_person": "Chung",
       "amount": 547000,
       "formula": "=441000+106000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4168,7 +4208,7 @@
       "original_person": "Chung",
       "amount": 35000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4185,7 +4225,7 @@
       "original_person": "Subo",
       "amount": 50000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4270,7 +4310,7 @@
       "original_person": "Sugi",
       "amount": 137000,
       "formula": "=79000+58000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4287,7 +4327,7 @@
       "original_person": "Chung",
       "amount": 19000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4304,7 +4344,7 @@
       "original_person": "Chung",
       "amount": 21000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp-done",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4355,7 +4395,7 @@
       "original_person": "Chung",
       "amount": 1094000,
       "formula": "=64000+1030000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4372,7 +4412,7 @@
       "original_person": "Subo",
       "amount": 182000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4389,7 +4429,7 @@
       "original_person": "Chung",
       "amount": 2393000,
       "formula": "=46000+34000+2095000+218000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4406,7 +4446,7 @@
       "original_person": "Sugi",
       "amount": 668000,
       "formula": "=29000+58000+581000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4423,7 +4463,7 @@
       "original_person": "Chung",
       "amount": 504000,
       "formula": "=153000+351000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4457,7 +4497,7 @@
       "original_person": "Chồng",
       "amount": 88000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4491,7 +4531,7 @@
       "original_person": "Sugi",
       "amount": 380000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4508,7 +4548,7 @@
       "original_person": "Chung",
       "amount": 107000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4525,7 +4565,7 @@
       "original_person": "Sugi",
       "amount": 145000,
       "formula": "=23000+57000+65000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4559,7 +4599,7 @@
       "original_person": "Chung",
       "amount": 1860000,
       "formula": "=38000+650000+1172000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4576,7 +4616,7 @@
       "original_person": "Chung",
       "amount": 51000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4627,7 +4667,7 @@
       "original_person": "Subo",
       "amount": 162000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4661,7 +4701,7 @@
       "original_person": "Chung",
       "amount": 1509000,
       "formula": "=23000+267000+1219000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4678,7 +4718,7 @@
       "original_person": "Subo",
       "amount": 54000,
       "formula": "=21000+4000+29000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4695,7 +4735,7 @@
       "original_person": "Chồng",
       "amount": 60000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4712,7 +4752,7 @@
       "original_person": "Sugi",
       "amount": 150000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4729,7 +4769,7 @@
       "original_person": "Sugi",
       "amount": 61000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4746,7 +4786,7 @@
       "original_person": "Sugi",
       "amount": 513000,
       "formula": "=119000+265000+129000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4814,7 +4854,7 @@
       "original_person": "Sugi",
       "amount": 105000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4831,7 +4871,7 @@
       "original_person": "Chung",
       "amount": 91000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4848,7 +4888,7 @@
       "original_person": "Subo",
       "amount": 63000,
       "formula": "=28000+35000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4865,7 +4905,7 @@
       "original_person": "Vợ",
       "amount": 381000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4882,7 +4922,7 @@
       "original_person": "Chung",
       "amount": 315000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4916,7 +4956,7 @@
       "original_person": "Subo",
       "amount": 40000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -4950,7 +4990,7 @@
       "original_person": "Chung",
       "amount": 253000,
       "formula": "=87000+122000+44000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5086,7 +5126,7 @@
       "original_person": "Subo",
       "amount": 100000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5103,7 +5143,7 @@
       "original_person": "Chung",
       "amount": 1298000,
       "formula": "=66000+1232000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5120,7 +5160,7 @@
       "original_person": "Chung",
       "amount": 58000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5137,7 +5177,7 @@
       "original_person": "Subo",
       "amount": 25000,
       "formula": "=25000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5154,7 +5194,7 @@
       "original_person": "Chung",
       "amount": 376000,
       "formula": "=310000+66000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5171,7 +5211,7 @@
       "original_person": "Subo",
       "amount": 1153000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5188,7 +5228,7 @@
       "original_person": "Chung",
       "amount": 261000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5205,7 +5245,7 @@
       "original_person": "Chung",
       "amount": 61000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5222,7 +5262,7 @@
       "original_person": "Chung",
       "amount": 103000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5307,7 +5347,7 @@
       "original_person": "Subo",
       "amount": 23000,
       "formula": "=23000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5324,7 +5364,7 @@
       "original_person": "Subo",
       "amount": 180000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5341,7 +5381,7 @@
       "original_person": "Subo",
       "amount": 191000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5358,7 +5398,7 @@
       "original_person": "Chung",
       "amount": 550000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5375,7 +5415,7 @@
       "original_person": "Subo",
       "amount": 128000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5409,7 +5449,7 @@
       "original_person": "Chung",
       "amount": 584000,
       "formula": "=14803000-14219000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5426,7 +5466,7 @@
       "original_person": "Chung",
       "amount": 52000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5443,7 +5483,7 @@
       "original_person": "Chung",
       "amount": 62000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5460,7 +5500,7 @@
       "original_person": "Chung",
       "amount": 224000,
       "formula": "=86000+138000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5477,7 +5517,7 @@
       "original_person": "Chung",
       "amount": 585000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5494,7 +5534,7 @@
       "original_person": "Chung",
       "amount": 95000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5511,7 +5551,7 @@
       "original_person": "Chung",
       "amount": 1435000,
       "formula": "=946000+446000+43000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5545,7 +5585,7 @@
       "original_person": "Chung",
       "amount": 43000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5562,7 +5602,7 @@
       "original_person": "Subo",
       "amount": 179000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5579,7 +5619,7 @@
       "original_person": "Subo",
       "amount": 37000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5613,7 +5653,7 @@
       "original_person": "Chung",
       "amount": 135000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5698,7 +5738,7 @@
       "original_person": "Chồng",
       "amount": 756000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5783,7 +5823,7 @@
       "original_person": "Subo",
       "amount": 23000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5868,7 +5908,7 @@
       "original_person": "Chung",
       "amount": 66000,
       "formula": "=23000+43000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5885,7 +5925,7 @@
       "original_person": "Chung",
       "amount": 144000,
       "formula": "=133000+11000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5902,7 +5942,7 @@
       "original_person": "Chung",
       "amount": 739000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5919,7 +5959,7 @@
       "original_person": "Chung",
       "amount": 772000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5936,7 +5976,7 @@
       "original_person": "Chung",
       "amount": 321000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5953,7 +5993,7 @@
       "original_person": "Sugi",
       "amount": 815000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5970,7 +6010,7 @@
       "original_person": "Vợ",
       "amount": 209000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -5987,7 +6027,7 @@
       "original_person": "Sugi",
       "amount": 172000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6004,7 +6044,7 @@
       "original_person": "Chung",
       "amount": 32000,
       "formula": "=32000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6021,7 +6061,7 @@
       "original_person": "Chung",
       "amount": 18000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6038,7 +6078,7 @@
       "original_person": "Chung",
       "amount": 45000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6055,7 +6095,7 @@
       "original_person": "Sugi",
       "amount": 723000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6072,7 +6112,7 @@
       "original_person": "Vợ",
       "amount": 308000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6089,7 +6129,7 @@
       "original_person": "Chung",
       "amount": 702000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6106,7 +6146,7 @@
       "original_person": "Subo",
       "amount": 78000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6123,7 +6163,7 @@
       "original_person": "Sugi",
       "amount": 129000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6140,7 +6180,7 @@
       "original_person": "Chung",
       "amount": 477000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6157,7 +6197,7 @@
       "original_person": "Vợ",
       "amount": 706000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6174,7 +6214,7 @@
       "original_person": "Chung",
       "amount": 111000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6191,7 +6231,7 @@
       "original_person": "Chung",
       "amount": 55000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6276,7 +6316,7 @@
       "original_person": "Subo",
       "amount": 25000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6293,7 +6333,7 @@
       "original_person": "Sugi",
       "amount": 70000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6310,7 +6350,7 @@
       "original_person": "Chồng",
       "amount": 88000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6327,7 +6367,7 @@
       "original_person": "Chung",
       "amount": 1011000,
       "formula": "=550000+457000+4000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6344,7 +6384,7 @@
       "original_person": "Sugi",
       "amount": 50000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6412,7 +6452,7 @@
       "original_person": "Chung",
       "amount": 386000,
       "formula": "=13000+284000+37000+52000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6463,7 +6503,7 @@
       "original_person": "Chung",
       "amount": 1352000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6480,7 +6520,7 @@
       "original_person": "Chung",
       "amount": 2399000,
       "formula": "=103000+2235000+16000+45000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6531,7 +6571,7 @@
       "original_person": "Chồng",
       "amount": 750000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6548,7 +6588,7 @@
       "original_person": "Subo",
       "amount": 59000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6582,7 +6622,7 @@
       "original_person": "Sugi",
       "amount": 176000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6599,7 +6639,7 @@
       "original_person": "Chồng",
       "amount": 100000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6650,7 +6690,7 @@
       "original_person": "Chung",
       "amount": 103000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6667,7 +6707,7 @@
       "original_person": "Chung",
       "amount": 70000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6684,7 +6724,7 @@
       "original_person": "Subo",
       "amount": 25000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6803,7 +6843,7 @@
       "original_person": "Chung",
       "amount": 2048000,
       "formula": "=1371000+235000+399000+20000+23000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -6837,7 +6877,7 @@
       "original_person": "Subo",
       "amount": 36000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -7007,7 +7047,7 @@
       "original_person": "Chung",
       "amount": 39000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -7041,7 +7081,7 @@
       "original_person": "Subo",
       "amount": 33000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -7160,7 +7200,7 @@
       "original_person": "Chung",
       "amount": 209000,
       "formula": "=195000+14000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -7177,7 +7217,7 @@
       "original_person": "Subo",
       "amount": 398000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -7194,7 +7234,7 @@
       "original_person": "Chung",
       "amount": 1041000,
       "formula": "=942000+99000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -15031,7 +15071,7 @@
       "original_person": "Chung",
       "amount": 103000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -15422,7 +15462,7 @@
       "original_person": "Sugi",
       "amount": 378000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -15439,7 +15479,7 @@
       "original_person": "Chung",
       "amount": 1687000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -15456,7 +15496,7 @@
       "original_person": "Chung",
       "amount": 220000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -15473,7 +15513,7 @@
       "original_person": "Chung",
       "amount": 500000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -15490,7 +15530,7 @@
       "original_person": "Chung",
       "amount": 720000,
       "formula": "=42000+678000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -15507,7 +15547,7 @@
       "original_person": "Chung",
       "amount": 162000,
       "formula": "=48000+27000+87000",
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -15524,7 +15564,7 @@
       "original_person": "Chung",
       "amount": 113000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -15558,7 +15598,7 @@
       "original_person": "Chồng",
       "amount": 103000,
       "formula": null,
-      "source": "VPBank",
+      "source": "VPBank Step Up",
       "raw_source": "vp",
       "was_unmatched_in_excel": false,
       "issue_note": null
@@ -15862,7 +15902,7 @@
   "investment": {
     "monthly_dca_budget": 12000000,
     "annual_step_up": 0.05,
-    "dip_fund_balance": 36576000,
+    "dip_fund_balance": 36576000.0,
     "emergency_fund_balance": 153917600,
     "holdings": [
       {
@@ -15870,13 +15910,13 @@
         "name": "ETF DCVFMVN40 / VN Diamond",
         "type": "ETF",
         "target_weight": 0.3,
-        "current_nav": 33300,
+        "current_nav": 33300.0,
         "monthly_dca": 3600000,
-        "invested": 32400000,
+        "invested": 32400000.0,
         "units": 998.37,
         "avg_cost": 32453,
         "market_value": 33245721,
-        "pnl": 845721,
+        "pnl": 845721.0,
         "pnl_pct": 2.61,
         "actual_weight": 0.2984
       },
@@ -15885,13 +15925,13 @@
         "name": "Quỹ Mở Dragon Capital (DCDS)",
         "type": "Open Fund (Cổ phiếu LargeCap)",
         "target_weight": 0.25,
-        "current_nav": 91495,
+        "current_nav": 91495.0,
         "monthly_dca": 3000000,
-        "invested": 27000000,
+        "invested": 27000000.0,
         "units": 305.5,
         "avg_cost": 88380,
         "market_value": 27951722,
-        "pnl": 951722,
+        "pnl": 951722.0,
         "pnl_pct": 3.52,
         "actual_weight": 0.2509
       },
@@ -15900,13 +15940,13 @@
         "name": "Quỹ Mở VinaCapital (VESAF)",
         "type": "Open Fund (Cổ phiếu MidCap)",
         "target_weight": 0.45,
-        "current_nav": 46250,
+        "current_nav": 46250.0,
         "monthly_dca": 5400000,
-        "invested": 48600000,
+        "invested": 48600000.0,
         "units": 1085.49,
         "avg_cost": 44772,
         "market_value": 50203912,
-        "pnl": 1603912,
+        "pnl": 1603912.0,
         "pnl_pct": 3.3,
         "actual_weight": 0.4507
       }

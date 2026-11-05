@@ -18,10 +18,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css?v=7.1.0" />
+  <link rel="stylesheet" href="./styles.css?v=7.2.0" />
   <script>
     (function() {
-      var VER = "v7.1-taste-ledger";
+      var VER = "v7.2-claude-sonnet-5-5";
       if (localStorage.getItem("FAMILY_BUILD_VER_ACTIVE") !== VER) {
         localStorage.setItem("FAMILY_BUILD_VER_ACTIVE", VER);
         if ("caches" in window) {
@@ -127,7 +127,7 @@
           <span id="sidebar-sync-text">Cloud Active (24/7)</span>
         </div>
         <div style="font-size:13px;color:var(--muted);">
-          VPBank • BIDV • NCB • UOB • Shopee
+          VPBank (Step Up / Shopee) • BIDV • NCB • UOB
         </div>
         <button class="btn btn-primary" id="sidebar-gemini-btn" style="width:100%;" onclick="openGeminiSettingsModal()">
           Cài Đặt Não AI (Claude / Gemini)
@@ -219,18 +219,22 @@
         </div>
 
         <!-- Thanh chọn nhanh tinh gọn: Nguồn tiền, Người chi, Hạng mục -->
-        <div class="quick-preset-bar">
+        <div class="quick-preset-bar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <span style="color:var(--muted);font-weight:600;font-size:13px;">Chọn sẵn:</span>
           <select id="quick-default-source" class="input-control" style="padding:5px 10px;font-size:13px;font-weight:700;color:var(--accent);" onchange="onQuickPresetChange()">
-            <option value="Tiền mặt">Tiền mặt</option>
-            <option value="Chuyển khoản">Chuyển khoản</option>
+            <option value="VPBank Step Up">💳 VPBank Step Up</option>
+            <option value="VPBank Shopee">🛍️ VPBank Shopee</option>
+            <option value="Tiền mặt">💵 Tiền mặt</option>
+            <option value="Chuyển khoản">🏦 Chuyển khoản</option>
             <option value="Tiền mặt / Chuyển khoản">Tiền mặt / CK</option>
-            <option value="NCB">NCB</option>
-            <option value="VPBank">VPBank</option>
             <option value="BIDV">BIDV</option>
+            <option value="NCB">NCB</option>
             <option value="UOB">UOB</option>
-            <option value="VPSP">VPSP</option>
           </select>
+          <div style="display:inline-flex;gap:4px;">
+            <button type="button" class="btn btn-ghost" style="padding:3px 8px;font-size:11.5px;font-weight:700;border-radius:12px;" onclick="setQuickSourcePreset('VPBank Step Up')" title="Chuyển nhanh sang thẻ VPBank Step Up">💳 Step Up</button>
+            <button type="button" class="btn btn-ghost" style="padding:3px 8px;font-size:11.5px;font-weight:700;border-radius:12px;" onclick="setQuickSourcePreset('VPBank Shopee')" title="Chuyển nhanh sang thẻ VPBank Shopee">💳 Thẻ Shopee</button>
+          </div>
           <select id="quick-default-person" class="input-control" style="padding:5px 10px;font-size:13px;font-weight:700;" onchange="onQuickPresetChange()">
             <option value="AUTO">Người chi: Tự động</option>
             <option value="Vợ">Vợ</option>
@@ -401,11 +405,11 @@
               <option value="Tiền mặt">Tiền mặt</option>
               <option value="Chuyển khoản">Chuyển khoản</option>
               <option value="Tiền mặt / Chuyển khoản">Tiền mặt / CK</option>
-              <option value="NCB">NCB</option>
-              <option value="VPBank">VPBank</option>
+              <option value="VPBank Step Up">VPBank Step Up</option>
+              <option value="VPBank Shopee">VPBank Shopee</option>
               <option value="BIDV">BIDV</option>
+              <option value="NCB">NCB</option>
               <option value="UOB">UOB</option>
-              <option value="VPSP">VPSP</option>
             </select>
           </div>
 
@@ -739,6 +743,6 @@
     <div class="card" style="width:100%;max-width:620px;border-color:var(--border-strong);max-height:92vh;overflow-y:auto;" id="modal-content"></div>
   </div>
 
-  <script src="./app.js?v=7.1.0"></script>
+  <script src="./app.js?v=7.2.0"></script>
 </body>
 </html>

@@ -6,8 +6,11 @@ import glob
 import datetime
 import imaplib
 import email
+import urllib.request
+import urllib.error
+import threading
 from email.header import decode_header
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 import openpyxl
 
@@ -16,36 +19,69 @@ DATA_PATH = os.path.join(BASE_DIR, "data", "family_db.json")
 LOCAL_SECRETS_PATH = os.path.join(BASE_DIR, "data", "local_secrets.json")
 PARENT_DIR = os.path.dirname(BASE_DIR)
 FIXED_EXCEL_PATH = os.path.join(PARENT_DIR, "2026 - FAMILY NOTE BOOK (Da Chuan Hoa & Gop Dau Tu).xlsx")
+DB_LOCK = threading.RLock()
+
+
+def normalize_payment_source(src, raw=""):
+    s = str(src or "").strip()
+    rs = str(raw or "").strip()
+    comb = (s + " " + rs).lower()
+
+    if re.search(r'(?:^|[\s,._/-])(vpsp|vp\s*sp|vp\s*shopee|vpbank\s*shopee|the\s*shopee|thẻ\s*shopee|the\s*vp\s*shopee|thẻ\s*vp\s*shopee)(?=$|[\s,._/-])', comb, re.I) or 'vpbank shopee' in comb or 'vp shopee' in comb or 'vpsp' in comb or 'vp sp' in comb:
+        return 'VPBank Shopee'
+
+    if re.search(r'(?:^|[\s,._/-])(vpbank\s*step\s*up|vp\s*step\s*up|step\s*up|stepup|vpbank|vp|vp-done|vp\s*done)(?=$|[\s,._/-])', comb, re.I) or 'vpbank step up' in comb or 'step up' in comb or 'vpbank' in comb or s.upper() == 'VP' or s.upper().startswith('VP ') or s.upper().startswith('VP-'):
+        return 'VPBank Step Up'
+
+    if re.search(r'\bbidv\b', comb, re.I): return 'BIDV'
+    if re.search(r'\bncb\b', comb, re.I): return 'NCB'
+    if re.search(r'\buob\b', comb, re.I): return 'UOB'
+
+    if 'tiền mặt / chuyển khoản' in comb or 'tien mat / chuyen khoan' in comb or ('tiền mặt' in comb and 'chuyển khoản' in comb):
+        return 'Tiền mặt / Chuyển khoản'
+    if re.search(r'(?:^|[\s,._/-])(tiền\s*mặt|tien\s*mat|\btm\b)(?=$|[\s,._/-])', comb, re.I): return 'Tiền mặt'
+    if re.search(r'(?:^|[\s,._/-])(chuyển\s*khoản|chuyen\s*khoan|\bck\b)(?=$|[\s,._/-])', comb, re.I): return 'Chuyển khoản'
+
+    return s or 'Tiền mặt / Chuyển khoản'
 
 
 def load_db():
-    with open(DATA_PATH, "r", encoding="utf-8") as f:
-        db = json.load(f)
-    if os.path.exists(LOCAL_SECRETS_PATH):
-        try:
-            with open(LOCAL_SECRETS_PATH, "r", encoding="utf-8") as sf:
-                secrets = json.load(sf)
-            if secrets.get("gemini_api_key") and "meta" in db:
-                db["meta"]["gemini_api_key"] = secrets["gemini_api_key"]
-        except Exception:
-            pass
-    return db
+    with DB_LOCK:
+        with open(DATA_PATH, "r", encoding="utf-8") as f:
+            db = json.load(f)
+        for tx in db.get("transactions", []):
+            tx["source"] = normalize_payment_source(tx.get("source"), tx.get("raw_source", ""))
+        if os.path.exists(LOCAL_SECRETS_PATH):
+            try:
+                with open(LOCAL_SECRETS_PATH, "r", encoding="utf-8") as sf:
+                    secrets = json.load(sf)
+                if secrets.get("gemini_api_key") and "meta" in db:
+                    db["meta"]["gemini_api_key"] = secrets["gemini_api_key"]
+            except Exception:
+                pass
+        return db
 
 
 def save_db(db):
-    db["meta"]["last_synced"] = datetime.datetime.now().isoformat()
-    api_key = db.get("meta", {}).get("gemini_api_key", "")
-    if api_key:
-        try:
-            with open(LOCAL_SECRETS_PATH, "w", encoding="utf-8") as sf:
-                json.dump({"gemini_api_key": api_key}, sf, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
-    db_to_write = json.loads(json.dumps(db))
-    if "meta" in db_to_write and "gemini_api_key" in db_to_write["meta"]:
-        db_to_write["meta"]["gemini_api_key"] = ""
-    with open(DATA_PATH, "w", encoding="utf-8") as f:
-        json.dump(db_to_write, f, ensure_ascii=False, indent=2)
+    with DB_LOCK:
+        for tx in db.get("transactions", []):
+            tx["source"] = normalize_payment_source(tx.get("source"), tx.get("raw_source", ""))
+    with DB_LOCK:
+        db["meta"]["last_synced"] = datetime.datetime.now().isoformat()
+        api_key = db.get("meta", {}).get("gemini_api_key", "")
+        if api_key:
+            try:
+                with open(LOCAL_SECRETS_PATH, "w", encoding="utf-8") as sf:
+                    json.dump({"gemini_api_key": api_key}, sf, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+        db_to_write = json.loads(json.dumps(db))
+        if "meta" in db_to_write and "gemini_api_key" in db_to_write["meta"]:
+            db_to_write["meta"]["gemini_api_key"] = ""
+        tmp_path = f"{DATA_PATH}.tmp.{os.getpid()}.{threading.get_ident()}"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(db_to_write, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, DATA_PATH)
 
 
 def recompute_months(db):
@@ -60,6 +96,8 @@ def recompute_months(db):
             + float(m_obj["income"].get("Subo", 0))
             + float(m_obj["income"].get("Sugi", 0))
         )
+        if "extras" in m_obj["income"] and isinstance(m_obj["income"]["extras"], list):
+            inc_total += sum(float(x.get("amount", 0)) for x in m_obj["income"]["extras"] if isinstance(x, dict))
         m_obj["income"]["total"] = inc_total
         m_obj["target_saving"] = round(inc_total * 0.30)
         m_obj["target_expense"] = round(inc_total * 0.70)
@@ -287,17 +325,25 @@ def parse_quick_input(raw_text, default_month=10):
     'emart 450k ăn uống chung vp' or 'bỉm con cưng 378k sugi vp' or 'xăng ck 100000 bidv'
     """
     text = raw_text.strip()
-    # Extract bank/source
-    source = "VPBank"
-    for tok, src_name in [
-        ("vpsp", "VPBank Shopee"), ("vp sp", "VPBank Shopee"),
-        ("vpbank", "VPBank"), (" vp", "VPBank"),
-        ("bidv", "BIDV"), ("ncb", "NCB"), ("uob", "UOB"),
-        ("tiền mặt", "Tiền mặt / Chuyển khoản"), ("tm", "Tiền mặt / Chuyển khoản")
-    ]:
-        if tok in " " + text.lower():
+    # VPBank only has 2 cards: VPBank Step Up & VPBank Shopee
+    source = None
+    bank_patterns = [
+        # Chỉ nhận "VPBank Shopee" khi câu ghi rõ ràng dùng THẺ Shopee / VPSP
+        (r'\b(vpbank\s*shopee|vp\s*shopee|thẻ\s*vp\s*shopee|the\s*vp\s*shopee|thẻ\s*shopee|the\s*shopee|thẻ\s*vpsp|the\s*vpsp|vpsp|vp\s*sp)\b', "VPBank Shopee"),
+        (r'\b(vpbank\s*step\s*up|vp\s*step\s*up|thẻ\s*step\s*up|the\s*step\s*up|step\s*up|stepup)\b', "VPBank Step Up"),
+        (r'\b(vpbank|vp)\b', "VPBank Step Up"),
+        (r'\b(bidv)\b', "BIDV"),
+        (r'\b(ncb|quốc\s*dân|quoc\s*dan|izimobile)\b', "NCB"),
+        (r'\b(uob)\b', "UOB"),
+        (r'\b(chuyển\s*khoản|chuyen\s*khoan)\b', "Chuyển khoản"),
+        (r'\b(tiền\s*mặt|tien\s*mat|tm)\b', "Tiền mặt")
+    ]
+    for pat, src_name in bank_patterns:
+        if re.search(pat, text, re.IGNORECASE):
             source = src_name
             break
+    if not source:
+        source = "VPBank Step Up"
 
     # Extract amount: supports 450k, 1.5tr, 1tr2, 450,000, 450000
     amount = 0
@@ -324,8 +370,20 @@ def parse_quick_input(raw_text, default_month=10):
                 amount = float(raw_n)
                 clean_desc = (text[:m_num.start()] + " " + text[m_num.end():]).strip()
 
-    # Clean trailing source/category tokens from description
-    clean_desc = re.sub(r'\b(vpbank|vpsp|vp sp|vp|bidv|ncb|uob)\b', '', clean_desc, flags=re.IGNORECASE).strip(" -,.|")
+    # Clean trailing source/category tokens from description (giữ nguyên chữ shopee trong nội dung)
+    clean_desc = re.sub(
+        r'\b(vpbank\s*shopee|vp\s*shopee|thẻ\s*vp\s*shopee|the\s*vp\s*shopee|thẻ\s*shopee|the\s*shopee|thẻ\s*vpsp|the\s*vpsp|vpsp|vp\s*sp|vpbank\s*step\s*up|vp\s*step\s*up|thẻ\s*step\s*up|the\s*step\s*up|step\s*up|stepup|vpbank|vp|bidv|ncb|uob|chuyển\s*khoản|chuyen\s*khoan|tiền\s*mặt|tien\s*mat|tm)\b',
+        '',
+        clean_desc,
+        flags=re.IGNORECASE
+    ).strip(" -,.|")
+    if not clean_desc:
+        if source == "VPBank Shopee":
+            clean_desc = "Chi tiêu thẻ Shopee"
+        elif source == "VPBank Step Up":
+            clean_desc = "Chi tiêu thẻ Step Up"
+        else:
+            clean_desc = text
     cat, person, conf, reason = classify_transaction_text(text)
 
     now = datetime.datetime.now()
@@ -356,18 +414,20 @@ def parse_bank_emails(raw_email_text, min_date="2026-11-01"):
     parsed_items = []
     for idx, block in enumerate(blocks, 1):
         b_low = block.lower()
-        # Detect bank
-        bank = "VPBank"
+        # Detect bank: VPBank only has 2 cards: VPBank Step Up & VPBank Shopee
+        bank = "VPBank Step Up"
         if "bidv" in b_low or "smartbanking" in b_low:
             bank = "BIDV"
         elif "ncb" in b_low or "quốc dân" in b_low or "izimobile" in b_low:
             bank = "NCB"
         elif "uob" in b_low:
             bank = "UOB"
-        elif "shopee" in b_low and "vpbank" in b_low:
+        # Chỉ nhận là VPBank Shopee khi trên email/SMS ghi rõ là THẺ Shopee / VPSP
+        # Mua hàng trên sàn Shopee bằng thẻ Step Up vẫn là VPBank Step Up
+        elif any(k in b_low for k in ["vpbank shopee card", "thẻ vpbank shopee", "the vpbank shopee", "thẻ shopee", "the shopee", "thẻ vpsp", "vpsp", "vp sp"]):
             bank = "VPBank Shopee"
-        elif "vpbank" in b_low or "neo" in b_low:
-            bank = "VPBank"
+        elif any(k in b_low for k in ["vpbank", "step up", "stepup", "neo", "vp"]):
+            bank = "VPBank Step Up"
 
         # Detect outgoing vs incoming
         is_income = False
@@ -419,9 +479,8 @@ def parse_bank_emails(raw_email_text, min_date="2026-11-01"):
         cat, person, conf, reason = classify_transaction_text(content_extracted + " " + friendly_note)
         is_unclear, unclear_msg = is_unclear_email_transaction(friendly_note, content_extracted, conf)
 
-        # Skip emails before min_date if min_date has already passed in calendar
-        today_str = datetime.date.today().strftime("%Y-%m-%d")
-        if min_date and min_date <= today_str and date_str < min_date:
+        # Skip emails before min_date
+        if min_date and date_str < min_date:
             continue
 
         if amt > 0:
@@ -688,33 +747,205 @@ def fetch_gmail_bank_emails(email_addr, app_password, max_emails=15):
 
 SAMPLE_BANK_EMAILS = """From: VPBank Online <customercare@vpbank.com.vn>
 Subject: [VPBank] Thông báo biến động số dư tài khoản
-Ngày 22/10/2026 08:15:20. TK 1988xxxx tại VPBank biến động -485,000 VND.
+Ngày 02/11/2026 08:15:20. TK 1988xxxx tại VPBank biến động -485,000 VND.
 Nội dung: CO.OPMART RACH MIEU THANH TOAN QR. Số dư khả dụng: 24,510,000 VND.
 ---
 From: BIDV SmartBanking <bidvsmartbanking@bidv.com.vn>
 Subject: [BIDV] Thông báo giao dịch tài khoản 3141xxxx
-Thời gian: 22/10/2026 11:30. Số tiền GD: -395,000 VND.
+Thời gian: 02/11/2026 11:30. Số tiền GD: -395,000 VND.
 Nội dung: Mua bỉm và sữa thanh cho Sugi tại CON CUNG.
 ---
 From: NCB iziMobile <info@ncb-bank.vn>
 Subject: [NCB] Biến động số dư tài khoản thanh toán
-NCB thông báo: Ngày 22/10/2026, TK xxxx8899 trừ -95,000 VND.
+NCB thông báo: Ngày 02/11/2026, TK xxxx8899 trừ -95,000 VND.
 Nội dung: Đổ xăng ck Petrolimex Q1.
 ---
 From: VPBank Shopee Card <card@vpbank.com.vn>
 Subject: [VPBank] Giao dịch thẻ tín dụng VPBank Shopee
-Thẻ VPBank Shopee *4591 vừa chi tiêu 320,000 VND ngày 22/10/2026.
+Thẻ VPBank Shopee *4591 vừa chi tiêu 320,000 VND ngày 03/11/2026.
 Nội dung: SHOPEE VN - Nước giặt OMO và túi rác gia đình.
 ---
 From: BIDV SmartBanking <bidvsmartbanking@bidv.com.vn>
 Subject: [BIDV] Thanh toán hóa đơn thành công
-Ngày 22/10/2026, TK BIDV thanh toán -265,000 VND.
+Ngày 03/11/2026, TK BIDV thanh toán -265,000 VND.
 Nội dung: Nhà thuốc Long Châu mua thuốc ho và vitamin cho Subo.
 ---
 From: VPBank Online <customercare@vpbank.com.vn>
 Subject: [VPBank] Thông báo giao dịch thẻ ghi nợ
-Ngày 22/10/2026 14:10:00. TK 1988xxxx trừ -1,250,000 VND.
+Ngày 03/11/2026 14:10:00. TK 1988xxxx trừ -1,250,000 VND.
 Nội dung: THANH TOAN POS 004128 CH SO 19."""
+
+
+def normalize_claude_model_name(raw_input):
+    raw = str(raw_input or "").strip()
+    if not raw:
+        return "claude-sonnet-5-5"
+    low = re.sub(r"[\s_]+", "-", raw.lower())
+    if re.match(r"^(?:claude-)?sonnet-?5[-.]?5$", low) or low in ("sonnet-5.5", "sonnet-5-5", "5.5", "sonnet5.5"):
+        return "claude-sonnet-5-5"
+    if re.match(r"^(?:claude-)?haiku-?5[-.]?5$", low) or low in ("haiku-5.5", "haiku5.5"):
+        return "claude-haiku-5-5"
+    if re.match(r"^(?:claude-)?opus-?5[-.]?5$", low) or low in ("opus-5.5", "opus5.5"):
+        return "claude-opus-5-5"
+    if re.match(r"^(?:claude-)?sonnet-?3[-.]?7$", low) or low in ("sonnet-3.7", "sonnet3.7"):
+        return "claude-3-7-sonnet-20250219"
+    if re.match(r"^(?:claude-)?sonnet-?3[-.]?5$", low) or low in ("sonnet-3.5", "sonnet3.5"):
+        return "claude-3-5-sonnet-20241022"
+    if re.match(r"^(?:claude-)?haiku-?3[-.]?5$", low) or low in ("haiku-3.5", "haiku3.5"):
+        return "claude-3-5-haiku-20241022"
+    if low.startswith("sonnet") and not low.startswith("claude-"):
+        return f"claude-{low}"
+    return raw
+
+
+def handle_ai_proxy_request(body):
+    db = load_db()
+    api_key = str(body.get("api_key") or db.get("meta", {}).get("gemini_api_key") or "").strip()
+    if not api_key:
+        return {"ok": False, "error": "Chưa cấu hình API Key"}, 400
+
+    action = str(body.get("action") or "").strip().lower()
+    raw_base = str(body.get("base_url") or db.get("meta", {}).get("ai_base_url") or "").strip().rstrip("/")
+    base_url = raw_base if raw_base else "https://api.anthropic.com"
+
+    # 1. Discover models
+    if action == "list_models" or str(body.get("method") or "").upper() == "GET":
+        models_url = body.get("target_url") or body.get("url") or f"{base_url}/v1/models?limit=50"
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "User-Agent": "FamilyWealthOS/2026"
+        }
+        if not api_key.startswith("sk-ant-"):
+            headers["Authorization"] = f"Bearer {api_key}"
+        try:
+            req = urllib.request.Request(models_url, headers=headers, method="GET")
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                ids = [m.get("id") for m in data.get("data", []) if isinstance(m, dict) and m.get("id")]
+                return {"ok": True, "models": ids, "data": data}, 200
+        except urllib.error.HTTPError as e:
+            err_raw = e.read().decode("utf-8", errors="ignore")
+            try:
+                err_json = json.loads(err_raw)
+                err_msg = err_json.get("error", {}).get("message") or err_raw
+            except Exception:
+                err_msg = err_raw or f"HTTP {e.code}"
+            return {"ok": False, "models": [], "error": err_msg}, e.code
+        except Exception as e:
+            return {"ok": False, "models": [], "error": str(e)}, 500
+
+    # 2. Direct low-level proxy if target_url + payload provided
+    if (body.get("target_url") or body.get("url")) and body.get("payload"):
+        target_url = str(body.get("target_url") or body.get("url"))
+        req_headers = dict(body.get("headers") or {})
+        req_headers.setdefault("Content-Type", "application/json")
+        req_headers.setdefault("User-Agent", "FamilyWealthOS/2026")
+        if "x-api-key" not in req_headers and "Authorization" not in req_headers:
+            req_headers["x-api-key"] = api_key
+            req_headers["anthropic-version"] = "2023-06-01"
+        raw_payload = json.dumps(body["payload"], ensure_ascii=False).encode("utf-8")
+        try:
+            req = urllib.request.Request(target_url, data=raw_payload, headers=req_headers, method="POST")
+            with urllib.request.urlopen(req, timeout=45) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                text_out = ""
+                if isinstance(data.get("content"), list):
+                    text_out = "\n".join(p.get("text", "") for p in data["content"] if p.get("type") == "text")
+                elif isinstance(data.get("choices"), list) and data["choices"]:
+                    text_out = data["choices"][0].get("message", {}).get("content", "")
+                return {"ok": True, "text": text_out, "model": data.get("model", "claude-sonnet-5-5"), "data": data}, 200
+        except urllib.error.HTTPError as e:
+            err_raw = e.read().decode("utf-8", errors="ignore")
+            return {"ok": False, "error": err_raw or f"HTTP {e.code}"}, e.code
+        except Exception as e:
+            return {"ok": False, "error": str(e)}, 500
+
+    # 3. High-level Anthropic Claude / Proxy Messages call
+    preferred_model = normalize_claude_model_name(body.get("model") or db.get("meta", {}).get("ai_model") or "claude-sonnet-5-5")
+    if api_key.startswith("sk-ant-") and preferred_model.startswith(("gemini-", "gpt-")):
+        preferred_model = "claude-sonnet-5-5"
+
+    candidate_models = [preferred_model]
+    for fallback_m in ["claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5", "claude-3-7-sonnet-20250219", "claude-3-5-sonnet-20241022"]:
+        if fallback_m not in candidate_models:
+            candidate_models.append(fallback_m)
+
+    prompt_text = str(body.get("prompt") or "")
+    image_base64 = body.get("image_base64")
+    mime_type = str(body.get("mime_type") or "image/jpeg")
+    max_tokens = int(body.get("max_tokens") or 2500)
+
+    user_content = []
+    if image_base64:
+        user_content.append({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": mime_type,
+                "data": image_base64
+            }
+        })
+    user_content.append({
+        "type": "text",
+        "text": prompt_text
+    })
+
+    messages_payload = body.get("messages") or [{"role": "user", "content": user_content}]
+    msg_url = f"{base_url}/v1/messages" if not base_url.endswith("/messages") else base_url
+
+    headers = {
+        "Content-Type": "application/json",
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "User-Agent": "FamilyWealthOS/2026"
+    }
+    if not api_key.startswith("sk-ant-"):
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    last_error = ""
+    for m_name in candidate_models:
+        req_body = json.dumps({
+            "model": m_name,
+            "max_tokens": max_tokens,
+            "messages": messages_payload
+        }, ensure_ascii=False).encode("utf-8")
+        try:
+            req = urllib.request.Request(msg_url, data=req_body, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=45) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                content_list = data.get("content", [])
+                if isinstance(content_list, list):
+                    text_out = "\n".join(p.get("text", "") for p in content_list if p.get("type") == "text").strip()
+                    if text_out:
+                        simple_name = m_name
+                        if m_name == "claude-sonnet-5-5":
+                            simple_name = "Sonnet 5.5"
+                        elif m_name == "claude-haiku-5-5":
+                            simple_name = "Haiku 5.5"
+                        elif m_name == "claude-opus-5-5":
+                            simple_name = "Opus 5.5"
+                        return {
+                            "ok": True,
+                            "text": text_out,
+                            "model": f"Claude ({simple_name})",
+                            "raw_model": data.get("model", m_name),
+                            "data": data
+                        }, 200
+        except urllib.error.HTTPError as e:
+            err_raw = e.read().decode("utf-8", errors="ignore")
+            try:
+                err_json = json.loads(err_raw)
+                err_msg = err_json.get("error", {}).get("message") or err_raw
+            except Exception:
+                err_msg = err_raw or f"HTTP {e.code}"
+            last_error = err_msg
+            if e.code == 401:
+                return {"ok": False, "error": f"Lỗi xác thực Claude API: {err_msg}"}, 401
+        except Exception as e:
+            last_error = str(e)
+
+    return {"ok": False, "error": last_error or "Không nhận được phản hồi từ Claude API"}, 502
 
 
 APPS_SCRIPT_CODE = """/**
@@ -947,6 +1178,8 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
                     for k in ["CK", "VK", "Subo", "Sugi", "husband_salary", "wife_salary", "husband_Allowance", "rent"]:
                         if k in body:
                             inc[k] = float(body[k])
+                    if "extras" in body and isinstance(body["extras"], list):
+                        inc["extras"] = body["extras"]
                     if "allocation" in body and isinstance(body["allocation"], dict):
                         m_obj["allocation"].update(body["allocation"])
                     break
@@ -1012,6 +1245,14 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
                             h["current_nav"] = float(cs["investment"]["holdings_nav"][h["code"]])
             if isinstance(cs.get("email_config"), dict):
                 db["email_config"] = {**(db.get("email_config") or {}), **cs["email_config"]}
+            if isinstance(cs.get("processed_email_sigs"), list):
+                existing_sigs = set(db["meta"].get("processed_email_sigs", []))
+                for s in cs["processed_email_sigs"]:
+                    if s:
+                        existing_sigs.add(s)
+                db["meta"]["processed_email_sigs"] = list(existing_sigs)
+            if isinstance(cs.get("mailboxes"), list) and len(cs["mailboxes"]) > 0:
+                db["meta"]["mailboxes"] = cs["mailboxes"]
             for meta_k in ["family_pin", "gemini_api_key", "ai_model", "ai_base_url", "cloud_script_url"]:
                 if cs.get(meta_k) is not None and cs.get(meta_k) != "":
                     db["meta"][meta_k] = cs[meta_k]
@@ -1021,6 +1262,11 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
             recompute_months(db)
             save_db(db)
             self._send_json({"ok": True, "last_synced": db["meta"]["last_synced"]})
+            return
+
+        elif parsed.path == "/api/ai-proxy":
+            res_data, status_code = handle_ai_proxy_request(body)
+            self._send_json(res_data, status_code)
             return
 
         elif parsed.path == "/api/email/parse":
@@ -1115,6 +1361,6 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8686))
-    server = HTTPServer(("127.0.0.1", port), FamilyAppHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", port), FamilyAppHandler)
     print(f"Family Wealth OS 2026 running at http://localhost:{port}")
     server.serve_forever()
