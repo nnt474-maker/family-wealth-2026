@@ -1,4 +1,4 @@
-const CACHE_NAME = "family-wealth-2026-v7.7-cloud-sync";
+const CACHE_NAME = "family-wealth-2026-v7.8-mobile-tabs-swipe";
 const CORE_ASSETS = [
   "./",
   "./index.html",

@@ -2013,7 +2013,7 @@ async function pullFromGoogleSheetCloud(silent = true) {
 
 async function initApp() {
   // Tự động kiểm tra phiên bản & thanh tẩy cache cũ trên máy đã cài PWA
-  const APP_BUILD_TAG = "v7.7.0-family-wealth-cloud-sync-2026";
+  const APP_BUILD_TAG = "v7.8.0-family-wealth-mobile-tabs-swipe-2026";
   if (localStorage.getItem("FAMILY_BUILD_TAG") !== APP_BUILD_TAG) {
     localStorage.setItem("FAMILY_BUILD_TAG", APP_BUILD_TAG);
     if ("caches" in window) {
@@ -2023,7 +2023,7 @@ async function initApp() {
 
   // Register PWA Service Worker với cơ chế Network-First
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("./sw.js?v=7.7.0").then(reg => {
+    navigator.serviceWorker.register("./sw.js?v=7.8.0").then(reg => {
       reg.addEventListener("updatefound", () => {
         const newWorker = reg.installing;
         if (newWorker) {
@@ -2279,6 +2279,9 @@ async function initApp() {
       }
     }
   });
+
+  // Enable Touch Swipe gestures for smooth horizontal tab navigation on mobile
+  try { initMobileSwipeGestures(); } catch (e) {}
 }
 
 function onQuickPresetChange() {
@@ -2517,7 +2520,13 @@ function updatePeriodLabels() {
   });
 }
 
-function switchTab(tabId) {
+const ALL_TABS = ["dashboard", "transactions", "email", "investment", "ai", "audit"];
+let activeTabId = "dashboard";
+
+function switchTab(tabId, shouldScroll = true) {
+  if (!ALL_TABS.includes(tabId)) tabId = "dashboard";
+  activeTabId = tabId;
+
   document.querySelectorAll(".tab-pane").forEach(el => el.classList.remove("active"));
   document.querySelectorAll(".nav-btn").forEach(el => el.classList.remove("active"));
   document.querySelectorAll(".mobile-nav-btn").forEach(el => el.classList.remove("active"));
@@ -2528,6 +2537,101 @@ function switchTab(tabId) {
   if (nav) nav.classList.add("active");
   const mnav = document.getElementById(`mnav-${tabId}`);
   if (mnav) mnav.classList.add("active");
+
+  // On mobile: hide bulky quick-hero on tabs that don't need expense entry (email, investment, ai, audit)
+  const quickHero = document.querySelector(".quick-hero");
+  if (quickHero) {
+    if (window.innerWidth <= 768) {
+      if (tabId === "dashboard" || tabId === "transactions") {
+        quickHero.style.display = "";
+      } else {
+        quickHero.style.display = "none";
+      }
+    } else {
+      quickHero.style.display = "";
+    }
+  }
+
+  // Auto-scroll on tab switch so mobile user immediately sees the tab content
+  if (shouldScroll) {
+    if (tabId === "dashboard") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } else if (pane) {
+      if (window.innerWidth <= 768) {
+        const rect = pane.getBoundingClientRect();
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const targetY = scrollTop + rect.top - 12;
+        window.scrollTo({ top: Math.max(0, targetY), behavior: "smooth" });
+      } else {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    }
+  }
+}
+
+function initMobileSwipeGestures() {
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchStartTime = 0;
+  let isSwiping = false;
+
+  const targetArea = document.querySelector(".main-area") || document.body;
+
+  targetArea.addEventListener("touchstart", (e) => {
+    if (!e.touches || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    touchStartTime = Date.now();
+    isSwiping = true;
+  }, { passive: true });
+
+  targetArea.addEventListener("touchmove", (e) => {
+    const modal = document.getElementById("modal-overlay");
+    if (modal && modal.style.display !== "none") {
+      isSwiping = false;
+    }
+  }, { passive: true });
+
+  targetArea.addEventListener("touchend", (e) => {
+    if (!isSwiping || !e.changedTouches || e.changedTouches.length !== 1) return;
+    isSwiping = false;
+
+    // Check if modal or PIN overlay is open
+    const modal = document.getElementById("modal-overlay");
+    if (modal && modal.style.display !== "none") return;
+    const pin = document.getElementById("pin-lock-overlay");
+    if (pin && pin.style.display !== "none") return;
+
+    const touch = e.changedTouches[0];
+    const deltaX = touch.clientX - touchStartX;
+    const deltaY = touch.clientY - touchStartY;
+    const elapsed = Date.now() - touchStartTime;
+
+    // Fast swipe gesture: duration < 650ms, |deltaX| >= 45px, predominantly horizontal
+    if (elapsed < 650 && Math.abs(deltaX) >= 45 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3) {
+      // Don't trigger if swiping inside interactive elements
+      const target = e.target;
+      if (target && target.closest(".month-pills, .table-wrap, .bar-chart-grid, input, select, textarea")) {
+        return;
+      }
+
+      const currentIdx = ALL_TABS.indexOf(activeTabId || "dashboard");
+      if (currentIdx === -1) return;
+
+      if (deltaX < 0) {
+        // Swiped Left -> go to NEXT tab
+        if (currentIdx < ALL_TABS.length - 1) {
+          switchTab(ALL_TABS[currentIdx + 1], true);
+        }
+      } else {
+        // Swiped Right -> go to PREVIOUS tab
+        if (currentIdx > 0) {
+          switchTab(ALL_TABS[currentIdx - 1], true);
+        }
+      }
+    }
+  }, { passive: true });
 }
 
 function getActiveTransactions() {
