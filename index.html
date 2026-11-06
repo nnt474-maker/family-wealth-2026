@@ -18,10 +18,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css?v=8.0.0" />
+  <link rel="stylesheet" href="./styles.css?v=8.0.1" />
   <script>
     (function() {
-      var VER = "v8.0-fintech-mobile-native";
+      var VER = "v8.0.1-current-month-active";
       if (localStorage.getItem("FAMILY_BUILD_VER_ACTIVE") !== VER) {
         localStorage.setItem("FAMILY_BUILD_VER_ACTIVE", VER);
         if ("caches" in window) {
@@ -659,8 +659,8 @@
                 Đã nạp toàn bộ 888 giao dịch (T1-T10/2026), bảng lương CK/VK, quỹ Subo/Sugi, dư nợ thuế & danh mục 3 quỹ ETF/Open Fund (Đã khớp đủ ETF Tháng 10).
               </div>
             </div>
-            <button class="btn btn-primary" style="padding:8px 14px;font-size:13px;" onclick="openGeminiSettingsModal()">
-              Cài Đặt Gemini AI Free (1.500 lượt/ngày)
+            <button class="btn btn-primary" id="ai-tab-settings-btn" style="padding:8px 14px;font-size:13px;" onclick="openGeminiSettingsModal()">
+              🧠 Cài Đặt Não AI (Claude / Gemini)
             </button>
           </div>
 
@@ -817,6 +817,6 @@
     <div class="card" style="width:100%;max-width:620px;border-color:var(--border-strong);max-height:92vh;overflow-y:auto;" id="modal-content"></div>
   </div>
 
-  <script src="./app.js?v=8.0.0"></script>
+  <script src="./app.js?v=8.0.1"></script>
 </body>
 </html>

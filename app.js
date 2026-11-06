@@ -1,6 +1,11 @@
+function currentAppMonth() {
+  const now = new Date();
+  const m = now.getMonth() + 1;
+  return (m >= 1 && m <= 12) ? m : 11;
+}
+
 let DB = null;
-let selectedMonth = Number(sessionStorage.getItem("FAMILY_WEALTH_SELECTED_MONTH") ?? 10);
-if (isNaN(selectedMonth) || selectedMonth < 0 || selectedMonth > 12) selectedMonth = 10;
+let selectedMonth = currentAppMonth();
 let pendingEmails = [];
 let quickParseTimer = null;
 let currentQuickParsed = null;
@@ -1599,6 +1604,7 @@ function updateGeminiBadgeUI() {
   const lbl = document.getElementById("topbar-gemini-label");
   const pill = document.getElementById("topbar-gemini-pill");
   const sideBtn = document.getElementById("sidebar-gemini-btn");
+  const aiTabBtn = document.getElementById("ai-tab-settings-btn");
   const key = getGeminiApiKey();
   const provider = getAIProviderName(key);
   if (lbl) {
@@ -1612,6 +1618,19 @@ function updateGeminiBadgeUI() {
   if (sideBtn) {
     sideBtn.textContent = key ? `${provider}: Đã Bật` : "Cài Não AI (Claude / Gemini)";
     sideBtn.style.background = key ? "var(--positive)" : "var(--accent)";
+  }
+  if (aiTabBtn) {
+    if (key) {
+      aiTabBtn.textContent = `🧠 ${provider}: Đang Hoạt Động`;
+      aiTabBtn.style.background = "var(--positive)";
+      aiTabBtn.style.borderColor = "var(--positive)";
+      aiTabBtn.title = `Đang sử dụng trí tuệ nhân tạo ${provider}. Bấm để đổi mã hoặc kiểm tra kết nối.`;
+    } else {
+      aiTabBtn.textContent = "🧠 Cài Đặt Não AI (Claude / Gemini)";
+      aiTabBtn.style.background = "var(--accent)";
+      aiTabBtn.style.borderColor = "var(--accent)";
+      aiTabBtn.title = "Bấm để cài đặt mã Claude Sonnet 5.5 hoặc Gemini";
+    }
   }
 }
 
@@ -2013,7 +2032,7 @@ async function pullFromGoogleSheetCloud(silent = true) {
 
 async function initApp() {
   // Tự động kiểm tra phiên bản & thanh tẩy cache cũ trên máy đã cài PWA
-  const APP_BUILD_TAG = "v8.0.0-family-wealth-fintech-mobile-native-2026";
+  const APP_BUILD_TAG = "v8.0.1-family-wealth-current-month-2026";
   if (localStorage.getItem("FAMILY_BUILD_TAG") !== APP_BUILD_TAG) {
     localStorage.setItem("FAMILY_BUILD_TAG", APP_BUILD_TAG);
     if ("caches" in window) {
@@ -2023,7 +2042,7 @@ async function initApp() {
 
   // Register PWA Service Worker với cơ chế Network-First
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("./sw.js?v=8.0.0").then(reg => {
+    navigator.serviceWorker.register("./sw.js?v=8.0.1").then(reg => {
       reg.addEventListener("updatefound", () => {
         const newWorker = reg.installing;
         if (newWorker) {
@@ -2196,6 +2215,8 @@ async function initApp() {
   try { recomputeMonthsJS(DB); } catch (e) { console.error("Recompute err:", e); }
   try { localStorage.setItem(STORAGE_DB_KEY, JSON.stringify(DB)); } catch (e) {}
   try { checkPinLockOnStartup(); } catch (e) {}
+  // Luôn hiển thị ngay tháng hiện tại khi vào app theo yêu cầu
+  selectedMonth = currentAppMonth();
   try { renderAll(); } catch (e) { console.error("RenderAll err:", e); }
   try { renderPendingEmailList(); } catch (e) {}
   try { updateCloudBadgeUI(); } catch (e) {}
@@ -2401,7 +2422,7 @@ function selectMonth(m) {
 
 function selectPeriod(m) {
   selectedMonth = Number(m);
-  if (isNaN(selectedMonth) || selectedMonth < 0 || selectedMonth > 12) selectedMonth = 10;
+  if (isNaN(selectedMonth) || selectedMonth < 0 || selectedMonth > 12) selectedMonth = currentAppMonth();
   txDisplayLimit = 200;
   try {
     sessionStorage.setItem("FAMILY_WEALTH_SELECTED_MONTH", String(selectedMonth));
@@ -4960,15 +4981,22 @@ function formatMarkdownSimple(md) {
 
 function initAiGreeting() {
   const box = document.getElementById("ai-chat-messages");
+  if (!box) return;
+  const key = getGeminiApiKey();
+  const provider = getAIProviderName(key);
+  const aiStatusTip = key
+    ? `Trí tuệ nhân tạo <b>${provider}</b> đang hoạt động sẵn sàng phân tích và cố vấn tài chính cho gia đình!`
+    : `Mẹo: Bạn có thể bấm nút <b>"Cài Não AI (Claude / Gemini)"</b> ở góc phải trên cùng để bật trí tuệ nhân tạo Claude Sonnet 5.5 hoặc Gemini nhé!`;
+
   box.innerHTML = `
     <div class="chat-bubble ai">
-      <h3> Xin chào Gia Đình Mình (Chồng • Vợ • Subo • Sugi) - Bản Cloud 24/7!</h3>
+      <h3>🤖 Xin chào Gia Đình Mình (Chồng • Vợ • Subo • Sugi) - Trợ Lý Tài Chính 2026!</h3>
       Mình đã nạp toàn bộ <b>30 sheets (888 giao dịch từ T1–T10/2026)</b> và chạy trực tiếp trên Cloud không cần bật máy tính.<br/><br/>
        <b>Điểm nổi bật hiện tại:</b><br/>
       • Tổng thu 10 tháng: <b>1,035,283,000 đ</b> - Thực chi: <b>716,037,660 đ</b> (đã cộng 945,000 đ bị sót do thiếu cột ở T1 & T4).<br/>
       • Thặng dư ròng: <b>+319,245,340 đ (Tỷ lệ tiết kiệm đạt 30.84% - Vượt mục tiêu 30%!)</b>.<br/>
       • <b>Quỹ ETF & Mở Tháng 10 (12.0tr + 4.0tr Quỹ Bắt Đáy)</b> và khoản trả góp Điện thoại của Vợ (35.49tr) <b>đã hoàn tất 100% trong Tháng 10!</b><br/><br/>
-       <i>Mẹo: Bạn có thể bấm nút <b>" Cài Não AI (Claude / Gemini)"</b> ở góc phải trên cùng để bật trí tuệ nhân tạo Claude Sonnet 5.5 hoặc Gemini nhé!</i>
+       <i>${aiStatusTip}</i>
     </div>
   `;
 }
