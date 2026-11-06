@@ -55,8 +55,8 @@
         "owner": "Chồng",
         "default_bank": "VPBank Step Up",
         "banks": "VPBank Step Up, BIDV, UOB",
-        "cloud_url": "",
-        "script_url": ""
+        "cloud_url": "https://script.google.com/macros/s/AKfycbzZpg8od98BBl6Du7ZMAADLOPxpX0fnOEJz8wuk4mEvIa9uFzThK0b--mHD-ZGOUEMa/exec",
+        "script_url": "https://script.google.com/macros/s/AKfycbzZpg8od98BBl6Du7ZMAADLOPxpX0fnOEJz8wuk4mEvIa9uFzThK0b--mHD-ZGOUEMa/exec"
       },
       {
         "id": "MB-VO",
@@ -69,7 +69,9 @@
         "script_url": ""
       }
     ],
-    "ai_key_encoded": "c2stYW50LXVzci0xdmRMUC1xT0NmaDM2UnNIOUFlT0tIVFp5YTViZ2RBRmJWN0diXzZzWGRMM294dDlrUG5zLUlTaWJYeGdGTGw5NkFPNWhrcHJULWE0SG1SSW9hV0hrS2dqM0lhMndBQQ=="
+    "ai_key_encoded": "c2stYW50LXVzci0xdmRMUC1xT0NmaDM2UnNIOUFlT0tIVFp5YTViZ2RBRmJWN0diXzZzWGRMM294dDlrUG5zLUlTaWJYeGdGTGw5NkFPNWhrcHJULWE0SG1SSW9hV0hrS2dqM0lhMndBQQ==",
+    "cloud_script_url": "https://script.google.com/macros/s/AKfycbzZpg8od98BBl6Du7ZMAADLOPxpX0fnOEJz8wuk4mEvIa9uFzThK0b--mHD-ZGOUEMa/exec",
+    "cloud_url_encoded": "aHR0cHM6Ly9zY3JpcHQuZ29vZ2xlLmNvbS9tYWNyb3Mvcy9BS2Z5Y2J6WnBnOG9kOThCQmw2RHU3Wk1BQURMT1B4cFgwZm5PRUp6OHd1azRtRXZJYTl1RnpUaEswYi0tbUhELVpHT1VFTWEvZXhlYw=="
   },
   "months": [
     {

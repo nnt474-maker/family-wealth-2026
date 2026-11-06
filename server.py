@@ -1162,12 +1162,14 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
             raw_key = secrets.get("gemini_api_key") or db.get("meta", {}).get("gemini_api_key", "")
             raw_model = db.get("meta", {}).get("ai_model") or "claude-sonnet-5-5"
             raw_base = db.get("meta", {}).get("ai_base_url") or ""
+            raw_cloud = db.get("meta", {}).get("cloud_script_url", "")
             cred_payload = {
                 "ok": True,
                 "has_key": bool(raw_key),
                 "gemini_api_key": raw_key,
                 "ai_model": raw_model,
-                "ai_base_url": raw_base
+                "ai_base_url": raw_base,
+                "cloud_script_url": raw_cloud
             }
             body = json.dumps(cred_payload, ensure_ascii=False).encode("utf-8")
             self.send_response(200)

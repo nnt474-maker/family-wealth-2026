@@ -1375,9 +1375,15 @@ function answerFamilyQuestionJS(question, db) {
 function getCloudScriptUrl() {
   const fromLocal = (localStorage.getItem(STORAGE_CLOUD_URL_KEY) || "").trim();
   if (fromLocal) return fromLocal;
-  const fromDb = (DB && DB.meta && DB.meta.cloud_script_url ? String(DB.meta.cloud_script_url) : "").trim();
+  let fromDb = (DB && DB.meta && DB.meta.cloud_script_url ? String(DB.meta.cloud_script_url) : "").trim();
+  if (!fromDb && DB && DB.meta && DB.meta.cloud_url_encoded) {
+    try {
+      fromDb = atob(DB.meta.cloud_url_encoded).trim();
+    } catch (e) {}
+  }
   if (fromDb) {
     localStorage.setItem(STORAGE_CLOUD_URL_KEY, fromDb);
+    if (DB && DB.meta) DB.meta.cloud_script_url = fromDb;
     return fromDb;
   }
   return "";
@@ -1623,6 +1629,7 @@ function buildCompactCloudState() {
   return {
     updated_at: new Date().toISOString(),
     family_pin: getFamilyPin(),
+    cloud_script_url: getCloudScriptUrl(),
     gemini_api_key: keyToSync,
     ai_model: getAISelectedModel(),
     ai_base_url: getAIBaseUrl(),
@@ -1645,6 +1652,14 @@ function buildCompactCloudState() {
 
 function applyCompactCloudState(cloudState) {
   if (!cloudState || !DB) return;
+  if (cloudState.cloud_script_url) {
+    const validCloud = String(cloudState.cloud_script_url).trim();
+    if (validCloud) {
+      localStorage.setItem(STORAGE_CLOUD_URL_KEY, validCloud);
+      if (DB.meta) DB.meta.cloud_script_url = validCloud;
+      updateCloudBadgeUI();
+    }
+  }
   if (cloudState.family_pin) {
     DB.meta.family_pin = String(cloudState.family_pin);
     localStorage.setItem(STORAGE_PIN_KEY, String(cloudState.family_pin));
@@ -1998,7 +2013,7 @@ async function pullFromGoogleSheetCloud(silent = true) {
 
 async function initApp() {
   // Tự động kiểm tra phiên bản & thanh tẩy cache cũ trên máy đã cài PWA
-  const APP_BUILD_TAG = "v7.6.0-family-wealth-mobile-sync-2026";
+  const APP_BUILD_TAG = "v7.7.0-family-wealth-cloud-sync-2026";
   if (localStorage.getItem("FAMILY_BUILD_TAG") !== APP_BUILD_TAG) {
     localStorage.setItem("FAMILY_BUILD_TAG", APP_BUILD_TAG);
     if ("caches" in window) {
@@ -2008,7 +2023,7 @@ async function initApp() {
 
   // Register PWA Service Worker với cơ chế Network-First
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("./sw.js?v=7.6.0").then(reg => {
+    navigator.serviceWorker.register("./sw.js?v=7.7.0").then(reg => {
       reg.addEventListener("updatefound", () => {
         const newWorker = reg.installing;
         if (newWorker) {
@@ -2026,7 +2041,7 @@ async function initApp() {
   // Parse configuration from URL params (supports ?cloud=... ?pin=... ?ai_key=... ?ai_model=... for instant phone sync)
   const params = new URLSearchParams(window.location.search);
   const cloudParam = params.get("cloud") || params.get("cloud_url");
-  if (cloudParam && cloudParam.startsWith("https://script.google.com/")) {
+  if (cloudParam && (cloudParam.startsWith("https://script.google.com/") || cloudParam.includes("script.google.com"))) {
     localStorage.setItem(STORAGE_CLOUD_URL_KEY, cloudParam.trim());
   }
   const pinParam = params.get("pin");
@@ -2085,6 +2100,10 @@ async function initApp() {
             if (cred.ai_model) baseDb.meta.ai_model = cred.ai_model;
           }
         }
+        if (cred && cred.ok && cred.cloud_script_url && !localStorage.getItem(STORAGE_CLOUD_URL_KEY)) {
+          localStorage.setItem(STORAGE_CLOUD_URL_KEY, cred.cloud_script_url);
+          if (baseDb && baseDb.meta) baseDb.meta.cloud_script_url = cred.cloud_script_url;
+        }
       }
     } catch (e) {}
   }
@@ -2114,8 +2133,16 @@ async function initApp() {
   DB.apps_script_code = APPS_SCRIPT_CLOUD_CODE;
   if (DB.meta) {
     DB.meta.banks = ALL_PAYMENT_SOURCES;
-    if (DB.meta.cloud_script_url && !localStorage.getItem(STORAGE_CLOUD_URL_KEY)) {
-      localStorage.setItem(STORAGE_CLOUD_URL_KEY, DB.meta.cloud_script_url);
+    const existingCloud = (localStorage.getItem(STORAGE_CLOUD_URL_KEY) || "").trim();
+    if (!existingCloud) {
+      let candidateCloud = (DB.meta.cloud_script_url || "").trim();
+      if (!candidateCloud && DB.meta.cloud_url_encoded) {
+        try { candidateCloud = atob(DB.meta.cloud_url_encoded).trim(); } catch (e) {}
+      }
+      if (candidateCloud) {
+        localStorage.setItem(STORAGE_CLOUD_URL_KEY, candidateCloud);
+        DB.meta.cloud_script_url = candidateCloud;
+      }
     }
     const localSavedKey = localStorage.getItem(STORAGE_GEMINI_KEY);
     if (localSavedKey && localSavedKey !== "(server-configured)") {
@@ -5857,7 +5884,10 @@ function closeModal() {
 
 function getMobileSyncLink() {
   const currentUrl = getCloudScriptUrl();
-  const baseAppUrl = window.location.origin + window.location.pathname;
+  let baseAppUrl = window.location.origin + window.location.pathname;
+  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+    baseAppUrl = "https://nnt474-maker.github.io/family-wealth-2026/";
+  }
   let activeAiKey = (localStorage.getItem(STORAGE_GEMINI_KEY) || (DB && DB.meta && DB.meta.gemini_api_key) || "").trim();
   if (activeAiKey === "(server-configured)") activeAiKey = "";
   const aiModel = getAISelectedModel() || "claude-sonnet-5-5";
