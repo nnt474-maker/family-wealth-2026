@@ -2013,7 +2013,7 @@ async function pullFromGoogleSheetCloud(silent = true) {
 
 async function initApp() {
   // Tự động kiểm tra phiên bản & thanh tẩy cache cũ trên máy đã cài PWA
-  const APP_BUILD_TAG = "v7.8.0-family-wealth-mobile-tabs-swipe-2026";
+  const APP_BUILD_TAG = "v8.0.0-family-wealth-fintech-mobile-native-2026";
   if (localStorage.getItem("FAMILY_BUILD_TAG") !== APP_BUILD_TAG) {
     localStorage.setItem("FAMILY_BUILD_TAG", APP_BUILD_TAG);
     if ("caches" in window) {
@@ -2023,7 +2023,7 @@ async function initApp() {
 
   // Register PWA Service Worker với cơ chế Network-First
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("./sw.js?v=7.8.0").then(reg => {
+    navigator.serviceWorker.register("./sw.js?v=8.0.0").then(reg => {
       reg.addEventListener("updatefound", () => {
         const newWorker = reg.installing;
         if (newWorker) {
@@ -2332,6 +2332,7 @@ function renderAll() {
   renderFamilyMailboxes();
   renderInvestmentTab();
   renderAuditTab();
+  updateMobileNavBadges();
 }
 
 function renderMonthPills() {
@@ -2340,7 +2341,7 @@ function renderMonthPills() {
   const prevScroll = wrap.scrollLeft;
 
   let html = `
-    <button class="month-pill" onclick="stepMonth(-1)" title="Tháng trước" aria-label="Tháng trước" style="padding:7px 9px;">‹</button>
+    <button class="month-pill month-pill-arrow" onclick="stepMonth(-1)" title="Tháng trước" aria-label="Tháng trước" style="padding:7px 9px;">‹</button>
     <button id="month-pill-btn-0" data-month="0" class="month-pill ${selectedMonth === 0 ? 'active' : ''}" onclick="selectPeriod(0)" title="Xem tổng hợp cả năm 2026">
       <span> Cả năm</span>
     </button>
@@ -2367,7 +2368,7 @@ function renderMonthPills() {
     `;
   }
   html += `
-    <button class="month-pill" onclick="stepMonth(1)" title="Tháng tiếp theo" aria-label="Tháng tiếp theo" style="padding:6px 8px;">›</button>
+    <button class="month-pill month-pill-arrow" onclick="stepMonth(1)" title="Tháng tiếp theo" aria-label="Tháng tiếp theo" style="padding:6px 8px;">›</button>
     <select
       id="month-quick-select"
       class="input-control"
@@ -2538,19 +2539,9 @@ function switchTab(tabId, shouldScroll = true) {
   const mnav = document.getElementById(`mnav-${tabId}`);
   if (mnav) mnav.classList.add("active");
 
-  // On mobile: hide bulky quick-hero on tabs that don't need expense entry (email, investment, ai, audit)
-  const quickHero = document.querySelector(".quick-hero");
-  if (quickHero) {
-    if (window.innerWidth <= 768) {
-      if (tabId === "dashboard" || tabId === "transactions") {
-        quickHero.style.display = "";
-      } else {
-        quickHero.style.display = "none";
-      }
-    } else {
-      quickHero.style.display = "";
-    }
-  }
+  // Mobile: quick entry now lives in a Bottom Sheet opened by the FAB (+), so no per-tab hiding needed.
+  // Expose active tab on <body> so CSS can adapt (e.g. hide FAB on AI chat tab).
+  if (document.body) document.body.dataset.tab = tabId;
 
   // Auto-scroll on tab switch so mobile user immediately sees the tab content
   if (shouldScroll) {
@@ -2612,7 +2603,7 @@ function initMobileSwipeGestures() {
     if (elapsed < 650 && Math.abs(deltaX) >= 45 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3) {
       // Don't trigger if swiping inside interactive elements
       const target = e.target;
-      if (target && target.closest(".month-pills, .table-wrap, .bar-chart-grid, input, select, textarea")) {
+      if (target && target.closest(".month-pills, .table-wrap, .bar-chart-grid, .feed-swipe-row, .prompt-chips, .quick-entry-container, input, select, textarea")) {
         return;
       }
 
@@ -2820,32 +2811,67 @@ function renderDashboardTab() {
   const totalWealth = fundMV + DB.investment.dip_fund_balance + DB.investment.emergency_fund_balance;
   const targetIncomeModalM = activeInputMonth();
 
+  // HERO FINANCIAL CARD (Glassmorphism + Sparkline + Privacy Eye) — Same 80/20 surplus formula as before
+  const privacyOn = isPrivacyOn();
+  const pv = (s) => privacyOn ? "••••••" : s;
+  const savePct = incTotal > 0 ? (remaining / incTotal) * 100 : 0;
+  const expVsTargetPct = targetExp > 0 ? Math.min(100, (expTotal / targetExp) * 100) : 0;
+  const overBudget = targetExp > 0 && expTotal > targetExp;
+
   document.getElementById("dashboard-kpis").innerHTML = `
-    <div class="kpi-card" style="--kpi-accent:var(--positive);">
-      <div class="kpi-label">
-        <span>TỔNG THU NHẬP (${periodLabel})</span>
-        <button class="btn btn-ghost" style="padding:2px 8px;font-size:13px;color:var(--positive);border-color:var(--positive-soft);" onclick="openIncomeModal(${targetIncomeModalM})">Sửa Thu Nhập</button>
+    <div class="hero-financial-card">
+      <div class="hero-card-glow"></div>
+      <div class="hero-card-header">
+        <span class="hero-card-badge"><span class="hero-pulse-dot"></span>${escapeHtml(periodLabel).toUpperCase()}</span>
+        <div class="hero-card-actions">
+          <button type="button" class="hero-privacy-btn" onclick="togglePrivacyMode()" aria-label="${privacyOn ? 'Hiện số dư' : 'Ẩn số dư nhạy cảm'}" title="${privacyOn ? 'Hiện số dư' : 'Ẩn số dư khi mở nơi công cộng'}">
+            ${privacyOn ? HERO_EYE_OFF_SVG : HERO_EYE_SVG}<span>${privacyOn ? 'Hiện số' : 'Ẩn số'}</span>
+          </button>
+          <button type="button" class="hero-edit-btn" onclick="openIncomeModal(${targetIncomeModalM})">Sửa Thu Nhập</button>
+        </div>
       </div>
-      <div class="kpi-val" style="color:var(--positive);cursor:pointer;" onclick="openIncomeModal(${targetIncomeModalM})" title="Bấm để sửa thu nhập các tháng">${fmtVND(incTotal)}</div>
-      <div class="kpi-sub">Mục tiêu tiết kiệm 30%: <b>${fmtShortVND(incTotal * 0.3)}</b></div>
-    </div>
-    <div class="kpi-card" style="--kpi-accent:var(--accent);">
-      <div class="kpi-label"><span>THỰC CHI (${periodLabel})</span><span></span></div>
-      <div class="kpi-val" style="color:var(--accent);">${fmtVND(expTotal)}</div>
-      <div class="kpi-sub">Chiếm <b>${expRate.toFixed(1)}%</b> thu nhập (Hạn mức 70%: ${fmtShortVND(targetExp)})</div>
-    </div>
-    <div class="kpi-card" style="--kpi-accent:var(--warning);">
-      <div class="kpi-label"><span>THẶNG DƯ (80% TÍCH LŨY • 20% CÒN LẠI)</span><span></span></div>
-      <div class="kpi-val" style="color:${remaining >= 0 ? 'var(--warning)' : 'var(--negative)'};">${remaining >= 0 ? '+' : ''}${fmtVND(remaining)}</div>
-      <div class="kpi-sub">
-        <span>80% Tích lũy: <b style="color:var(--positive);">${fmtShortVND(remaining * 0.8)}</b></span>
-        <span> • 20% Tiền còn lại: <b style="color:var(--warning);">${fmtShortVND(remaining * 0.2)}</b></span>
+
+      <div class="hero-card-main">
+        <div class="hero-main-label">
+          <span>THẶNG DƯ (80% TÍCH LŨY • 20% CÒN LẠI)</span>
+          <span class="hero-status-pill ${remaining >= 0 ? 'positive' : 'negative'}">${remaining >= 0 ? '▲' : '▼'} ${savePct.toFixed(1)}%</span>
+        </div>
+        <div class="hero-main-amount ${remaining >= 0 ? 'positive' : 'negative'}">${pv((remaining >= 0 ? '+' : '') + fmtVND(remaining))}</div>
+        <div class="hero-formula-chips">
+          <span class="hero-formula-chip"><span class="chip-dot dot-emerald"></span>80% Tích lũy: <b>${pv(fmtShortVND(remaining * 0.8))}</b></span>
+          <span class="hero-formula-chip"><span class="chip-dot dot-amber"></span>20% Tiền còn lại: <b>${pv(fmtShortVND(remaining * 0.2))}</b></span>
+        </div>
       </div>
-    </div>
-    <div class="kpi-card" style="--kpi-accent:var(--accent);">
-      <div class="kpi-label"><span>TỔNG TÍCH LŨY & ĐẦU TƯ 2026</span><span></span></div>
-      <div class="kpi-val" style="color:var(--text);">${fmtVND(totalWealth)}</div>
-      <div class="kpi-sub">3 Quỹ DCA: <b>${fmtShortVND(fundMV)}</b> • Bắt đáy & Dự phòng: <b>${fmtShortVND(DB.investment.dip_fund_balance + DB.investment.emergency_fund_balance)}</b></div>
+
+      <div class="hero-sparkline-wrap">
+        <div class="hero-sparkline-head">
+          <span class="sparkline-title">Xu hướng Thu – Chi 2026</span>
+          <span class="sparkline-legend">
+            <span><b style="color:#34d399;">●</b> Thu</span>
+            <span><b style="color:#60a5fa;">●</b> Chi</span>
+          </span>
+        </div>
+        <div class="hero-sparkline-body">${buildHeroSparklineSVG()}</div>
+      </div>
+
+      <div class="hero-metrics-grid">
+        <div class="hero-subcard" style="cursor:pointer;" onclick="openIncomeModal(${targetIncomeModalM})" title="Bấm để sửa thu nhập các tháng">
+          <div class="hero-sub-label">TỔNG THU NHẬP</div>
+          <div class="hero-sub-val positive">${pv(fmtVND(incTotal))}</div>
+          <div class="hero-sub-note">Mục tiêu tiết kiệm 30%: <b>${pv(fmtShortVND(incTotal * 0.3))}</b></div>
+        </div>
+        <div class="hero-subcard">
+          <div class="hero-sub-label">THỰC CHI</div>
+          <div class="hero-sub-val accent">${pv(fmtVND(expTotal))}</div>
+          <div class="hero-sub-note">Chiếm <b>${expRate.toFixed(1)}%</b> thu nhập (Hạn mức 70%: ${pv(fmtShortVND(targetExp))})</div>
+          <div class="hero-budget-track"><div class="hero-budget-fill ${overBudget ? 'over' : ''}" style="width:${expVsTargetPct.toFixed(1)}%;"></div></div>
+        </div>
+        <div class="hero-subcard full-width">
+          <div class="hero-sub-label">TỔNG TÍCH LŨY & ĐẦU TƯ 2026</div>
+          <div class="hero-sub-val text">${pv(fmtVND(totalWealth))}</div>
+          <div class="hero-sub-note">3 Quỹ DCA: <b>${pv(fmtShortVND(fundMV))}</b> • Bắt đáy & Dự phòng: <b>${pv(fmtShortVND(DB.investment.dip_fund_balance + DB.investment.emergency_fund_balance))}</b></div>
+        </div>
+      </div>
     </div>
   `;
 
@@ -3647,6 +3673,9 @@ function renderTransactionsTab() {
     toggleBtn.style.borderColor = isSpreadsheet ? "var(--positive-soft)" : "var(--accent-soft)";
   }
 
+  // Mobile Activity Stream (grouped by day) — hidden on desktop via CSS, hidden when Excel Grid mode is on
+  renderTxActivityFeed(filtered, isSpreadsheet);
+
   const bankList = ALL_PAYMENT_SOURCES;
   const visibleRows = filtered.slice(0, txDisplayLimit);
 
@@ -4393,6 +4422,7 @@ async function syncGmailImap() {
 function renderPendingEmailList() {
   const countEl = document.getElementById("pending-email-count");
   if (countEl) countEl.textContent = pendingEmails.length;
+  try { updateMobileNavBadges(); } catch (e) {}
   const box = document.getElementById("parsed-email-list");
   if (!box) return;
 
@@ -4776,6 +4806,8 @@ function renderInvestmentTab() {
       </td>
     </tr>
   `).join("");
+
+  renderPortfolioMobileCards(holdings);
 
   document.getElementById("dip-fund-title-val").textContent = fmtVND(inv.dip_fund_balance);
   document.getElementById("dip-rules-body").innerHTML = inv.dip_rules.map(r => {
@@ -7141,3 +7173,415 @@ window.addEventListener("paste", (e) => {
 });
 
 window.addEventListener("DOMContentLoaded", initApp);
+
+
+// ============================================================================
+// v8.0 MOBILE-FIRST FINTECH UX LAYER (Hero Card • Privacy Eye • Sparkline • FAB
+// Bottom Sheet • Activity Stream • Swipe Actions • Floating Nav Badges • ETF Cards)
+// Pure presentation layer: reads DB, never changes any financial formula.
+// ============================================================================
+const STORAGE_PRIVACY_KEY = "FAMILY_WEALTH_PRIVACY_MODE";
+
+const HERO_EYE_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const HERO_EYE_OFF_SVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+
+const FEED_CATEGORY_STYLE = {
+  "Ăn uống": { icon: "🍜", bg: "#dcfce7" },
+  "Học tập": { icon: "📚", bg: "#fef3c7" },
+  "Phí tiện ích": { icon: "💡", bg: "#cffafe" },
+  "Đồ dùng GĐ": { icon: "🏠", bg: "#dbeafe" },
+  "Nợ": { icon: "💳", bg: "#ffe4e6" },
+  "Làm đẹp": { icon: "💄", bg: "#fce7f3" },
+  "Y tế": { icon: "💊", bg: "#ccfbf1" },
+  "Vui chơi": { icon: "🎡", bg: "#ffedd5" },
+  "Event": { icon: "🎁", bg: "#fee2e2" },
+  "Công việc": { icon: "💼", bg: "#e2e8f0" }
+};
+
+function isPrivacyOn() {
+  try { return localStorage.getItem(STORAGE_PRIVACY_KEY) === "1"; } catch (e) { return false; }
+}
+
+function applyPrivacyBodyClass() {
+  if (document.body) document.body.classList.toggle("privacy-on", isPrivacyOn());
+}
+
+function togglePrivacyMode() {
+  const next = !isPrivacyOn();
+  try { localStorage.setItem(STORAGE_PRIVACY_KEY, next ? "1" : "0"); } catch (e) {}
+  applyPrivacyBodyClass();
+  if (DB) renderDashboardTab();
+  showToast(next ? " Đã ẩn số dư nhạy cảm" : " Đã hiện lại số dư", "info", 1600);
+}
+
+function isMobileLayout() {
+  return window.matchMedia ? window.matchMedia("(max-width: 1024px)").matches : window.innerWidth <= 1024;
+}
+
+// Mini SVG sparkline of monthly Income vs Actual Expense (only months that have data)
+function buildHeroSparklineSVG() {
+  if (!DB || !Array.isArray(DB.months)) return "";
+  const months = DB.months
+    .filter(m => (m.income && m.income.total > 0) || m.actual_total_expense > 0)
+    .slice()
+    .sort((a, b) => a.month - b.month);
+  if (months.length < 2) {
+    return `<div style="font-size:12px;color:rgba(255,255,255,0.6);padding:10px 0;">Cần ít nhất 2 tháng dữ liệu để vẽ xu hướng</div>`;
+  }
+  const W = 300, H = 52, PX = 6, PY = 7;
+  const maxV = Math.max(1, ...months.map(m => Math.max(m.income.total || 0, m.actual_total_expense || 0)));
+  const step = (W - PX * 2) / (months.length - 1);
+  const y = (v) => (H - PY - (Math.max(0, v) / maxV) * (H - PY * 2)).toFixed(1);
+  const incPts = months.map((m, i) => `${(PX + i * step).toFixed(1)},${y(m.income.total || 0)}`);
+  const expPts = months.map((m, i) => `${(PX + i * step).toFixed(1)},${y(m.actual_total_expense || 0)}`);
+  const areaInc = `M${incPts[0]} L${incPts.slice(1).join(" L")} L${(PX + (months.length - 1) * step).toFixed(1)},${H} L${PX},${H} Z`;
+
+  const selIdx = months.findIndex(m => m.month === selectedMonth);
+  const markers = selIdx >= 0 ? `
+    <line x1="${(PX + selIdx * step).toFixed(1)}" y1="2" x2="${(PX + selIdx * step).toFixed(1)}" y2="${H}" stroke="rgba(255,255,255,0.25)" stroke-dasharray="2 3" />
+    <circle cx="${(PX + selIdx * step).toFixed(1)}" cy="${y(months[selIdx].income.total || 0)}" r="3.2" fill="#34d399" stroke="#0b1b33" stroke-width="1.5" />
+    <circle cx="${(PX + selIdx * step).toFixed(1)}" cy="${y(months[selIdx].actual_total_expense || 0)}" r="3.2" fill="#60a5fa" stroke="#0b1b33" stroke-width="1.5" />
+  ` : "";
+
+  const labels = months.map((m, i) => `<text x="${(PX + i * step).toFixed(1)}" y="${H + 11}" text-anchor="middle" font-size="8.5" fill="${m.month === selectedMonth ? '#ffffff' : 'rgba(255,255,255,0.45)'}" font-weight="${m.month === selectedMonth ? 800 : 500}">T${m.month}</text>`).join("");
+
+  return `
+    <svg viewBox="0 0 ${W} ${H + 14}" role="img" aria-label="Biểu đồ xu hướng thu chi theo tháng">
+      <defs>
+        <linearGradient id="heroIncFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#34d399" stop-opacity="0.32" />
+          <stop offset="100%" stop-color="#34d399" stop-opacity="0" />
+        </linearGradient>
+      </defs>
+      <path d="${areaInc}" fill="url(#heroIncFill)" />
+      <polyline points="${incPts.join(" ")}" fill="none" stroke="#34d399" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+      <polyline points="${expPts.join(" ")}" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="0" />
+      ${markers}
+      ${labels}
+    </svg>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// ACTIVITY STREAM (Grouped by day: Hôm nay / Hôm qua / Thứ x, dd Tháng mm)
+// ---------------------------------------------------------------------------
+function feedDateLabel(dateStr) {
+  const parts = String(dateStr || "").split("-");
+  if (parts.length < 3) return dateStr || "Chưa rõ ngày";
+  const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+  if (isNaN(d.getTime())) return dateStr;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.round((today - d) / 86400000);
+  if (diff === 0) return "Hôm nay";
+  if (diff === 1) return "Hôm qua";
+  const wd = ["Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"][d.getDay()];
+  return `${wd}, ${d.getDate()} Tháng ${d.getMonth() + 1}`;
+}
+
+function renderTxActivityFeed(filtered, isSpreadsheet) {
+  const feed = document.getElementById("tx-mobile-feed");
+  if (!feed) return;
+  feed.style.display = isSpreadsheet ? "none" : "";
+  if (isSpreadsheet) return;
+
+  if (!filtered || filtered.length === 0) {
+    feed.innerHTML = `
+      <div class="feed-empty">
+        <div style="font-size:30px;margin-bottom:6px;">🧾</div>
+        Chưa có khoản chi nào khớp bộ lọc trong <b>${selectedMonth === 0 ? 'Cả Năm 2026' : 'Tháng ' + selectedMonth + '/2026'}</b>.
+        <div style="margin-top:12px;"><button class="btn btn-primary" onclick="openQuickAddBottomSheet()">+ Thêm giao dịch</button></div>
+      </div>`;
+    return;
+  }
+
+  // Newest first (stable sort keeps original order inside the same day)
+  const sorted = filtered.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  const visible = sorted.slice(0, txDisplayLimit);
+
+  const groups = [];
+  const idx = {};
+  visible.forEach(t => {
+    const key = t.date || "unknown";
+    if (idx[key] === undefined) {
+      idx[key] = groups.length;
+      groups.push({ key, items: [], sum: 0 });
+    }
+    groups[idx[key]].items.push(t);
+    groups[idx[key]].sum += Number(t.amount) || 0;
+  });
+
+  const html = groups.map(g => `
+    <div class="feed-date-group">
+      <div class="feed-date-header">
+        <span class="feed-date-title">${escapeHtml(feedDateLabel(g.key))}</span>
+        <span class="feed-date-badge privacy-blur">-${fmtShortVND(g.sum)}</span>
+      </div>
+      ${g.items.map(t => {
+        const st = FEED_CATEGORY_STYLE[t.category] || { icon: "💸", bg: "#eef2f6" };
+        const safeId = escapeHtml(t.id);
+        return `
+        <div class="feed-swipe-row" data-id="${safeId}">
+          <div class="feed-swipe-actions">
+            <button type="button" class="swipe-edit" onclick="openEditTransactionModal('${safeId}')"><span>✎</span><span>Sửa</span></button>
+            <button type="button" class="swipe-del" onclick="deleteTransaction('${safeId}')"><span>🗑</span><span>Xoá</span></button>
+          </div>
+          <div class="feed-item-card" onclick="onFeedItemTap(event, '${safeId}')">
+            <div class="feed-avatar" style="background:${st.bg};">${st.icon}</div>
+            <div class="feed-body">
+              <div class="feed-title">${escapeHtml(t.content || "(Không có nội dung)")}</div>
+              <div class="feed-tags">
+                <span class="chip chip-${escapeHtml(t.person)}">${escapeHtml(t.person || "Chung")}</span>
+                <span class="feed-src-badge">${escapeHtml(t.source || "Tiền mặt")}</span>
+                <span class="feed-cat-text">${escapeHtml(t.category || "")}</span>
+              </div>
+            </div>
+            <div class="feed-right">
+              <div class="feed-amount privacy-blur">-${fmtVND(t.amount)}</div>
+            </div>
+          </div>
+        </div>`;
+      }).join("")}
+    </div>
+  `).join("");
+
+  const more = sorted.length > visible.length ? `
+    <div class="feed-more">
+      <span>Đang hiển thị <b>${visible.length}</b> / <b>${sorted.length}</b> giao dịch</span>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:8px;flex-wrap:wrap;">
+        <button class="btn btn-ghost" onclick="showMoreTransactions(false)">▾ Xem thêm 200</button>
+        <button class="btn btn-primary" onclick="showMoreTransactions(true)">Hiện tất cả</button>
+      </div>
+    </div>` : "";
+
+  feed.innerHTML = `<div class="feed-hint">💡 Chạm để xem chi tiết • Vuốt trái để Sửa / Xoá</div>` + html + more;
+  initFeedSwipeActions();
+}
+
+function onFeedItemTap(ev, id) {
+  const card = ev.currentTarget;
+  const row = card ? card.closest(".feed-swipe-row") : null;
+  if (row && (row.classList.contains("is-open") || row.dataset.justSwiped === "1")) {
+    row.classList.remove("is-open");
+    card.style.transform = "";
+    return;
+  }
+  openEditTransactionModal(id);
+}
+
+function initFeedSwipeActions() {
+  const feed = document.getElementById("tx-mobile-feed");
+  if (!feed || feed.dataset.swipeInit === "1") return;
+  feed.dataset.swipeInit = "1";
+
+  const OPEN_X = -136;
+  let row = null, card = null, sx = 0, sy = 0, dx = 0, decided = false, horizontal = false;
+
+  const closeOthers = (keep) => {
+    feed.querySelectorAll(".feed-swipe-row.is-open").forEach(r => {
+      if (r === keep) return;
+      r.classList.remove("is-open");
+      const c = r.querySelector(".feed-item-card");
+      if (c) c.style.transform = "";
+    });
+  };
+
+  feed.addEventListener("touchstart", (e) => {
+    const r = e.target.closest(".feed-swipe-row");
+    if (!r || e.target.closest(".feed-swipe-actions") || !e.touches || e.touches.length !== 1) { row = null; return; }
+    row = r;
+    card = r.querySelector(".feed-item-card");
+    sx = e.touches[0].clientX;
+    sy = e.touches[0].clientY;
+    dx = r.classList.contains("is-open") ? OPEN_X : 0;
+    decided = false;
+    horizontal = false;
+    if (card) card.style.transition = "none";
+  }, { passive: true });
+
+  feed.addEventListener("touchmove", (e) => {
+    if (!row || !card || !e.touches) return;
+    const mx = e.touches[0].clientX - sx;
+    const my = e.touches[0].clientY - sy;
+    if (!decided && (Math.abs(mx) > 8 || Math.abs(my) > 8)) {
+      decided = true;
+      horizontal = Math.abs(mx) > Math.abs(my) * 1.2;
+    }
+    if (!horizontal) return;
+    const base = row.classList.contains("is-open") ? OPEN_X : 0;
+    dx = Math.min(0, Math.max(OPEN_X - 24, base + mx));
+    card.style.transform = `translateX(${dx}px)`;
+  }, { passive: true });
+
+  const finish = () => {
+    if (!row || !card) { row = null; return; }
+    const r = row, c = card;
+    c.style.transition = "";
+    if (horizontal) {
+      const open = dx < OPEN_X / 2;
+      r.classList.toggle("is-open", open);
+      c.style.transform = open ? `translateX(${OPEN_X}px)` : "";
+      if (open) closeOthers(r);
+      r.dataset.justSwiped = "1";
+      setTimeout(() => { delete r.dataset.justSwiped; }, 350);
+    }
+    row = null;
+    card = null;
+  };
+  feed.addEventListener("touchend", finish, { passive: true });
+  feed.addEventListener("touchcancel", finish, { passive: true });
+}
+
+// ---------------------------------------------------------------------------
+// FAB (+) → QUICK ENTRY BOTTOM SHEET
+// ---------------------------------------------------------------------------
+function openQuickAddBottomSheet() {
+  const box = document.getElementById("quick-entry-container");
+  if (!box) return;
+  if (!isMobileLayout()) {
+    // Desktop: the quick bar is always visible — just focus it
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    setTimeout(() => document.getElementById("quick-add-input")?.focus(), 250);
+    return;
+  }
+  box.classList.add("is-open");
+  document.body.classList.add("sheet-open");
+  setTimeout(() => document.getElementById("quick-add-input")?.focus({ preventScroll: true }), 320);
+}
+
+function closeQuickAddBottomSheet() {
+  const box = document.getElementById("quick-entry-container");
+  if (!box || !box.classList.contains("is-open")) return;
+  box.classList.remove("is-open");
+  document.body.classList.remove("sheet-open");
+  const inp = document.getElementById("quick-add-input");
+  if (inp) inp.blur();
+}
+
+// ---------------------------------------------------------------------------
+// FLOATING NAV BADGES (warnings • pending bank emails • audit issues)
+// ---------------------------------------------------------------------------
+function updateMobileNavBadges() {
+  const warnBadge = document.getElementById("early-warnings-badge");
+  const warnCount = warnBadge ? parseInt(warnBadge.textContent, 10) || 0 : 0;
+  const warnDot = document.getElementById("mnav-warning-dot");
+  if (warnDot) warnDot.style.display = warnCount > 0 ? "" : "none";
+
+  const emailBadge = document.getElementById("mnav-email-badge");
+  const pendingCount = Array.isArray(pendingEmails) ? pendingEmails.length : 0;
+  if (emailBadge) {
+    emailBadge.textContent = pendingCount > 99 ? "99+" : String(pendingCount);
+    emailBadge.style.display = pendingCount > 0 ? "" : "none";
+  }
+
+  const auditDot = document.getElementById("mnav-audit-dot");
+  const bugCount = (DB && DB.audit && Array.isArray(DB.audit.formula_bugs)) ? DB.audit.formula_bugs.length : 0;
+  if (auditDot) auditDot.style.display = bugCount > 0 ? "" : "none";
+}
+
+// ---------------------------------------------------------------------------
+// MOBILE ETF / OPEN FUND CARDS (mint growth badge, NAV inline edit, weight bar)
+// ---------------------------------------------------------------------------
+function renderPortfolioMobileCards(holdings) {
+  const box = document.getElementById("portfolio-cards-mobile");
+  if (!box || !Array.isArray(holdings)) return;
+  box.innerHTML = holdings.map(h => {
+    const up = (h.pnl || 0) >= 0;
+    const actualPct = (h.actual_weight || 0) * 100;
+    const targetPct = (h.target_weight || 0) * 100;
+    return `
+      <div class="fund-mobile-card">
+        <div class="fund-card-top">
+          <div>
+            <div class="fund-code-title">${escapeHtml(h.code)} <span class="fund-type-chip">${escapeHtml(h.type)}</span></div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px;">Mua định kỳ: <b>${fmtShortVND(h.monthly_dca)}</b>/tháng</div>
+          </div>
+          <span class="badge-mint-profit ${up ? '' : 'loss'}">${up ? '▲ +' : '▼ '}${h.pnl_pct}%</span>
+        </div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;">
+          <div class="fund-market-val privacy-blur">${fmtVND(h.market_value)}</div>
+          <div class="privacy-blur" style="font-size:13px;font-weight:700;color:${up ? '#059669' : 'var(--negative)'};">${up ? '+' : ''}${fmtVND(h.pnl)}</div>
+        </div>
+        <div class="fund-grid-metrics">
+          <div class="fund-metric-col"><span class="fund-metric-label">Số CCQ</span><span class="fund-metric-val">${Number(h.units || 0).toLocaleString("vi-VN")}</span></div>
+          <div class="fund-metric-col"><span class="fund-metric-label">Giá vốn BQ</span><span class="fund-metric-val">${fmtVND(h.avg_cost)}</span></div>
+          <div class="fund-metric-col" style="grid-column:span 2;">
+            <span class="fund-metric-label">NAV hiện tại (chạm để sửa)</span>
+            <input type="number" inputmode="decimal" class="input-control fund-nav-input" value="${h.current_nav}" onchange="updateFundNav('${escapeHtml(h.code)}', this.value)" />
+          </div>
+        </div>
+        <div class="fund-weight-bar">
+          <div class="fund-weight-labels"><span>Tỷ trọng thực tế <b style="color:var(--text);">${actualPct.toFixed(1)}%</b></span><span>Mục tiêu ${targetPct.toFixed(0)}%</span></div>
+          <div class="progress-track"><div class="progress-fill" style="width:${Math.min(100, actualPct)}%;background:linear-gradient(90deg,#34d399,#10b981);"></div></div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+// ---------------------------------------------------------------------------
+// INIT: privacy class, sheet auto-close hooks, keyboard-aware chat bar
+// ---------------------------------------------------------------------------
+function initMobileFintechLayer() {
+  applyPrivacyBodyClass();
+  if (document.body && !document.body.dataset.tab) document.body.dataset.tab = activeTabId || "dashboard";
+
+  // Close the bottom sheet after a successful quick save (input is cleared on success)
+  if (typeof window.submitQuickAdd === "function" && !window.submitQuickAdd.__sheetWrapped) {
+    const origSubmit = window.submitQuickAdd;
+    const wrapped = async function (...args) {
+      const res = await origSubmit.apply(this, args);
+      const inp = document.getElementById("quick-add-input");
+      if (inp && !inp.value.trim()) closeQuickAddBottomSheet();
+      return res;
+    };
+    wrapped.__sheetWrapped = true;
+    window.submitQuickAdd = wrapped;
+  }
+
+  // Any modal (manual add, receipt OCR, edit tx...) takes over → close the sheet underneath
+  const modal = document.getElementById("modal-overlay");
+  if (modal && window.MutationObserver) {
+    new MutationObserver(() => {
+      if (modal.style.display && modal.style.display !== "none") closeQuickAddBottomSheet();
+    }).observe(modal, { attributes: true, attributeFilter: ["style"] });
+  }
+
+  // Escape closes sheet
+  window.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") closeQuickAddBottomSheet();
+  });
+
+  // Keyboard-aware layout: hide floating nav + FAB while typing so inputs sit right above the virtual keyboard
+  document.addEventListener("focusin", (e) => {
+    const t = e.target;
+    if (!isMobileLayout() || !t || !t.matches) return;
+    if (t.matches("input[type=text], input[type=search], input[type=number], input:not([type]), textarea")) {
+      document.body.classList.add("kb-open");
+      if (t.id === "ai-question-input") {
+        setTimeout(() => {
+          t.scrollIntoView({ block: "end", behavior: "smooth" });
+          const box = document.getElementById("ai-chat-messages");
+          if (box) box.scrollTop = box.scrollHeight;
+        }, 280);
+      }
+    }
+  });
+  document.addEventListener("focusout", () => {
+    setTimeout(() => {
+      const a = document.activeElement;
+      if (!a || !a.matches || !a.matches("input, textarea")) document.body.classList.remove("kb-open");
+    }, 60);
+  });
+
+  // Rotation / resize from mobile → desktop: make sure the sheet state doesn't leak
+  window.addEventListener("resize", () => {
+    if (!isMobileLayout()) closeQuickAddBottomSheet();
+  });
+
+  updateMobileNavBadges();
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  try { initMobileFintechLayer(); } catch (e) { console.warn("Mobile UX layer init failed", e); }
+});

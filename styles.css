@@ -457,6 +457,21 @@ p {
 /* ============================================================================
  * ZERO-FRICTION QUICK INPUT BAR
  * ============================================================================ */
+/* ============================================================================
+ * QUICK ENTRY BAR & MOBILE BOTTOM SHEET
+ * ============================================================================ */
+.quick-entry-container {
+  display: block;
+}
+
+.quick-sheet-backdrop {
+  display: none;
+}
+
+.quick-sheet-header {
+  display: none;
+}
+
 .quick-hero {
   background-color: var(--surface);
   border: 1px solid var(--border);
@@ -1039,50 +1054,61 @@ tbody tr:hover td {
 }
 
 /* ============================================================================
- * AI CHAT INTERFACE
+ * AI CHAT INTERFACE (TELEGRAM / IMESSAGE FINTECH CHAT STYLE)
  * ============================================================================ */
 .chat-container {
   display: flex;
   flex-direction: column;
-  height: 520px;
-  background-color: var(--ground);
+  height: 540px;
+  background: var(--ground);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 16px;
   overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
 }
 
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 18px 16px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
+  scroll-behavior: smooth;
 }
 
 .chat-bubble {
-  max-width: 85%;
-  padding: 14px 18px;
-  border-radius: 12px;
+  max-width: 86%;
+  padding: 13px 17px;
   font-size: 14.5px;
-  line-height: 1.6;
+  line-height: 1.55;
+  position: relative;
+  word-break: break-word;
 }
 
 .chat-bubble.ai {
   align-self: flex-start;
-  background-color: var(--surface);
+  background: #ffffff;
   border: 1px solid var(--border);
   color: var(--text);
+  border-radius: 18px 18px 18px 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .chat-bubble.user {
   align-self: flex-end;
-  background-color: var(--text);
-  color: var(--surface);
+  background: linear-gradient(135deg, #1d5fd6 0%, #2563eb 100%);
+  color: #ffffff;
+  border-radius: 18px 18px 4px 18px;
+  box-shadow: 0 4px 12px rgba(29, 95, 214, 0.22);
+}
+
+.chat-bubble.user * {
+  color: #ffffff !important;
 }
 
 .chat-bubble h3 {
-  font-size: 16px;
+  font-size: 15.5px;
   margin-bottom: 8px;
   color: var(--text);
 }
@@ -1094,34 +1120,45 @@ tbody tr:hover td {
 
 .chat-input-bar {
   display: flex;
-  gap: 10px;
-  padding: 14px;
-  background-color: var(--surface);
+  gap: 8px;
+  padding: 12px 14px;
+  background: #ffffff;
   border-top: 1px solid var(--border);
+  align-items: center;
 }
 
 .prompt-chips {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 2px 10px 2px;
+  margin-bottom: 10px;
+}
+
+.prompt-chips::-webkit-scrollbar {
+  display: none;
 }
 
 .prompt-chip {
-  padding: 7px 13px;
+  padding: 6px 13px;
   border-radius: 999px;
   background-color: var(--raised);
   border: 1px solid var(--border);
   color: var(--text);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 12.5px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
 }
 
 .prompt-chip:hover {
-  background-color: var(--active);
-  border-color: var(--control);
+  background-color: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--accent);
 }
 
 /* ============================================================================
@@ -1177,22 +1214,51 @@ tbody tr:hover td {
 }
 
 /* ============================================================================
- * MOBILE BOTTOM NAVIGATION
+ * MOBILE FLOATING ACTION BUTTON (FAB `+`) & FLOATING BOTTOM BAR
  * ============================================================================ */
+.mobile-fab {
+  display: none;
+  position: fixed;
+  right: 18px;
+  bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.42), 0 2px 6px rgba(0, 0, 0, 0.12);
+  align-items: center;
+  justify-content: center;
+  z-index: 95;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-fab:active {
+  transform: scale(0.92);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+}
+
 .mobile-nav {
   display: none;
   position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background-color: var(--surface);
-  border-top: 1px solid var(--border);
-  padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px)) 4px;
+  left: 12px;
+  right: 12px;
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  max-width: 520px;
+  margin: 0 auto;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(226, 230, 234, 0.85);
+  border-radius: 28px;
+  padding: 6px 8px;
   z-index: 90;
-  justify-content: space-around;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+  justify-content: space-between;
+  align-items: center;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.1), 0 1px 3px rgba(0, 0, 0, 0.05);
   touch-action: manipulation;
 }
 
@@ -1201,33 +1267,78 @@ tbody tr:hover td {
   border: none;
   color: var(--muted);
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
   cursor: pointer;
-  padding: 5px 4px;
-  border-radius: 8px;
+  padding: 6px 4px;
+  border-radius: 16px;
   min-height: 48px;
-  min-width: 48px;
+  min-width: 44px;
   justify-content: center;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   flex: 1;
-  transition: all 0.15s ease;
-}
-
-.mobile-nav-btn svg {
-  width: 19px;
-  height: 19px;
-  stroke-width: 1.75;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
 }
 
 .mobile-nav-btn.active {
-  color: var(--accent);
+  color: #1d5fd6;
   font-weight: 700;
-  background-color: var(--accent-soft);
+  background-color: rgba(220, 241, 255, 0.7);
+  transform: translateY(-1px);
+}
+
+.nav-icon-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-badge-dot {
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f59e0b;
+  border: 1.5px solid #ffffff;
+}
+
+.nav-badge-pill {
+  position: absolute;
+  top: -4px;
+  right: -8px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #10b981;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid #ffffff;
+}
+
+.nav-badge-ai {
+  position: absolute;
+  top: -3px;
+  right: -7px;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 4px;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #ffffff;
+  line-height: 1;
 }
 
 .tab-pane {
@@ -1590,6 +1701,658 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 
 /* ============================================================================
+ * LUXURY HERO FINANCIAL CARD (GLASSMORPHISM / FINTECH GRADIENT / SPARKLINE)
+ * ============================================================================ */
+.hero-financial-card {
+  position: relative;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #091325 0%, #11294d 50%, #0d1e38 100%);
+  color: #ffffff;
+  padding: 22px 24px;
+  margin-bottom: 22px;
+  box-shadow: 0 16px 36px -10px rgba(10, 37, 77, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.hero-card-glow {
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.18) 0%, rgba(56, 189, 248, 0) 70%);
+  pointer-events: none;
+}
+
+.hero-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+  position: relative;
+  z-index: 2;
+}
+
+.hero-card-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.hero-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 8px #34d399;
+  display: inline-block;
+  animation: heroPulse 2s infinite;
+}
+
+@keyframes heroPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+.hero-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hero-privacy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.hero-privacy-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.hero-edit-btn {
+  background: rgba(52, 211, 153, 0.16);
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  color: #6ee7b7;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.hero-edit-btn:hover {
+  background: rgba(52, 211, 153, 0.25);
+}
+
+.hero-card-main {
+  position: relative;
+  z-index: 2;
+  margin-bottom: 18px;
+}
+
+.hero-main-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 4px;
+}
+
+.hero-status-pill {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.hero-status-pill.positive {
+  background: rgba(52, 211, 153, 0.2);
+  color: #6ee7b7;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.hero-status-pill.negative {
+  background: rgba(244, 63, 94, 0.2);
+  color: #fca5a5;
+  border: 1px solid rgba(244, 63, 94, 0.3);
+}
+
+.hero-main-amount {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin-bottom: 10px;
+}
+
+.hero-main-amount.positive {
+  color: #34d399;
+  text-shadow: 0 0 20px rgba(52, 211, 153, 0.3);
+}
+
+.hero-main-amount.negative {
+  color: #f87171;
+  text-shadow: 0 0 20px rgba(248, 113, 113, 0.3);
+}
+
+.hero-formula-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hero-formula-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.hero-formula-chip b {
+  color: #ffffff;
+}
+
+.chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot-emerald { background: #34d399; }
+.dot-amber { background: #fbbf24; }
+
+/* SPARKLINE */
+.hero-sparkline-wrap {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 10px 14px 6px 14px;
+  margin-bottom: 18px;
+}
+
+.hero-sparkline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.65);
+  margin-bottom: 6px;
+}
+
+.sparkline-title {
+  font-weight: 600;
+}
+
+.sparkline-legend {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+}
+
+.hero-sparkline-body {
+  width: 100%;
+  height: 48px;
+  display: flex;
+  align-items: center;
+}
+
+.hero-sparkline-body svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* SUB CARDS GRID INSIDE HERO CARD */
+.hero-metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.hero-subcard {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.hero-subcard.full-width {
+  grid-column: span 2;
+}
+
+.hero-sub-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.65);
+  margin-bottom: 3px;
+}
+
+.hero-sub-val {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin-bottom: 2px;
+}
+
+.hero-sub-val.positive { color: #34d399; }
+.hero-sub-val.accent { color: #60a5fa; }
+.hero-sub-val.text { color: #ffffff; }
+
+.hero-sub-note {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.hero-sub-note b {
+  color: #ffffff;
+}
+
+/* ============================================================================
+ * ACTIVITY STREAM FEED (MODERN FINTECH PAYMENT ROWS)
+ * ============================================================================ */
+.tx-activity-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.feed-date-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.feed-date-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px;
+}
+
+.feed-date-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.feed-date-badge {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--raised);
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+
+.feed-item-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.feed-item-card:hover {
+  border-color: var(--control);
+}
+
+.feed-item-card:active {
+  background: var(--raised);
+}
+
+.feed-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  background: var(--raised);
+}
+
+.feed-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.feed-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+.feed-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.feed-src-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+}
+
+.feed-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.feed-amount {
+  font-size: 15.5px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--negative);
+}
+
+.feed-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.feed-action-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.feed-action-btn:hover {
+  border-color: var(--control);
+  color: var(--text);
+}
+
+/* ============================================================================
+ * MOBILE FINTECH PORTFOLIO & ETF CARDS
+ * ============================================================================ */
+.portfolio-cards-mobile {
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.fund-mobile-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.fund-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.fund-code-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fund-type-chip {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.badge-mint-profit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.badge-mint-profit.loss {
+  background: #ffe4e6;
+  color: #9f1239;
+  border-color: #fecdd3;
+}
+
+.fund-grid-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  background: var(--raised);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.fund-metric-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.fund-metric-label {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.fund-metric-val {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.fund-weight-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fund-weight-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* ============================================================================
+ * SWIPE-TO-ACTION ROWS, FEED EXTRAS, PRIVACY MODE & HERO BUDGET BAR
+ * ============================================================================ */
+.feed-swipe-row {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--raised);
+}
+
+.feed-swipe-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 136px;
+  display: flex;
+}
+
+.feed-swipe-actions button {
+  flex: 1;
+  border: none;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 12.5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+}
+
+.swipe-edit { background: #2563eb; }
+.swipe-del { background: #e11d48; }
+
+.feed-swipe-row .feed-item-card {
+  z-index: 1;
+  touch-action: pan-y;
+  will-change: transform;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.feed-cat-text {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.feed-hint {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  padding: 2px 0 0 0;
+}
+
+.feed-empty {
+  text-align: center;
+  padding: 28px 16px;
+  color: var(--muted);
+  background: var(--raised);
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  font-size: 13.5px;
+}
+
+.feed-more {
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  padding: 8px 0 4px 0;
+}
+
+.fund-market-val {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.fund-nav-input {
+  margin-top: 4px;
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 16px;
+  font-weight: 700;
+  border-radius: 8px;
+}
+
+.hero-kpi-host {
+  display: block;
+}
+
+.hero-budget-track {
+  margin-top: 7px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.hero-budget-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #60a5fa, #3b82f6);
+  transition: width 0.4s ease;
+}
+
+.hero-budget-fill.over {
+  background: linear-gradient(90deg, #fb923c, #f43f5e);
+}
+
+.hero-sparkline-body {
+  height: auto !important;
+}
+
+/* Privacy eye: blur sensitive amounts outside the hero card (hero masks text itself) */
+body.privacy-on .privacy-blur,
+body.privacy-on #investment-kpis .kpi-val,
+body.privacy-on #yearly-master-table td.num {
+  filter: blur(7px);
+  user-select: none;
+}
+
+/* ============================================================================
  * RESPONSIVE BREAKPOINTS (TABLET & PHONE COMPOSITIONS)
  * ============================================================================ */
 @media (max-width: 1024px) {
@@ -1602,8 +2365,115 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .mobile-nav {
     display: flex;
   }
+  .mobile-fab {
+    display: flex;
+  }
+  .portfolio-cards-mobile {
+    display: flex;
+  }
+  .portfolio-table-desktop {
+    display: none;
+  }
+  #modal-overlay {
+    z-index: 1200 !important;
+  }
+
+  /* COMPACT HEADER + STICKY MONTH CAROUSEL */
+  .topbar {
+    display: contents;
+  }
+  .topbar-left {
+    margin-bottom: 4px;
+  }
+  .topbar-left > div:first-child {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+  .topbar-left > div:first-child::-webkit-scrollbar {
+    display: none;
+  }
+  .topbar-left > div:first-child > * {
+    flex-shrink: 0;
+  }
+  .topbar-left h1 {
+    font-size: 18px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+  #page-subheading {
+    display: none;
+  }
+  .topbar-actions {
+    position: sticky;
+    top: 0;
+    z-index: 60;
+    width: auto;
+    margin: 6px -16px 14px -16px;
+    padding: calc(8px + env(safe-area-inset-top, 0px)) 12px 8px 12px;
+    background: rgba(243, 245, 247, 0.88);
+    backdrop-filter: saturate(160%) blur(18px);
+    -webkit-backdrop-filter: saturate(160%) blur(18px);
+    border-bottom: 1px solid rgba(226, 230, 234, 0.7);
+  }
+  .month-pills {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    gap: 6px;
+    padding: 2px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    scroll-snap-type: x proximity;
+  }
+  .month-pills::-webkit-scrollbar {
+    display: none;
+  }
+  .month-pill-arrow,
+  #month-quick-select {
+    display: none !important;
+  }
+  .month-pill {
+    scroll-snap-align: center;
+    flex-shrink: 0;
+    border-radius: 999px;
+    padding: 6px 14px;
+    min-height: 34px;
+    background: #ffffff;
+    border: 1px solid var(--border);
+  }
+  .month-pill.active,
+  .month-pill.empty-month.active {
+    background: var(--text);
+    color: #ffffff;
+    border-color: var(--text);
+    box-shadow: 0 4px 12px rgba(27, 29, 31, 0.18);
+  }
+
+  /* CHAT TAB: full-height chat, input bar pinned at the bottom of the chat card */
+  .chat-container {
+    height: calc(100dvh - 330px);
+    min-height: 380px;
+  }
+  .chat-input-bar {
+    padding: 10px;
+  }
+  .chat-input-bar .input-control {
+    border-radius: 999px;
+    padding: 10px 16px;
+    font-size: 16px; /* prevents iOS zoom-on-focus */
+  }
+  .chat-input-bar .btn {
+    border-radius: 999px;
+    padding: 10px 16px;
+  }
   .main-area {
-    padding: 16px 16px calc(80px + env(safe-area-inset-bottom, 20px)) 16px;
+    padding: 16px 16px calc(88px + env(safe-area-inset-bottom, 20px)) 16px;
   }
   .kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1620,11 +2490,161 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .grid-2, .grid-equal, .advice-cards-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  /* MOBILE QUICK ENTRY SHEET */
+  .quick-entry-container {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+  }
+  .quick-entry-container.is-open {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+  .quick-sheet-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    animation: sheetFadeIn 0.25s ease;
+  }
+  .quick-hero {
+    position: relative;
+    z-index: 10;
+    background: #ffffff;
+    border-radius: 24px 24px 0 0;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.25);
+    padding: 14px 18px calc(24px + env(safe-area-inset-bottom, 16px)) 18px;
+    margin-bottom: 0;
+    max-height: 88vh;
+    overflow-y: auto;
+    animation: sheetSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .quick-sheet-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .sheet-drag-handle {
+    width: 44px;
+    height: 5px;
+    border-radius: 999px;
+    background: #cbd5e1;
+    margin-bottom: 10px;
+  }
+  .sheet-title-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .sheet-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .sheet-title-badge {
+    background: var(--accent);
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 6px;
+  }
+  .sheet-close-btn {
+    background: var(--raised);
+    border: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 15px;
+    cursor: pointer;
+  }
+
+  /* Table vs Feed mode on mobile */
+  #tx-table-wrap:not(.spreadsheet-grid) {
+    display: none;
+  }
+
+  /* App states: typing / sheet open / AI tab */
+  body.kb-open .mobile-nav,
+  body.kb-open .mobile-fab,
+  body.sheet-open .mobile-fab,
+  body[data-tab="ai"] .mobile-fab,
+  body[data-tab="audit"] .mobile-fab {
+    display: none;
+  }
+  body.sheet-open {
+    overflow: hidden;
+  }
+  .quick-input-wrap input,
+  .quick-preset-bar select,
+  #filter-search {
+    font-size: 16px; /* prevents iOS zoom-on-focus */
+  }
+  .quick-input-wrap input {
+    height: 48px;
+    border-radius: 14px;
+  }
+  .quick-hero-top .btn {
+    flex: 1 1 calc(50% - 8px);
+    min-height: 44px;
+    border-radius: 12px;
+  }
+  .quick-hero-top .btn-primary {
+    flex-basis: 100%;
+    order: 10;
+    min-height: 48px;
+    font-size: 15px;
+  }
+  .quick-preset-bar > span:last-child {
+    display: none;
+  }
+}
+
+@keyframes sheetSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes sheetFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (min-width: 1025px) {
+  .tx-activity-feed {
+    display: none;
+  }
+  .mobile-fab {
+    display: none !important;
+  }
+  .portfolio-cards-mobile {
+    display: none !important;
+  }
 }
 
 @media (max-width: 640px) {
   .main-area {
-    padding: 14px 14px calc(80px + env(safe-area-inset-bottom, 20px)) 14px;
+    padding: 12px 12px calc(88px + env(safe-area-inset-bottom, 20px)) 12px;
+  }
+  .topbar-actions {
+    margin-left: -12px;
+    margin-right: -12px;
   }
   .kpi-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -1639,13 +2659,22 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
     font-size: 22px;
   }
   .topbar-left h1 {
-    font-size: 22px;
+    font-size: 19px;
   }
   .card {
-    padding: 16px;
+    padding: 14px;
   }
-  .quick-hero {
-    padding: 16px;
+  .hero-financial-card {
+    padding: 18px 16px;
+  }
+  .hero-main-amount {
+    font-size: 28px;
+  }
+  .hero-metrics-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .hero-subcard.full-width {
+    grid-column: span 1;
   }
   .bar-chart-grid {
     gap: 2px;
