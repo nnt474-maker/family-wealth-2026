@@ -138,6 +138,9 @@
         <button class="btn btn-ghost" style="width:100%;" onclick="openCloudSettingsModal()">
           Đồng Bộ Cloud 2 Vợ Chồng
         </button>
+        <button class="btn btn-ghost" style="width:100%;color:var(--accent);border-color:var(--accent-soft);" onclick="openMobileSyncModal()">
+          📱 Cài App Vào Điện Thoại
+        </button>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
           <button class="btn btn-ghost" onclick="openPinSettingsModal()">
             Đổi PIN
@@ -171,6 +174,9 @@
             </button>
             <button class="cloud-pill" onclick="openGeminiSettingsModal()" id="topbar-gemini-pill" style="background:var(--accent-soft);border-color:var(--accent-border);color:var(--accent);">
               <span id="topbar-gemini-label">Não AI (Claude / Gemini)</span>
+            </button>
+            <button class="cloud-pill" onclick="openMobileSyncModal()" id="topbar-mobile-pill" style="background:var(--positive-soft);border-color:var(--positive-soft);color:var(--positive);" title="Đồng bộ sang điện thoại & Thêm ra màn hình chính">
+              <span>📱 Thêm Ra Điện Thoại</span>
             </button>
             <button class="btn btn-ghost" style="padding:6px 12px;font-size:13px;" onclick="lockAppNow()" title="Khóa màn hình bằng mã PIN">
               Khóa PIN
@@ -685,7 +691,7 @@
                 <button class="btn btn-ghost" style="padding:6px 12px;font-size:13px;" onclick="copyAppsScript()">Copy Mã Apps Script</button>
               </div>
               <p style="font-size:13.5px;color:var(--muted);margin-bottom:10px;">
-                1. Mở Google Sheet <a href="https://docs.google.com/spreadsheets/d/1FtjpyD-DP4HS8z7uJoYDw9TKwBh3qSCwdXqy1eaQEEk/edit" target="_blank" style="color:var(--accent);font-weight:700;">[2026 - FAMILY NOTE BOOK]</a> → <b>Extensions → Apps Script</b> → Dán mã bên dưới và chọn <b>Deploy → New deployment → Web App (Anyone)</b>.<br/>
+                1. Mở Google Sheet <b>[2026 - FAMILY NOTE BOOK]</b> của gia đình bạn (hoặc tạo Google Sheet mới) → Vào <b>Tiện ích mở rộng (Extensions) → Apps Script</b> → Dán mã bên dưới và chọn <b>Triển khai (Deploy) → Tùy chọn triển khai mới (New deployment) → Loại: Ứng dụng web (Web App) → Quyền truy cập: Bất kỳ ai (Anyone)</b>.<br/>
                 2. Dán link Web App (`https://script.google.com/macros/s/.../exec`) vào ô dưới đây để điện thoại Chồng & Vợ tự động đồng bộ 2 chiều:
               </p>
               <div style="display:flex;gap:8px;margin-bottom:10px;">
@@ -701,6 +707,25 @@
               </div>
               <div id="audit-rows-list" style="display:flex;flex-direction:column;gap:10px;max-height:320px;overflow-y:auto;"></div>
             </div>
+          </div>
+        </div>
+
+        <!-- F66: JSON DATABASE BACKUP & RESTORE -->
+        <div class="card" style="margin-top:20px;">
+          <div class="card-header">
+            <div class="card-title">💾 Sao Lưu & Khôi Phục Toàn Bộ Sổ Cái (JSON Database)</div>
+          </div>
+          <p style="font-size:13.5px;color:var(--muted);margin-bottom:12px;">
+            Tải toàn bộ cơ sở dữ liệu `family_db.json` về máy tính để lưu trữ an toàn hoặc khôi phục dữ liệu từ file sao lưu trước đó:
+          </p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button class="btn btn-emerald" onclick="exportJsonBackup()">
+              📥 Tải File Sao Lưu JSON (family_db.json)
+            </button>
+            <label class="btn btn-ghost" style="cursor:pointer;display:inline-flex;align-items:center;">
+              📤 Khôi Phục Từ File JSON
+              <input type="file" accept=".json" style="display:none;" onchange="importJsonBackup(this.files[0]); this.value='';" />
+            </label>
           </div>
         </div>
       </div>

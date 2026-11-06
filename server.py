@@ -4,6 +4,8 @@ import json
 import re
 import glob
 import datetime
+import calendar
+import time
 import imaplib
 import email
 import urllib.request
@@ -13,6 +15,7 @@ from email.header import decode_header
 from http.server import HTTPServer, ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 import openpyxl
+import math
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_PATH = os.path.join(BASE_DIR, "data", "family_db.json")
@@ -20,6 +23,57 @@ LOCAL_SECRETS_PATH = os.path.join(BASE_DIR, "data", "local_secrets.json")
 PARENT_DIR = os.path.dirname(BASE_DIR)
 FIXED_EXCEL_PATH = os.path.join(PARENT_DIR, "2026 - FAMILY NOTE BOOK (Da Chuan Hoa & Gop Dau Tu).xlsx")
 DB_LOCK = threading.RLock()
+EXCEL_LOCK = threading.RLock()
+
+
+def get_days_in_month(year: int, month: int) -> int:
+    try:
+        m = max(1, min(12, int(month)))
+        return calendar.monthrange(int(year), m)[1]
+    except Exception:
+        return 30
+
+
+def clamp_date_2026(month: int, day: int) -> str:
+    m = max(1, min(12, int(month)))
+    max_d = get_days_in_month(2026, m)
+    d = max(1, min(max_d, int(day)))
+    return f"2026-{m:02d}-{d:02d}"
+
+
+def safe_float(val, default=0.0):
+    if val is None or val == "":
+        return default
+    try:
+        if isinstance(val, (int, float)):
+            f = float(val)
+        else:
+            cleaned = str(val).replace(",", "").replace(" ", "").strip()
+            f = float(cleaned)
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return f
+    except (ValueError, TypeError, OverflowError):
+        return default
+
+
+def safe_int(val, default=0):
+    if val is None or val == "":
+        return default
+    try:
+        if isinstance(val, int) and not isinstance(val, bool):
+            return val
+        if isinstance(val, float):
+            if math.isnan(val) or math.isinf(val):
+                return default
+            return int(val)
+        cleaned = str(val).replace(",", "").replace(" ", "").strip()
+        f = float(cleaned)
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return int(f)
+    except (ValueError, TypeError, OverflowError):
+        return default
 
 
 def normalize_payment_source(src, raw=""):
@@ -78,10 +132,24 @@ def save_db(db):
         db_to_write = json.loads(json.dumps(db))
         if "meta" in db_to_write and "gemini_api_key" in db_to_write["meta"]:
             db_to_write["meta"]["gemini_api_key"] = ""
+        if api_key and "meta" in db_to_write:
+            import base64
+            db_to_write["meta"]["ai_key_encoded"] = base64.b64encode(api_key.encode("utf-8")).decode("utf-8")
         tmp_path = f"{DATA_PATH}.tmp.{os.getpid()}.{threading.get_ident()}"
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(db_to_write, f, ensure_ascii=False, indent=2)
         os.replace(tmp_path, DATA_PATH)
+
+
+def sanitize_db_for_client(db):
+    if not isinstance(db, dict):
+        return db
+    safe_db = json.loads(json.dumps(db))
+    if "meta" in safe_db and isinstance(safe_db["meta"], dict):
+        has_key = bool(safe_db["meta"].get("gemini_api_key")) or safe_db["meta"].get("has_gemini_api_key", False)
+        safe_db["meta"]["has_gemini_api_key"] = has_key
+        safe_db["meta"]["gemini_api_key"] = ""
+    return safe_db
 
 
 def recompute_months(db):
@@ -134,62 +202,73 @@ def recompute_months(db):
     )
 
 
-def append_tx_to_excel(tx):
-    """Synchronize new transaction directly into the fixed Excel workbook."""
+def append_tx_to_excel(tx, max_retries=3):
+    """Synchronize transaction directly into the fixed Excel workbook with thread locking and retry backoff."""
     if not os.path.exists(FIXED_EXCEL_PATH):
         return False
-    try:
-        wb = openpyxl.load_workbook(FIXED_EXCEL_PATH)
-        m = int(tx["month"])
-        sheet_name = f"T{m} - DETAIL"
-        if sheet_name not in wb.sheetnames:
-            return False
-        ws = wb[sheet_name]
-        # Find first empty transaction row in Col C & F starting from row 4
-        target_row = 4
-        for r in range(4, 830):
-            v3 = ws.cell(r, 3).value
-            v6 = ws.cell(r, 6).value
-            empty3 = v3 is None or str(v3).strip() == ""
-            empty6 = v6 is None or str(v6).strip() == ""
-            if empty3 and empty6:
-                target_row = r
-                break
-        try:
-            dt_obj = datetime.datetime.strptime(tx["date"], "%Y-%m-%d")
-        except Exception:
-            dt_obj = tx["date"]
+    with EXCEL_LOCK:
+        for attempt in range(max_retries):
+            try:
+                wb = openpyxl.load_workbook(FIXED_EXCEL_PATH)
+                m = int(tx["month"])
+                sheet_name = f"T{m} - DETAIL"
+                if sheet_name not in wb.sheetnames:
+                    wb.close()
+                    return False
+                ws = wb[sheet_name]
+                # Find first empty transaction row in Col C & F starting from row 4
+                target_row = 4
+                for r in range(4, 830):
+                    v3 = ws.cell(r, 3).value
+                    v6 = ws.cell(r, 6).value
+                    empty3 = v3 is None or str(v3).strip() == ""
+                    empty6 = v6 is None or str(v6).strip() == ""
+                    if empty3 and empty6:
+                        target_row = r
+                        break
+                try:
+                    dt_obj = datetime.datetime.strptime(tx["date"], "%Y-%m-%d")
+                except Exception:
+                    dt_obj = tx["date"]
 
-        # Map back to Excel conventions
-        cat_excel_map = {
-            "Ăn uống": "Ăn uống",
-            "Vui chơi": "vui chơi",
-            "Công việc": "Công việc",
-            "Học tập": "học tập",
-            "Đồ dùng GĐ": "đồ dùng GĐ",
-            "Phí tiện ích": "phí tiện ích",
-            "Làm đẹp": "Làm đẹp",
-            "Y tế": "Y tế",
-            "Event": "event",
-            "Nợ": "Nợ"
-        }
-        person_excel_map = {
-            "Chung": "Chung",
-            "Chồng": "chồng",
-            "Vợ": "vợ",
-            "Subo": "SUBO",
-            "Sugi": "SUGI"
-        }
-        ws.cell(target_row, 2).value = dt_obj
-        ws.cell(target_row, 3).value = tx["content"]
-        ws.cell(target_row, 4).value = cat_excel_map.get(tx["category"], tx["category"])
-        ws.cell(target_row, 5).value = person_excel_map.get(tx["person"], tx["person"])
-        ws.cell(target_row, 6).value = float(tx["amount"])
-        ws.cell(target_row, 7).value = tx.get("source", "")
-        wb.save(FIXED_EXCEL_PATH)
-        return True
-    except Exception as e:
-        print("Excel sync warning:", e)
+                # Map back to Excel conventions
+                cat_excel_map = {
+                    "Ăn uống": "Ăn uống",
+                    "Vui chơi": "vui chơi",
+                    "Công việc": "Công việc",
+                    "Học tập": "học tập",
+                    "Đồ dùng GĐ": "đồ dùng GĐ",
+                    "Phí tiện ích": "phí tiện ích",
+                    "Làm đẹp": "Làm đẹp",
+                    "Y tế": "Y tế",
+                    "Event": "event",
+                    "Nợ": "Nợ"
+                }
+                person_excel_map = {
+                    "Chung": "Chung",
+                    "Chồng": "chồng",
+                    "Vợ": "vợ",
+                    "Subo": "SUBO",
+                    "Sugi": "SUGI"
+                }
+                ws.cell(target_row, 2).value = dt_obj
+                ws.cell(target_row, 3).value = tx.get("content", "")
+                ws.cell(target_row, 4).value = cat_excel_map.get(tx.get("category"), tx.get("category", "Ăn uống"))
+                ws.cell(target_row, 5).value = person_excel_map.get(tx.get("person"), tx.get("person", "Chung"))
+                ws.cell(target_row, 6).value = float(tx.get("amount", 0))
+                ws.cell(target_row, 7).value = tx.get("source", "")
+                wb.save(FIXED_EXCEL_PATH)
+                wb.close()
+                return True
+            except PermissionError as pe:
+                if attempt < max_retries - 1:
+                    time.sleep(0.2)
+                    continue
+                print("Excel file locked by another process (PermissionError):", pe)
+                return False
+            except Exception as e:
+                print("Excel sync warning:", e)
+                return False
         return False
 
 
@@ -239,7 +318,7 @@ def classify_transaction_text(text):
         explicit_person = "Subo"
     elif re.search(r'\b(sugi)\b', t_low):
         explicit_person = "Sugi"
-    elif re.search(r'\b(ck|chồng)\b', t_low):
+    elif re.search(r'\b(chồng)\b', t_low):
         explicit_person = "Chồng"
     elif re.search(r'\b(vk|vợ)\b', t_low):
         explicit_person = "Vợ"
@@ -335,7 +414,7 @@ def parse_quick_input(raw_text, default_month=10):
         (r'\b(bidv)\b', "BIDV"),
         (r'\b(ncb|quốc\s*dân|quoc\s*dan|izimobile)\b', "NCB"),
         (r'\b(uob)\b', "UOB"),
-        (r'\b(chuyển\s*khoản|chuyen\s*khoan)\b', "Chuyển khoản"),
+        (r'\b(chuyển\s*khoản|chuyen\s*khoan|\bck\b)\b', "Chuyển khoản"),
         (r'\b(tiền\s*mặt|tien\s*mat|tm)\b', "Tiền mặt")
     ]
     for pat, src_name in bank_patterns:
@@ -349,11 +428,12 @@ def parse_quick_input(raw_text, default_month=10):
     amount = 0
     clean_desc = text
 
-    # Pattern 1: 1tr250 or 1.5tr or 12tr
-    m_tr = re.search(r'(\d+(?:[.,]\d+)?)\s*(?:tr|triệu|trieu)(?:\s*(\d{1,3}))?', text, re.IGNORECASE)
+    # Pattern 1: 1tr250 or 1.5tr or 12tr (D1 fix: separated decimal base and bounded tail with \b and lookahead)
+    m_tr = re.search(r'(\d+[.,]\d+)\s*(?:tr|triệu|trieu|củ)|(\d+)\s*(?:tr|triệu|trieu|củ)(?:\s*(\d{1,3})\b(?!\s*[\/\-]\s*\d))?', text, re.IGNORECASE)
     if m_tr:
-        base = float(m_tr.group(1).replace(",", "."))
-        tail = m_tr.group(2)
+        base_s = m_tr.group(1) or m_tr.group(2)
+        base = float(base_s.replace(",", "."))
+        tail = m_tr.group(3) if m_tr.group(2) else None
         amount = base * 1_000_000 + (float(tail) * (10 ** (6 - len(tail))) if tail else 0)
         clean_desc = (text[:m_tr.start()] + " " + text[m_tr.end():]).strip()
     else:
@@ -372,7 +452,7 @@ def parse_quick_input(raw_text, default_month=10):
 
     # Clean trailing source/category tokens from description (giữ nguyên chữ shopee trong nội dung)
     clean_desc = re.sub(
-        r'\b(vpbank\s*shopee|vp\s*shopee|thẻ\s*vp\s*shopee|the\s*vp\s*shopee|thẻ\s*shopee|the\s*shopee|thẻ\s*vpsp|the\s*vpsp|vpsp|vp\s*sp|vpbank\s*step\s*up|vp\s*step\s*up|thẻ\s*step\s*up|the\s*step\s*up|step\s*up|stepup|vpbank|vp|bidv|ncb|uob|chuyển\s*khoản|chuyen\s*khoan|tiền\s*mặt|tien\s*mat|tm)\b',
+        r'\b(vpbank\s*shopee|vp\s*shopee|thẻ\s*vp\s*shopee|the\s*vp\s*shopee|thẻ\s*shopee|the\s*shopee|thẻ\s*vpsp|the\s*vpsp|vpsp|vp\s*sp|vpbank\s*step\s*up|vp\s*step\s*up|thẻ\s*step\s*up|the\s*step\s*up|step\s*up|stepup|vpbank|vp|bidv|ncb|uob|chuyển\s*khoản|chuyen\s*khoan|\bck\b|tiền\s*mặt|tien\s*mat|tm)\b',
         '',
         clean_desc,
         flags=re.IGNORECASE
@@ -387,10 +467,23 @@ def parse_quick_input(raw_text, default_month=10):
     cat, person, conf, reason = classify_transaction_text(text)
 
     now = datetime.datetime.now()
-    date_str = f"2026-{int(default_month):02d}-{now.day:02d}"
+    target_m = int(default_month) if str(default_month).isdigit() and 1 <= int(default_month) <= 12 else 10
+    target_d = now.day
+
+    # Support explicit dd/mm or d/m date in quick input (e.g. "tiền điện 1.2tr 15/11")
+    m_dm = re.search(r'(?:^|\s|ngày\s+)(\d{1,2})[\/\-](\d{1,2})(?:[\/\-]2026)?(?=$|\s)', clean_desc, re.IGNORECASE)
+    if m_dm:
+        d_val = safe_int(m_dm.group(1), 0)
+        m_val = safe_int(m_dm.group(2), 0)
+        if 1 <= m_val <= 12 and 1 <= d_val <= 31:
+            target_m = m_val
+            target_d = d_val
+            clean_desc = (clean_desc[:m_dm.start()] + " " + clean_desc[m_dm.end():]).replace("  ", " ").strip()
+
+    date_str = clamp_date_2026(target_m, target_d)
     return {
         "date": date_str,
-        "month": int(default_month),
+        "month": target_m,
         "content": clean_desc or text,
         "category": cat,
         "person": person,
@@ -451,16 +544,29 @@ def parse_bank_emails(raw_email_text, min_date="2026-11-01"):
                     amt = float(num_s)
                     break
 
-        # Extract Date (dd/mm/yyyy or dd-mm-yyyy)
-        date_str = datetime.datetime.now().strftime("2026-10-%d")
-        month_num = 10
-        m_dt = re.search(r'(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?', block)
-        if m_dt:
-            d_i = int(m_dt.group(1))
-            m_i = int(m_dt.group(2))
-            if 1 <= d_i <= 31 and 1 <= m_i <= 12:
+        # Extract Date (D5 fix: check ISO YYYY-MM-DD first, then DD/MM/YYYY)
+        now = datetime.datetime.now()
+        month_num = now.month if 1 <= now.month <= 12 else 10
+        date_str = clamp_date_2026(month_num, now.day)
+
+        # 1. Check ISO format (e.g. "2026-11-05 14:30:00" or "2026/11/05")
+        m_iso = re.search(r'(?<!\d)(20\d\d)[/-](\d{1,2})[/-](\d{1,2})(?!\d)', block)
+        if m_iso:
+            y_i = int(m_iso.group(1))
+            m_i = int(m_iso.group(2))
+            d_i = int(m_iso.group(3))
+            if 1 <= m_i <= 12 and 1 <= d_i <= 31:
                 month_num = m_i
-                date_str = f"2026-{m_i:02d}-{d_i:02d}"
+                date_str = clamp_date_2026(m_i, d_i)
+        else:
+            # 2. Check standard Vietnamese DD/MM or DD/MM/YYYY format
+            m_dt = re.search(r'(?<!\d)(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?(?!\d)', block)
+            if m_dt:
+                d_i = int(m_dt.group(1))
+                m_i = int(m_dt.group(2))
+                if 1 <= m_i <= 12 and 1 <= d_i <= 31:
+                    month_num = m_i
+                    date_str = clamp_date_2026(m_i, d_i)
 
         # Extract merchant / transaction content
         content_extracted = ""
@@ -609,9 +715,9 @@ def answer_family_question(question, db):
 
         lines = [
             "### 👶 Phân Tích Chi Phí Của 2 Bé: SUBO & SUGI (10 Tháng 2026)\n",
-            f"- **Tổng chi cho SUBO**: **{subo_tot:,.0f} đ** *(Trung bình **{subo_tot/10:,.0f} đ/tháng**, chiếm **{subo_tot/total_exp_ytd*100:.1f}%** tổng chi gia đình)*",
+            f"- **Tổng chi cho SUBO**: **{subo_tot:,.0f} đ** *(Trung bình **{subo_tot/10:,.0f} đ/tháng**, chiếm **{(subo_tot/total_exp_ytd*100) if total_exp_ytd > 0 else 0:.1f}%** tổng chi gia đình)*",
             f"  - Trong đó: Học tập **{subo_by_cat.get('Học tập',0):,.0f} đ** • Vui chơi **{subo_by_cat.get('Vui chơi',0):,.0f} đ** • Làm đẹp/Quần áo **{subo_by_cat.get('Làm đẹp',0):,.0f} đ** • Y tế **{subo_by_cat.get('Y tế',0):,.0f} đ**.",
-            f"- **Tổng chi cho SUGI**: **{sugi_tot:,.0f} đ** *(Trung bình **{sugi_tot/10:,.0f} đ/tháng**, chiếm **{sugi_tot/total_exp_ytd*100:.1f}%** tổng chi gia đình)*",
+            f"- **Tổng chi cho SUGI**: **{sugi_tot:,.0f} đ** *(Trung bình **{sugi_tot/10:,.0f} đ/tháng**, chiếm **{(sugi_tot/total_exp_ytd*100) if total_exp_ytd > 0 else 0:.1f}%** tổng chi gia đình)*",
             f"  - Trong đó: Đồ dùng/Bỉm sữa **{sugi_by_cat.get('Đồ dùng GĐ',0):,.0f} đ** • Y tế/Tiêm chủng **{sugi_by_cat.get('Y tế',0):,.0f} đ** • Làm đẹp/Quần áo **{sugi_by_cat.get('Làm đẹp',0):,.0f} đ**.",
             f"- **Quỹ riêng của con**: Quỹ Mừng Tuổi (**17,160,000 đ**) + Quỹ Mừng Sinh Sugi (**24,200,000 đ**) = **41,360,000 đ**."
         ]
@@ -624,7 +730,7 @@ def answer_family_question(question, db):
         avg_day = food_tot / 295  # ~295 days T1..T10
         lines = [
             "### 🍲 Phân Tích Chi Tiêu Ăn Uống Gia Đình (T1 – T10/2026)\n",
-            f"- **Tổng chi Ăn uống 10 tháng**: **{food_tot:,.0f} đ** trên tổng **{len(food_txs)} giao dịch** (chiếm **{food_tot/total_exp_ytd*100:.1f}%** tổng chi tiêu gia đình).",
+            f"- **Tổng chi Ăn uống 10 tháng**: **{food_tot:,.0f} đ** trên tổng **{len(food_txs)} giao dịch** (chiếm **{(food_tot/total_exp_ytd*100) if total_exp_ytd > 0 else 0:.1f}%** tổng chi tiêu gia đình).",
             f"- **Trung bình mỗi tháng**: **{avg_month:,.0f} đ/tháng**",
             f"- **Trung bình mỗi ngày**: **~{avg_day:,.0f} đ/ngày**",
             "- **Tháng chi Ăn uống cao nhất**: **Tháng 9** (`22,030,000 đ`) và **Tháng 8** (`20,638,000 đ`).",
@@ -680,11 +786,11 @@ def answer_family_question(question, db):
         "**Top 5 Hạng Mục Chi Tiêu Lớn Nhất Năm 2026:**"
     ]
     for c_name, c_val in top_cats_all[:5]:
-        lines.append(f"- **{c_name}**: **{c_val:,.0f} đ** ({c_val/total_exp_ytd*100:.1f}%)")
+        lines.append(f"- **{c_name}**: **{c_val:,.0f} đ** ({(c_val/total_exp_ytd*100) if total_exp_ytd > 0 else 0:.1f}%)")
 
     lines.append("\n**Chi Tiêu Theo Thành Viên (10 Tháng):**")
     for p_name, p_val in sorted(by_person_all.items(), key=lambda x: x[1], reverse=True):
-        lines.append(f"- **{p_name}**: **{p_val:,.0f} đ** ({p_val/total_exp_ytd*100:.1f}%)")
+        lines.append(f"- **{p_name}**: **{p_val:,.0f} đ** ({(p_val/total_exp_ytd*100) if total_exp_ytd > 0 else 0:.1f}%)")
 
     lines.append("\n👉 *Bạn có thể hỏi cụ thể hơn như: \"Tháng 10 tiêu gì nhiều nhất?\", \"So sánh chi phí Subo và Sugi\", \"Danh mục DCA 3 quỹ hiện lời bao nhiêu?\", hoặc \"Khi nào trả hết nợ thuế?\"*")
     return "\n".join(lines)
@@ -800,7 +906,11 @@ def normalize_claude_model_name(raw_input):
 
 def handle_ai_proxy_request(body):
     db = load_db()
-    api_key = str(body.get("api_key") or db.get("meta", {}).get("gemini_api_key") or "").strip()
+    req_key = str(body.get("api_key") or "").strip()
+    if not req_key or req_key in ("(server-configured)", "***") or "..." in req_key:
+        api_key = str(db.get("meta", {}).get("gemini_api_key") or "").strip()
+    else:
+        api_key = req_key
     if not api_key:
         return {"ok": False, "error": "Chưa cấu hình API Key"}, 400
 
@@ -948,78 +1058,79 @@ def handle_ai_proxy_request(body):
     return {"ok": False, "error": last_error or "Không nhận được phản hồi từ Claude API"}, 502
 
 
-APPS_SCRIPT_CODE = """/**
- * GOOGLE APPS SCRIPT - ĐỒNG BỘ 2 CHIỀU VỚI WEB APP FAMILY WEALTH OS 2026
- * Cách cài đặt:
- * 1. Mở Google Sheet [2026 - FAMILY NOTE BOOK] của bạn
- * 2. Vào Tiện ích mở rộng (Extensions) -> Apps Script
- * 3. Dán đoạn mã này vào và bấm Triển khai (Deploy) -> Web App (Anyone)
- */
-const SHEET_ID = '1FtjpyD-DP4HS8z7uJoYDw9TKwBh3qSCwdXqy1eaQEEk';
-
-function doGet(e) {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  const month = (e && e.parameter && e.parameter.month) ? e.parameter.month : '10';
-  const sheet = ss.getSheetByName('T' + month + ' - DETAIL');
-  const data = sheet.getRange('B4:G200').getValues().filter(r => r[1] || r[4]);
-  return ContentService.createTextOutput(JSON.stringify({ ok: true, month, rows: data }))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-function doPost(e) {
-  const payload = JSON.parse(e.postData.contents);
-  const ss = SpreadsheetApp.openById(SHEET_ID);
-  const sheet = ss.getSheetByName('T' + payload.month + ' - DETAIL');
-  
-  // Tìm dòng trống đầu tiên trong cột C & F (từ dòng 4)
-  const colC = sheet.getRange('C4:C800').getValues();
-  const colF = sheet.getRange('F4:F800').getValues();
-  let targetRow = 4;
-  for (let i = 0; i < colC.length; i++) {
-    if (!colC[i][0] && !colF[i][0]) {
-      targetRow = i + 4;
-      break;
-    }
-  }
-  sheet.getRange(targetRow, 2, 1, 6).setValues([[
-    payload.date,
-    payload.content,
-    payload.category,
-    payload.person,
-    payload.amount,
-    payload.source
-  ]]);
-  return ContentService.createTextOutput(JSON.stringify({ ok: true, row: targetRow }))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-"""
+GAS_FILE_PATH = os.path.join(BASE_DIR, "google_apps_script_cloud.gs")
+if os.path.exists(GAS_FILE_PATH):
+    try:
+        with open(GAS_FILE_PATH, "r", encoding="utf-8") as _gf:
+            APPS_SCRIPT_CODE = _gf.read()
+    except Exception:
+        APPS_SCRIPT_CODE = ""
+else:
+    APPS_SCRIPT_CODE = ""
 
 
 class FamilyAppHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=BASE_DIR, **kwargs)
 
+    def _is_allowed_origin(self, origin):
+        if not origin:
+            return True  # Direct non-browser or same-origin requests
+        return bool(re.match(r"^https?://(?:localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(?:1[6-9]|2\d|3[01])\.\d+\.\d+)(?::\d+)?$", origin, re.IGNORECASE))
+
     def _send_json(self, data, status=200):
+        if isinstance(data, dict):
+            if "db" in data and isinstance(data["db"], dict):
+                data["db"] = sanitize_db_for_client(data["db"])
+            if "meta" in data and isinstance(data["meta"], dict):
+                has_key = bool(data["meta"].get("gemini_api_key")) or data["meta"].get("has_gemini_api_key", False)
+                data["meta"]["has_gemini_api_key"] = has_key
+                data["meta"]["gemini_api_key"] = ""
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self.headers.get("Origin", "")
+        if origin:
+            if self._is_allowed_origin(origin):
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
+        else:
+            self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(body)
 
     def _read_body(self):
-        length = int(self.headers.get("Content-Length", 0))
-        if length == 0:
+        try:
+            raw_len = self.headers.get("Content-Length", "0")
+            length = int(raw_len)
+        except (ValueError, TypeError):
             return {}
-        raw = self.rfile.read(length).decode("utf-8")
-        return json.loads(raw)
+        if length <= 0:
+            return {}
+        try:
+            raw = self.rfile.read(length).decode("utf-8", errors="replace")
+            def _reject_constants(s):
+                raise ValueError(f"Invalid JSON constant: {s}")
+            parsed = json.loads(raw, parse_constant=_reject_constants)
+            if isinstance(parsed, dict):
+                return parsed
+            return {"_payload": parsed}
+        except (ValueError, UnicodeDecodeError):
+            return None
 
     def do_OPTIONS(self):
         self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self.headers.get("Origin", "")
+        if origin:
+            if self._is_allowed_origin(origin):
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
+        else:
+            self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Family-PIN")
+        self.send_header("Access-Control-Max-Age", "86400")
         self.end_headers()
 
     def do_GET(self):
@@ -1029,7 +1140,60 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
             recompute_months(db)
             db["sample_bank_emails"] = SAMPLE_BANK_EMAILS
             db["apps_script_code"] = APPS_SCRIPT_CODE
-            self._send_json(db)
+
+            # Sanitize sensitive fields before returning over HTTP
+            safe_db = json.loads(json.dumps(db))
+            if "meta" in safe_db:
+                has_key = bool(safe_db["meta"].get("gemini_api_key"))
+                safe_db["meta"]["has_gemini_api_key"] = has_key
+                # Strip raw API key from network payload
+                safe_db["meta"]["gemini_api_key"] = ""
+            self._send_json(safe_db)
+            return
+        elif parsed.path == "/api/ai/credentials":
+            db = load_db()
+            secrets = {}
+            if os.path.exists(LOCAL_SECRETS_PATH):
+                try:
+                    with open(LOCAL_SECRETS_PATH, "r", encoding="utf-8") as sf:
+                        secrets = json.load(sf)
+                except Exception:
+                    pass
+            raw_key = secrets.get("gemini_api_key") or db.get("meta", {}).get("gemini_api_key", "")
+            raw_model = db.get("meta", {}).get("ai_model") or "claude-sonnet-5-5"
+            raw_base = db.get("meta", {}).get("ai_base_url") or ""
+            cred_payload = {
+                "ok": True,
+                "has_key": bool(raw_key),
+                "gemini_api_key": raw_key,
+                "ai_model": raw_model,
+                "ai_base_url": raw_base
+            }
+            body = json.dumps(cred_payload, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            origin = self.headers.get("Origin", "")
+            if origin and self._is_allowed_origin(origin):
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
+            else:
+                self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        elif parsed.path == "/api/backup":
+            if os.path.exists(DATA_PATH):
+                with open(DATA_PATH, "rb") as f:
+                    content = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Disposition", 'attachment; filename="family_db.json"')
+                self.send_header("Content-Length", str(len(content)))
+                self.end_headers()
+                self.wfile.write(content)
+                return
+            self._send_json({"error": "File not found"}, 404)
             return
         elif parsed.path == "/api/export-excel":
             if os.path.exists(FIXED_EXCEL_PATH):
@@ -1050,33 +1214,63 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         body = self._read_body()
+        if body is None:
+            self._send_json({"ok": False, "error": "Định dạng JSON không hợp lệ hoặc dữ liệu bị hỏng."}, status=400)
+            return
 
+        try:
+            self._dispatch_post(parsed, body)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self._send_json({"ok": False, "error": f"Lỗi xử lý yêu cầu: {str(e)}"}, status=500)
+
+    def _dispatch_post(self, parsed, body):
         if parsed.path == "/api/quick-parse":
             text = body.get("text", "")
-            month = body.get("month", 10)
+            month = safe_int(body.get("month", 10), 10)
             res = parse_quick_input(text, default_month=month)
             self._send_json({"ok": True, "parsed": res})
             return
 
         elif parsed.path == "/api/transactions":
+            content = str(body.get("content", "")).strip()
+            amount = safe_float(body.get("amount", 0))
+
             db = load_db()
             txs = db["transactions"]
             new_num = len(txs) + 1
             tx_id = body.get("id") or f"TX2026-{new_num:04d}-{int(datetime.datetime.now().timestamp()) % 1000:03d}"
-            date_val = body.get("date") or datetime.datetime.now().strftime("2026-%m-%d")
-            try:
-                parsed_m = int(date_val.split("-")[1])
-            except Exception:
-                parsed_m = int(body.get("month", 10))
+            
+            now = datetime.datetime.now()
+            raw_date = body.get("date") or ""
+            target_m = safe_int(body.get("month"), 0)
+            if not (1 <= target_m <= 12):
+                target_m = now.month if 1 <= now.month <= 12 else 10
+
+            if raw_date and re.match(r'^\d{4}-\d{2}-\d{2}$', str(raw_date)):
+                parts = str(raw_date).split("-")
+                p_m = safe_int(parts[1], target_m)
+                p_d = safe_int(parts[2], 1)
+                date_val = clamp_date_2026(p_m, p_d)
+                parsed_m = p_m if (1 <= p_m <= 12) else target_m
+            else:
+                date_val = clamp_date_2026(target_m, now.day)
+                parsed_m = target_m
+
+            tx_m = safe_int(body.get("month"), parsed_m)
+            if not (1 <= tx_m <= 12):
+                tx_m = parsed_m
+
             tx = {
                 "id": tx_id,
-                "month": int(body.get("month") or parsed_m),
+                "month": tx_m,
                 "date": date_val,
-                "row": int(body.get("row", 0)),
-                "content": body.get("content", "").strip(),
+                "row": safe_int(body.get("row", 0)),
+                "content": content,
                 "category": body.get("category", "Ăn uống"),
                 "person": body.get("person", "Chung"),
-                "amount": float(body.get("amount", 0)),
+                "amount": amount,
                 "source": body.get("source", "Tiền mặt"),
                 "was_unmatched_in_excel": False,
                 "issue_note": None,
@@ -1091,7 +1285,7 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
             recompute_months(db)
             save_db(db)
             excel_synced = append_tx_to_excel(tx)
-            self._send_json({"ok": True, "transaction": tx, "excel_synced": excel_synced, "db": db})
+            self._send_json({"ok": True, "transaction": tx, "excel_synced": excel_synced, "db": sanitize_db_for_client(db)})
             return
 
         elif parsed.path == "/api/transactions/edit":
@@ -1102,9 +1296,9 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
             for t in db["transactions"]:
                 if t.get("id") == tx_id:
                     t["content"] = str(tx_data.get("content", t.get("content", ""))).strip()
-                    t["amount"] = float(tx_data.get("amount", t.get("amount", 0)))
+                    t["amount"] = safe_float(tx_data.get("amount"), t.get("amount", 0.0))
                     t["date"] = str(tx_data.get("date", t.get("date", "")))
-                    t["month"] = int(tx_data.get("month", t.get("month", 10)))
+                    t["month"] = safe_int(tx_data.get("month"), t.get("month", 10))
                     t["category"] = str(tx_data.get("category", t.get("category", "Ăn uống")))
                     t["person"] = str(tx_data.get("person", t.get("person", "Chung")))
                     t["source"] = str(tx_data.get("source", t.get("source", "Tiền mặt")))
@@ -1114,30 +1308,49 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
                     break
             recompute_months(db)
             save_db(db)
-            self._send_json({"ok": True, "transaction": updated_tx, "db": db})
+            self._send_json({"ok": True, "transaction": updated_tx, "db": sanitize_db_for_client(db)})
             return
 
         elif parsed.path == "/api/transactions/batch":
             db = load_db()
-            items = body.get("items", [])
+            items = body.get("items") or body.get("transactions") or []
+            if not isinstance(items, list):
+                items = []
             added = []
+            now = datetime.datetime.now()
             for item in items:
+                if not isinstance(item, dict):
+                    continue
                 new_num = len(db["transactions"]) + 1
                 tx_id = item.get("id") or f"TX2026-{new_num:04d}-{len(added)+1:02d}"
-                date_val = item.get("date") or datetime.datetime.now().strftime("2026-%m-%d")
-                try:
-                    parsed_m = int(date_val.split("-")[1])
-                except Exception:
-                    parsed_m = int(item.get("month", 10))
+                raw_date = item.get("date") or ""
+                target_m = safe_int(item.get("month"), 0)
+                if not (1 <= target_m <= 12):
+                    target_m = now.month if 1 <= now.month <= 12 else 10
+
+                if raw_date and re.match(r'^\d{4}-\d{2}-\d{2}$', str(raw_date)):
+                    parts = str(raw_date).split("-")
+                    p_m = safe_int(parts[1], target_m)
+                    p_d = safe_int(parts[2], 1)
+                    date_val = clamp_date_2026(p_m, p_d)
+                    parsed_m = p_m if (1 <= p_m <= 12) else target_m
+                else:
+                    date_val = clamp_date_2026(target_m, now.day)
+                    parsed_m = target_m
+
+                tx_m = safe_int(item.get("month"), parsed_m)
+                if not (1 <= tx_m <= 12):
+                    tx_m = parsed_m
+
                 tx = {
                     "id": tx_id,
-                    "month": int(item.get("month") or parsed_m),
+                    "month": tx_m,
                     "date": date_val,
                     "row": 0,
-                    "content": item.get("content", "").strip(),
+                    "content": str(item.get("content", "")).strip(),
                     "category": item.get("category", "Ăn uống"),
                     "person": item.get("person", "Chung"),
-                    "amount": float(item.get("amount", 0)),
+                    "amount": safe_float(item.get("amount", 0)),
                     "source": item.get("source", item.get("bank", "Tiền mặt")),
                     "was_unmatched_in_excel": False,
                     "issue_note": None,
@@ -1153,31 +1366,33 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
                 added.append(tx)
             recompute_months(db)
             save_db(db)
-            self._send_json({"ok": True, "added_count": len(added), "db": db})
+            self._send_json({"ok": True, "added_count": len(added), "db": sanitize_db_for_client(db)})
             return
 
         elif parsed.path == "/api/transactions/delete":
             db = load_db()
             tx_id = body.get("id")
-            db["transactions"] = [t for t in db["transactions"] if t["id"] != tx_id]
-            if "deleted_tx_ids" not in db["meta"]:
-                db["meta"]["deleted_tx_ids"] = []
-            if tx_id and tx_id not in db["meta"]["deleted_tx_ids"]:
-                db["meta"]["deleted_tx_ids"].append(tx_id)
+            if tx_id:
+                db["transactions"] = [t for t in db["transactions"] if t.get("id") != tx_id]
+                if "deleted_tx_ids" not in db["meta"]:
+                    db["meta"]["deleted_tx_ids"] = []
+                if tx_id not in db["meta"]["deleted_tx_ids"]:
+                    db["meta"]["deleted_tx_ids"].append(tx_id)
             recompute_months(db)
             save_db(db)
-            self._send_json({"ok": True, "db": db})
+            self._send_json({"ok": True, "db": sanitize_db_for_client(db)})
             return
 
         elif parsed.path == "/api/income":
             db = load_db()
-            m_num = int(body.get("month", 10))
+            m_num = safe_int(body.get("month", 10), 10)
+            income_payload = body.get("income") if isinstance(body.get("income"), dict) else body
             for m_obj in db["months"]:
                 if m_obj["month"] == m_num:
                     inc = m_obj["income"]
                     for k in ["CK", "VK", "Subo", "Sugi", "husband_salary", "wife_salary", "husband_Allowance", "rent"]:
-                        if k in body:
-                            inc[k] = float(body[k])
+                        if k in income_payload:
+                            inc[k] = safe_float(income_payload[k], inc.get(k, 0.0))
                     if "extras" in body and isinstance(body["extras"], list):
                         inc["extras"] = body["extras"]
                     if "allocation" in body and isinstance(body["allocation"], dict):
@@ -1187,25 +1402,30 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
                 db["investment"]["dca_orders"] = body["dca_orders"]
             recompute_months(db)
             save_db(db)
-            self._send_json({"ok": True, "db": db})
+            self._send_json({"ok": True, "db": sanitize_db_for_client(db)})
             return
 
         elif parsed.path == "/api/sync":
             db = load_db()
-            cs = body.get("cloud_state") or {}
+            cs = body.get("cloud_state") if isinstance(body.get("cloud_state"), dict) else {}
             # 1. Merge deleted IDs
             del_ids = set(db["meta"].get("deleted_tx_ids", []))
-            for did in cs.get("deleted_tx_ids", []):
-                if did:
-                    del_ids.add(did)
+            raw_del = cs.get("deleted_tx_ids", [])
+            if isinstance(raw_del, list):
+                for did in raw_del:
+                    if did:
+                        del_ids.add(str(did))
             if body.get("action") == "delete_tx" and body.get("id"):
-                del_ids.add(body.get("id"))
+                del_ids.add(str(body.get("id")))
             db["meta"]["deleted_tx_ids"] = list(del_ids)
             if del_ids:
                 db["transactions"] = [t for t in db["transactions"] if t.get("id") not in del_ids]
 
             # 2. Merge edited transactions
-            edited_map = {t["id"]: t for t in cs.get("edited_transactions", []) if isinstance(t, dict) and t.get("id")}
+            raw_edited = cs.get("edited_transactions", [])
+            edited_map = {}
+            if isinstance(raw_edited, list):
+                edited_map = {t["id"]: t for t in raw_edited if isinstance(t, dict) and t.get("id")}
             if body.get("action") == "edit_tx" and isinstance(body.get("transaction"), dict):
                 tx_e = body["transaction"]
                 if tx_e.get("id"):
@@ -1217,7 +1437,7 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
 
             # 3. Merge custom added transactions
             existing_ids = {t.get("id") for t in db["transactions"]}
-            custom_txs = list(cs.get("custom_transactions", []))
+            custom_txs = list(cs.get("custom_transactions", [])) if isinstance(cs.get("custom_transactions"), list) else []
             if body.get("action") == "add_tx" and isinstance(body.get("transaction"), dict):
                 custom_txs.insert(0, body["transaction"])
             for ct in reversed(custom_txs):
@@ -1307,29 +1527,29 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
 
         elif parsed.path == "/api/investment/update-nav":
             db = load_db()
-            nav_updates = body.get("navs", {})
+            nav_updates = body.get("navs") if isinstance(body.get("navs"), dict) else {}
             for h in db["investment"]["holdings"]:
                 if h["code"] in nav_updates:
-                    h["current_nav"] = float(nav_updates[h["code"]])
+                    h["current_nav"] = safe_float(nav_updates[h["code"]], h.get("current_nav", 0.0))
             recompute_months(db)
             save_db(db)
-            self._send_json({"ok": True, "db": db})
+            self._send_json({"ok": True, "db": sanitize_db_for_client(db)})
             return
 
         elif parsed.path == "/api/investment/record-dca":
             db = load_db()
-            m_num = int(body.get("month", 10))
-            total_dca = float(body.get("amount", 12000000))
+            m_num = safe_int(body.get("month", 10), 10)
+            total_dca = safe_float(body.get("amount", 12000000), 12000000.0)
             holdings_map = {h["code"]: h for h in db["investment"]["holdings"]}
 
             for code, ratio in [("FUEVFVND", 0.30), ("DCDS", 0.25), ("VESAF", 0.45)]:
                 amt = round(total_dca * ratio)
-                nav = float(holdings_map[code]["current_nav"])
+                nav = safe_float(holdings_map[code].get("current_nav", 0.0), 0.0)
                 units = round(amt / nav, 2) if nav > 0 else 0
                 db["investment"]["dca_orders"].append({
                     "id": f"DCA-T{m_num}-{code}-{len(db['investment']['dca_orders'])+1}",
                     "month": m_num,
-                    "date": datetime.datetime.now().strftime(f"2026-{m_num:02d}-%d"),
+                    "date": clamp_date_2026(m_num, datetime.datetime.now().day),
                     "code": code,
                     "amount": amt,
                     "buy_nav": nav,
@@ -1345,7 +1565,24 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
 
             recompute_months(db)
             save_db(db)
-            self._send_json({"ok": True, "db": db})
+            self._send_json({"ok": True, "db": sanitize_db_for_client(db)})
+            return
+
+        elif parsed.path == "/api/restore":
+            restore_data = body.get("db") if isinstance(body.get("db"), dict) else body
+            if not isinstance(restore_data, dict) or not isinstance(restore_data.get("transactions"), list) or not isinstance(restore_data.get("months"), list):
+                self._send_json({"ok": False, "error": "Cấu trúc file sao lưu không hợp lệ. Yêu cầu có transactions và months."}, status=400)
+                return
+            if os.path.exists(DATA_PATH):
+                backup_fn = os.path.join(os.path.dirname(DATA_PATH), f"family_db_backup_pre_restore_{int(time.time())}.json")
+                try:
+                    with open(DATA_PATH, "r", encoding="utf-8") as f_cur, open(backup_fn, "w", encoding="utf-8") as f_bak:
+                        f_bak.write(f_cur.read())
+                except Exception:
+                    pass
+            recompute_months(restore_data)
+            save_db(restore_data)
+            self._send_json({"ok": True, "count": len(restore_data.get("transactions", []))})
             return
 
         elif parsed.path == "/api/ai/ask":
@@ -1361,6 +1598,17 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8686))
-    server = ThreadingHTTPServer(("127.0.0.1", port), FamilyAppHandler)
+    import socket
+    lan_ip = "127.0.0.1"
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        lan_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        pass
+    server = ThreadingHTTPServer(("0.0.0.0", port), FamilyAppHandler)
     print(f"Family Wealth OS 2026 running at http://localhost:{port}")
+    if lan_ip and lan_ip != "127.0.0.1":
+        print(f"  --> Truy cập từ điện thoại qua cùng WiFi: http://{lan_ip}:{port}")
     server.serve_forever()

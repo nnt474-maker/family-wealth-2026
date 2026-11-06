@@ -113,12 +113,36 @@ function appendTxRow(ss, tx) {
 }
 
 function updateTxRow(ss, tx) {
-  if (!ss || !tx || !tx.row || Number(tx.row) < 4) return null;
+  if (!ss || !tx) return null;
   try {
     const m = Number(tx.month || 10);
     const sheet = ss.getSheetByName("T" + m + " - DETAIL");
     if (!sheet) return null;
-    sheet.getRange(Number(tx.row), 2, 1, 6).setValues([[
+
+    let targetRow = Number(tx.row);
+    // If row is invalid, 0, or not found, look up by matching content and amount
+    if (!targetRow || targetRow < 4) {
+      const colC = sheet.getRange("C4:C830").getValues();
+      const colF = sheet.getRange("F4:F830").getValues();
+      const targetContent = (tx.old_content || tx.content || "").trim().toLowerCase();
+      const targetAmount = Number(tx.old_amount || tx.amount || 0);
+
+      for (let i = 0; i < colC.length; i++) {
+        const cVal = String(colC[i][0] || "").trim().toLowerCase();
+        const fVal = Number(colF[i][0] || 0);
+        if (cVal && cVal === targetContent && (!targetAmount || Math.round(fVal) === Math.round(targetAmount))) {
+          targetRow = i + 4;
+          break;
+        }
+      }
+    }
+
+    // If still not found in sheet, append it to prevent data loss
+    if (!targetRow || targetRow < 4) {
+      return appendTxRow(ss, tx);
+    }
+
+    sheet.getRange(targetRow, 2, 1, 6).setValues([[
       tx.date || new Date(),
       tx.content || "",
       CAT_MAP[tx.category] || tx.category || "Ăn uống",
@@ -126,7 +150,42 @@ function updateTxRow(ss, tx) {
       Number(tx.amount || 0),
       tx.source || "Tiền mặt / Chuyển khoản"
     ]]);
-    return Number(tx.row);
+    return targetRow;
+  } catch (e) {
+    return null;
+  }
+}
+
+function deleteTxRow(ss, tx) {
+  if (!ss || !tx) return null;
+  try {
+    const m = Number(tx.month || 10);
+    const sheet = ss.getSheetByName("T" + m + " - DETAIL");
+    if (!sheet) return null;
+
+    let targetRow = Number(tx.row);
+    if (!targetRow || targetRow < 4) {
+      const colC = sheet.getRange("C4:C830").getValues();
+      const colF = sheet.getRange("F4:F830").getValues();
+      const targetContent = (tx.content || "").trim().toLowerCase();
+      const targetAmount = Number(tx.amount || 0);
+
+      for (let i = 0; i < colC.length; i++) {
+        const cVal = String(colC[i][0] || "").trim().toLowerCase();
+        const fVal = Number(colF[i][0] || 0);
+        if (cVal && cVal === targetContent && (!targetAmount || Math.round(fVal) === Math.round(targetAmount))) {
+          targetRow = i + 4;
+          break;
+        }
+      }
+    }
+
+    if (targetRow >= 4) {
+      // Clear data cells in columns B:G (Row 4..830) to preserve formulas in Col H+
+      sheet.getRange(targetRow, 2, 1, 6).clearContent();
+      return targetRow;
+    }
+    return null;
   } catch (e) {
     return null;
   }
@@ -211,6 +270,8 @@ function doPost(e) {
     const ss = getTargetSpreadsheet();
     if (payload.action === "edit_tx" && payload.transaction) {
       updateTxRow(ss, payload.transaction);
+    } else if (payload.action === "delete_tx") {
+      deleteTxRow(ss, payload.transaction || payload);
     } else if (payload.transaction) {
       appendTxRow(ss, payload.transaction);
     } else if (payload.content && payload.amount) {

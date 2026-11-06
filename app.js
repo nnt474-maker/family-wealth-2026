@@ -33,7 +33,9 @@ function showToast(message, type = "success", durationMs = 2800) {
   if (!container) return;
   const el = document.createElement("div");
   el.className = `toast-item ${type}`;
-  el.innerHTML = `<span>${message}</span>`;
+  const span = document.createElement("span");
+  span.textContent = String(message ?? "");
+  el.appendChild(span);
   container.appendChild(el);
   setTimeout(() => {
     el.style.opacity = "0";
@@ -368,16 +370,61 @@ function appendTxRow(ss, tx) {
 }
 
 function updateTxRow(ss, tx) {
-  if (!ss || !tx || !tx.row || Number(tx.row) < 4) return null;
+  if (!ss || !tx) return null;
   try {
     const m = Number(tx.month || 10);
     const sheet = ss.getSheetByName("T" + m + " - DETAIL");
     if (!sheet) return null;
-    sheet.getRange(Number(tx.row), 2, 1, 6).setValues([[
+    let targetRow = Number(tx.row);
+    if (!targetRow || targetRow < 4) {
+      const colC = sheet.getRange("C4:C830").getValues();
+      const colF = sheet.getRange("F4:F830").getValues();
+      const targetContent = (tx.old_content || tx.content || "").trim().toLowerCase();
+      const targetAmount = Number(tx.old_amount || tx.amount || 0);
+      for (let i = 0; i < colC.length; i++) {
+        const cVal = String(colC[i][0] || "").trim().toLowerCase();
+        const fVal = Number(colF[i][0] || 0);
+        if (cVal && cVal === targetContent && (!targetAmount || Math.round(fVal) === Math.round(targetAmount))) {
+          targetRow = i + 4;
+          break;
+        }
+      }
+    }
+    if (!targetRow || targetRow < 4) return appendTxRow(ss, tx);
+    sheet.getRange(targetRow, 2, 1, 6).setValues([[
       tx.date || new Date(), tx.content || "", CAT_MAP[tx.category] || tx.category || "Ăn uống",
       PERSON_MAP[tx.person] || tx.person || "Chung", Number(tx.amount || 0), tx.source || "Tiền mặt / Chuyển khoản"
     ]]);
-    return Number(tx.row);
+    return targetRow;
+  } catch (e) { return null; }
+}
+
+function deleteTxRow(ss, tx) {
+  if (!ss || !tx) return null;
+  try {
+    const m = Number(tx.month || 10);
+    const sheet = ss.getSheetByName("T" + m + " - DETAIL");
+    if (!sheet) return null;
+    let targetRow = Number(tx.row);
+    if (!targetRow || targetRow < 4) {
+      const colC = sheet.getRange("C4:C830").getValues();
+      const colF = sheet.getRange("F4:F830").getValues();
+      const targetContent = (tx.content || "").trim().toLowerCase();
+      const targetAmount = Number(tx.amount || 0);
+      for (let i = 0; i < colC.length; i++) {
+        const cVal = String(colC[i][0] || "").trim().toLowerCase();
+        const fVal = Number(colF[i][0] || 0);
+        if (cVal && cVal === targetContent && (!targetAmount || Math.round(fVal) === Math.round(targetAmount))) {
+          targetRow = i + 4;
+          break;
+        }
+      }
+    }
+    if (targetRow >= 4) {
+      sheet.getRange(targetRow, 2, 1, 6).clearContent();
+      return targetRow;
+    }
+    return null;
   } catch (e) { return null; }
 }
 
@@ -446,6 +493,7 @@ function doPost(e) {
     const payload = JSON.parse((e && e.postData && e.postData.contents) ? e.postData.contents : "{}");
     const ss = getTargetSpreadsheet();
     if (payload.action === "edit_tx" && payload.transaction) updateTxRow(ss, payload.transaction);
+    else if (payload.action === "delete_tx") deleteTxRow(ss, payload.transaction || payload);
     else if (payload.transaction) appendTxRow(ss, payload.transaction);
     else if (payload.content && payload.amount) appendTxRow(ss, payload);
     if (payload.transactions && Array.isArray(payload.transactions)) payload.transactions.forEach(function(t) { appendTxRow(ss, t); });
@@ -569,12 +617,16 @@ function getFamilyPin() {
 }
 
 function checkPinLockOnStartup() {
-  const isLocked = localStorage.getItem(STORAGE_LOCKED_KEY) === "true";
   const overlay = document.getElementById("pin-lock-overlay");
   if (!overlay) return;
-  if (!isLocked) {
+  const unlockUntil = Number(localStorage.getItem(STORAGE_UNLOCK_KEY) || 0);
+  const isExplicitlyLocked = localStorage.getItem(STORAGE_LOCKED_KEY) === "true";
+  const hasValidToken = unlockUntil > Date.now();
+
+  if (hasValidToken && !isExplicitlyLocked) {
     overlay.style.display = "none";
   } else {
+    localStorage.setItem(STORAGE_LOCKED_KEY, "true");
     enteredPin = "";
     updatePinDotsUI();
     overlay.style.display = "flex";
@@ -700,7 +752,7 @@ function classifyTransactionTextJS(text) {
   let explicitPerson = null;
   if (/(?:^|\s)(subo|sn bo|đón bo)(?:\s|$)/i.test(tLow)) explicitPerson = "Subo";
   else if (/(?:^|\s)(sugi)(?:\s|$)/i.test(tLow)) explicitPerson = "Sugi";
-  else if (/(?:^|\s)(ck|chồng)(?:\s|$)/i.test(tLow)) explicitPerson = "Chồng";
+  else if (/(?:^|\s)(chồng)(?:\s|$)/i.test(tLow)) explicitPerson = "Chồng";
   else if (/(?:^|\s)(vk|vợ)(?:\s|$)/i.test(tLow)) explicitPerson = "Vợ";
 
   for (const [kwList, ruleCat, rulePerson] of KEYWORD_RULES_JS) {
@@ -799,7 +851,7 @@ function parseQuickInputJS(rawText, defaultMonth = 10) {
     { re: /(?:^|[\s,.;])(bidv)(?=$|[\s,.;])/i, name: "BIDV" },
     { re: /(?:^|[\s,.;])(ncb|quốc\s*dân|quoc\s*dan|izimobile)(?=$|[\s,.;])/i, name: "NCB" },
     { re: /(?:^|[\s,.;])(uob)(?=$|[\s,.;])/i, name: "UOB" },
-    { re: /(?:^|[\s,.;])(chuyển\s*khoản|chuyen\s*khoan)(?=$|[\s,.;])/i, name: "Chuyển khoản" },
+    { re: /(?:^|[\s,.;])(chuyển\s*khoản|chuyen\s*khoan|\bck\b)(?=$|[\s,.;])/i, name: "Chuyển khoản" },
     { re: /(?:^|[\s,.;])(tiền\s*mặt|tien\s*mat|\btm\b)(?=$|[\s,.;])/i, name: "Tiền mặt" }
   ];
 
@@ -821,10 +873,12 @@ function parseQuickInputJS(rawText, defaultMonth = 10) {
     // Keep the full itemized description when multiple prices are written
     cleanDesc = originalText;
   } else {
-    const mTr = text.match(/(\d+(?:[.,]\d+)?)\s*(?:tr|triệu|trieu|củ)(?:\s*(\d{1,3}))?/i);
+    // D1 fix: separate decimal base and bounded tail with \b and lookahead
+    const mTr = text.match(/(\d+[.,]\d+)\s*(?:tr|triệu|trieu|củ)|(\d+)\s*(?:tr|triệu|trieu|củ)(?:\s*(\d{1,3})\b(?!\s*[\/\-]\s*\d))?/i);
     if (mTr) {
-      const base = parseFloat(mTr[1].replace(",", "."));
-      const tail = mTr[2];
+      const baseS = mTr[1] || mTr[2];
+      const base = parseFloat(baseS.replace(",", "."));
+      const tail = mTr[2] ? mTr[3] : null;
       amount = base * 1000000 + (tail ? parseFloat(tail) * Math.pow(10, 6 - tail.length) : 0);
       cleanDesc = (text.slice(0, mTr.index) + " " + text.slice(mTr.index + mTr[0].length)).trim();
     } else if (allKMatches.length === 1) {
@@ -842,7 +896,7 @@ function parseQuickInputJS(rawText, defaultMonth = 10) {
 
   // Remove only standalone trailing bank code tokens (KHÔNG xóa chữ shopee vì shopee là nơi mua sắm)
   cleanDesc = cleanDesc
-    .replace(/(?:^|\s+)(vpbank\s*shopee|vp\s*shopee|thẻ\s*vp\s*shopee|the\s*vp\s*shopee|thẻ\s*shopee|the\s*shopee|thẻ\s*vpsp|the\s*vpsp|vpsp|vp\s*sp|vpbank\s*step\s*up|vp\s*step\s*up|thẻ\s*step\s*up|the\s*step\s*up|step\s*up|stepup|vpbank|\bvp\b|bidv|ncb|uob|tiền\s*mặt|chuyển\s*khoản|\btm\b)(?=$|\s+)/gi, " ")
+    .replace(/(?:^|\s+)(vpbank\s*shopee|vp\s*shopee|thẻ\s*vp\s*shopee|the\s*vp\s*shopee|thẻ\s*shopee|the\s*shopee|thẻ\s*vpsp|the\s*vpsp|vpsp|vp\s*sp|vpbank\s*step\s*up|vp\s*step\s*up|thẻ\s*step\s*up|the\s*step\s*up|step\s*up|stepup|vpbank|\bvp\b|bidv|ncb|uob|tiền\s*mặt|chuyển\s*khoản|chuyen\s*khoan|\bck\b|\btm\b)(?=$|\s+)/gi, " ")
     .replace(/\s*,\s*/g, ", ")
     .replace(/\s{2,}/g, " ")
     .replace(/^[\s\-,.|]+|[\s\-,.|]+$/g, "")
@@ -1000,15 +1054,32 @@ function parseBankEmailsJS(rawEmailText) {
     }
 
     const now = new Date();
-    let dateStr = `2026-10-${String(now.getDate()).padStart(2, "0")}`; // taste-skill-ignore
-    let monthNum = 10;
-    const mDt = block.match(/(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?/);
-    if (mDt) {
-      const dI = parseInt(mDt[1], 10);
-      const mI = parseInt(mDt[2], 10);
+    let monthNum = now.getMonth() + 1;
+    let dateStr = defaultDateForMonth(monthNum);
+
+    // 1. Check ISO format (e.g. "2026-11-05 14:30:00" or "2026/11/05")
+    const mIso = block.match(/(?<!\d)(20\d\d)[/-](\d{1,2})[/-](\d{1,2})(?!\d)/);
+    if (mIso) {
+      const mI = parseInt(mIso[2], 10);
+      const dI = parseInt(mIso[3], 10);
       if (dI >= 1 && dI <= 31 && mI >= 1 && mI <= 12) {
         monthNum = mI;
-        dateStr = `2026-${String(mI).padStart(2, "0")}-${String(dI).padStart(2, "0")}`; // taste-skill-ignore
+        const maxD = daysInMonth2026(mI);
+        const clampedD = Math.min(dI, maxD);
+        dateStr = `2026-${String(mI).padStart(2, "0")}-${String(clampedD).padStart(2, "0")}`; // taste-skill-ignore
+      }
+    } else {
+      // 2. Check standard Vietnamese DD/MM or DD/MM/YYYY format
+      const mDt = block.match(/(?<!\d)(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?(?!\d)/);
+      if (mDt) {
+        const dI = parseInt(mDt[1], 10);
+        const mI = parseInt(mDt[2], 10);
+        if (dI >= 1 && dI <= 31 && mI >= 1 && mI <= 12) {
+          monthNum = mI;
+          const maxD = daysInMonth2026(mI);
+          const clampedD = Math.min(dI, maxD);
+          dateStr = `2026-${String(mI).padStart(2, "0")}-${String(clampedD).padStart(2, "0")}`; // taste-skill-ignore
+        }
       }
     }
 
@@ -1211,9 +1282,9 @@ function answerFamilyQuestionJS(question, db) {
 
     return [
       "###  Phân Tích Chi Phí Của 2 Bé: SUBO & SUGI (10 Tháng 2026)\n",
-      `- **Tổng chi cho SUBO**: **${fmtVND(suboTot)}** *(Trung bình **${fmtVND(suboTot / 10)}/tháng**, chiếm **${((suboTot / totalExpYtd) * 100).toFixed(1)}%** tổng chi gia đình)*`,
+      `- **Tổng chi cho SUBO**: **${fmtVND(suboTot)}** *(Trung bình **${fmtVND(suboTot / 10)}/tháng**, chiếm **${totalExpYtd > 0 ? ((suboTot / totalExpYtd) * 100).toFixed(1) : "0.0"}%** tổng chi gia đình)*`,
       `  - Trong đó: Học tập **${fmtVND(sumCat(suboTxs, "Học tập"))}** • Vui chơi **${fmtVND(sumCat(suboTxs, "Vui chơi"))}** • Làm đẹp/Quần áo **${fmtVND(sumCat(suboTxs, "Làm đẹp"))}** • Y tế **${fmtVND(sumCat(suboTxs, "Y tế"))}**.`,
-      `- **Tổng chi cho SUGI**: **${fmtVND(sugiTot)}** *(Trung bình **${fmtVND(sugiTot / 10)}/tháng**, chiếm **${((sugiTot / totalExpYtd) * 100).toFixed(1)}%** tổng chi gia đình)*`,
+      `- **Tổng chi cho SUGI**: **${fmtVND(sugiTot)}** *(Trung bình **${fmtVND(sugiTot / 10)}/tháng**, chiếm **${totalExpYtd > 0 ? ((sugiTot / totalExpYtd) * 100).toFixed(1) : "0.0"}%** tổng chi gia đình)*`,
       `  - Trong đó: Đồ dùng/Bỉm sữa **${fmtVND(sumCat(sugiTxs, "Đồ dùng GĐ"))}** • Y tế/Tiêm chủng **${fmtVND(sumCat(sugiTxs, "Y tế"))}** • Làm đẹp/Quần áo **${fmtVND(sumCat(sugiTxs, "Làm đẹp"))}**.`,
       `- **Quỹ riêng của con**: Quỹ Mừng Tuổi (**17,160,000 đ**) + Quỹ Mừng Sinh Sugi (**24,200,000 đ**) = **41,360,000 đ**.`
     ].join("\n");
@@ -1224,7 +1295,7 @@ function answerFamilyQuestionJS(question, db) {
     const foodTot = foodTxs.reduce((s, t) => s + t.amount, 0);
     return [
       "###  Phân Tích Chi Tiêu Ăn Uống Gia Đình (T1 – T10/2026)\n",
-      `- **Tổng chi Ăn uống 10 tháng**: **${fmtVND(foodTot)}** trên tổng **${foodTxs.length} giao dịch** (chiếm **${((foodTot / totalExpYtd) * 100).toFixed(1)}%** tổng chi tiêu gia đình).`,
+      `- **Tổng chi Ăn uống 10 tháng**: **${fmtVND(foodTot)}** trên tổng **${foodTxs.length} giao dịch** (chiếm **${totalExpYtd > 0 ? ((foodTot / totalExpYtd) * 100).toFixed(1) : "0.0"}%** tổng chi tiêu gia đình).`,
       `- **Trung bình mỗi tháng**: **${fmtVND(foodTot / 10)}/tháng**`,
       `- **Trung bình mỗi ngày**: **~${fmtVND(foodTot / 295)}/ngày**`,
       "- **Tháng chi Ăn uống cao nhất**: **Tháng 9** (`22,030,000 đ`) và **Tháng 8** (`20,638,000 đ`).",
@@ -1286,11 +1357,13 @@ function answerFamilyQuestionJS(question, db) {
     "**Top 5 Hạng Mục Chi Tiêu Lớn Nhất Năm 2026:**"
   ];
   topCatsAll.slice(0, 5).forEach(([cName, cVal]) => {
-    lines.push(`- **${cName}**: **${fmtVND(cVal)}** (${((cVal / totalExpYtd) * 100).toFixed(1)}%)`);
+    const pct = totalExpYtd > 0 ? ((cVal / totalExpYtd) * 100).toFixed(1) : "0.0";
+    lines.push(`- **${cName}**: **${fmtVND(cVal)}** (${pct}%)`);
   });
   lines.push("\n**Chi Tiêu Theo Thành Viên (10 Tháng):**");
   Object.entries(byPersonAll).sort((a, b) => b[1] - a[1]).forEach(([pName, pVal]) => {
-    lines.push(`- **${pName}**: **${fmtVND(pVal)}** (${((pVal / totalExpYtd) * 100).toFixed(1)}%)`);
+    const pct = totalExpYtd > 0 ? ((pVal / totalExpYtd) * 100).toFixed(1) : "0.0";
+    lines.push(`- **${pName}**: **${fmtVND(pVal)}** (${pct}%)`);
   });
   lines.push("\n *Bạn có thể hỏi cụ thể hơn như: \"Tháng 10 tiêu gì nhiều nhất?\", \"So sánh chi phí Subo và Sugi\", \"Danh mục DCA 3 quỹ hiện lời bao nhiêu?\", hoặc \"Khi nào trả hết nợ thuế?\"*");
   return lines.join("\n");
@@ -1416,8 +1489,9 @@ function addProcessedEmailSig(sig) {
 function makeEmailItemSignature(item) {
   const m = Number(item.month || 10);
   const amt = Math.round(Number(item.amount || 0));
+  const dt = (item.date || "").trim();
   const rawKey = foldVN(item.raw_content || item.content || "").replace(/[^a-z0-9]/g, "").slice(0, 24);
-  return `M${m}-A${amt}-${rawKey}`;
+  return `D${dt}-M${m}-A${amt}-${rawKey}`;
 }
 
 function isEmailItemAlreadyAdded(item) {
@@ -1427,6 +1501,7 @@ function isEmailItemAlreadyAdded(item) {
 
   const amt = Math.round(Number(item.amount || 0));
   const m = Number(item.month || 10);
+  const itemDate = (item.date || "").trim();
   const itemWords = foldVN(`${item.content || ""} ${item.raw_content || ""}`)
     .split(/\s+/)
     .filter(w => w.length >= 3 && !["thanh", "toan", "chuyen", "khoan", "mua", "tai", "cho", "vnd"].includes(w));
@@ -1434,9 +1509,11 @@ function isEmailItemAlreadyAdded(item) {
   return DB.transactions.some(tx => {
     if (Number(tx.month) !== m) return false;
     if (Math.round(Number(tx.amount)) !== amt) return false;
+    // D6 fix: If both have dates and dates differ, legitimate recurring expense on different days
+    if (itemDate && tx.date && itemDate !== String(tx.date).trim()) return false;
     const txFold = foldVN(tx.content || "");
     if (txFold === foldVN(item.content || "") || txFold === foldVN(item.raw_content || "")) return true;
-    // If same month + exact same amount + shares at least 1 meaningful keyword (e.g. "coopmart", "sugi", "petrolimex", "shopee", "long chau")
+    // If same month + same date + exact same amount + shares at least 1 meaningful keyword (e.g. "coopmart", "sugi", "petrolimex", "shopee", "long chau")
     if (itemWords.length > 0 && itemWords.some(w => txFold.includes(w))) return true;
     return false;
   });
@@ -1483,7 +1560,13 @@ function ensureT10EtfAndDeduplicateDB(db) {
 }
 
 function getGeminiApiKey() {
-  return (localStorage.getItem(STORAGE_GEMINI_KEY) || (DB && DB.meta && DB.meta.gemini_api_key) || "").trim();
+  const localKey = (localStorage.getItem(STORAGE_GEMINI_KEY) || "").trim();
+  if (localKey && localKey !== "(server-configured)") return localKey;
+  if (DB && DB.meta) {
+    if (DB.meta.gemini_api_key && DB.meta.gemini_api_key !== "(server-configured)") return DB.meta.gemini_api_key.trim();
+    if (DB.meta.has_gemini_api_key) return "(server-configured)";
+  }
+  return "";
 }
 
 function getAIProviderName(key) {
@@ -1531,10 +1614,16 @@ function buildCompactCloudState() {
   const customTxs = (DB.transactions || []).filter(t => t.is_cloud_added || Number((t.id || "").split("-")[1]) > 888);
   const editedTxs = (DB.transactions || []).filter(t => t.is_cloud_edited && !t.is_cloud_added);
   const deletedIds = DB.meta.deleted_tx_ids || [];
+
+  let keyToSync = (localStorage.getItem(STORAGE_GEMINI_KEY) || (DB && DB.meta && DB.meta.gemini_api_key) || "").trim();
+  if (keyToSync === "(server-configured)") {
+    keyToSync = "";
+  }
+
   return {
     updated_at: new Date().toISOString(),
     family_pin: getFamilyPin(),
-    gemini_api_key: getGeminiApiKey(),
+    gemini_api_key: keyToSync,
     ai_model: getAISelectedModel(),
     ai_base_url: getAIBaseUrl(),
     processed_email_sigs: getProcessedEmailSigs(),
@@ -1580,9 +1669,12 @@ function applyCompactCloudState(cloudState) {
     saveFamilyMailboxes(cloudState.mailboxes);
   }
   if (Array.isArray(cloudState.deleted_tx_ids)) {
-    DB.meta.deleted_tx_ids = cloudState.deleted_tx_ids;
-    const delSet = new Set(cloudState.deleted_tx_ids);
-    DB.transactions = DB.transactions.filter(t => !delSet.has(t.id));
+    const incomingDel = Array.isArray(cloudState.deleted_tx_ids) ? cloudState.deleted_tx_ids : [];
+    const existingDel = (DB.meta && Array.isArray(DB.meta.deleted_tx_ids)) ? DB.meta.deleted_tx_ids : [];
+    const delSet = new Set([...existingDel, ...incomingDel]);
+    if (!DB.meta) DB.meta = {};
+    DB.meta.deleted_tx_ids = Array.from(delSet);
+    DB.transactions = (DB.transactions || []).filter(t => !delSet.has(t.id));
   }
   if (Array.isArray(cloudState.edited_transactions)) {
     cloudState.edited_transactions.forEach(ed => {
@@ -1593,16 +1685,31 @@ function applyCompactCloudState(cloudState) {
     });
   }
   if (Array.isArray(cloudState.custom_transactions)) {
-    const existingMap = new Map(DB.transactions.map((t, i) => [t.id, i]));
-    for (let i = cloudState.custom_transactions.length - 1; i >= 0; i--) {
-      const tx = cloudState.custom_transactions[i];
-      if (existingMap.has(tx.id)) {
-        const idx = existingMap.get(tx.id);
-        DB.transactions[idx] = { ...DB.transactions[idx], ...tx };
+    const existingDel = (DB.meta && Array.isArray(DB.meta.deleted_tx_ids)) ? DB.meta.deleted_tx_ids : [];
+    const delSet = new Set(existingDel);
+    const existingTxMap = new Map();
+    (DB.transactions || []).forEach(t => {
+      if (t && t.id) existingTxMap.set(t.id, t);
+    });
+
+    const newTransactions = [];
+    for (const tx of cloudState.custom_transactions) {
+      if (!tx || !tx.id || delSet.has(tx.id)) continue;
+      if (existingTxMap.has(tx.id)) {
+        // Update existing transaction in-place via reference (zero index shifting)
+        const target = existingTxMap.get(tx.id);
+        Object.assign(target, tx);
       } else {
-        DB.transactions.unshift(tx);
-        existingMap.set(tx.id, 0);
+        // Collect new transaction
+        const newObj = { ...tx, is_cloud_added: true };
+        newTransactions.push(newObj);
+        existingTxMap.set(tx.id, newObj);
       }
+    }
+
+    if (newTransactions.length > 0) {
+      // Prepend all new transactions in original order to the front of the array
+      DB.transactions.unshift(...newTransactions);
     }
   }
   if (Array.isArray(cloudState.months_income)) {
@@ -1891,7 +1998,7 @@ async function pullFromGoogleSheetCloud(silent = true) {
 
 async function initApp() {
   // Tự động kiểm tra phiên bản & thanh tẩy cache cũ trên máy đã cài PWA
-  const APP_BUILD_TAG = "v7.0.0-family-wealth-taste-2026";
+  const APP_BUILD_TAG = "v7.6.0-family-wealth-mobile-sync-2026";
   if (localStorage.getItem("FAMILY_BUILD_TAG") !== APP_BUILD_TAG) {
     localStorage.setItem("FAMILY_BUILD_TAG", APP_BUILD_TAG);
     if ("caches" in window) {
@@ -1901,7 +2008,7 @@ async function initApp() {
 
   // Register PWA Service Worker với cơ chế Network-First
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("./sw.js?v=7.0.0").then(reg => {
+    navigator.serviceWorker.register("./sw.js?v=7.6.0").then(reg => {
       reg.addEventListener("updatefound", () => {
         const newWorker = reg.installing;
         if (newWorker) {
@@ -1916,16 +2023,40 @@ async function initApp() {
     }).catch(() => {});
   }
 
-  // Check if URL has ?cloud=https://script.google.com/... auto-configuration link for spouse
+  // Parse configuration from URL params (supports ?cloud=... ?pin=... ?ai_key=... ?ai_model=... for instant phone sync)
   const params = new URLSearchParams(window.location.search);
-  const cloudParam = params.get("cloud");
+  const cloudParam = params.get("cloud") || params.get("cloud_url");
   if (cloudParam && cloudParam.startsWith("https://script.google.com/")) {
     localStorage.setItem(STORAGE_CLOUD_URL_KEY, cloudParam.trim());
-    window.history.replaceState({}, document.title, window.location.pathname);
   }
   const pinParam = params.get("pin");
   if (pinParam && /^\d{4}$/.test(pinParam)) {
     localStorage.setItem(STORAGE_PIN_KEY, pinParam);
+  }
+  const aiKeyParam = params.get("ai_key") || params.get("gemini_api_key") || params.get("key");
+  let hasImportedAiKey = false;
+  if (aiKeyParam && aiKeyParam.trim()) {
+    let cleanKey = aiKeyParam.trim();
+    if (cleanKey.startsWith("b64:")) {
+      try { cleanKey = atob(decodeURIComponent(cleanKey.slice(4))); } catch (e) {}
+    }
+    if (cleanKey) {
+      localStorage.setItem(STORAGE_GEMINI_KEY, cleanKey);
+      hasImportedAiKey = true;
+    }
+  }
+  const aiModelParam = params.get("ai_model") || params.get("model");
+  if (aiModelParam && aiModelParam.trim()) {
+    const normM = normalizeClaudeModelName(aiModelParam.trim());
+    localStorage.setItem(STORAGE_AI_MODEL_KEY, normM);
+  }
+
+  // Only clean URL query string if already running in standalone PWA mode.
+  // In normal mobile browser mode, preserve parameters so that if the user taps "Add to Home Screen"
+  // on iOS Safari, iOS captures the URL with parameters intact!
+  const isStandalone = (window.navigator.standalone === true) || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  if (isStandalone && window.location.search) {
+    try { window.history.replaceState({}, document.title, window.location.pathname); } catch (e) {}
   }
 
   // 1. Try dynamic Local Server (/api/data) FIRST so Web & Local App share real-time DB,
@@ -1938,6 +2069,25 @@ async function initApp() {
       isLocalServerConnected = true;
     }
   } catch (e) {}
+
+  // Hydrate Claude AI credentials from Local Server if available
+  if (isLocalServerConnected) {
+    try {
+      const credRes = await fetch("/api/ai/credentials", { cache: "no-store" });
+      if (credRes.ok) {
+        const cred = await credRes.json();
+        if (cred && cred.ok && cred.gemini_api_key) {
+          localStorage.setItem(STORAGE_GEMINI_KEY, cred.gemini_api_key);
+          if (cred.ai_model) localStorage.setItem(STORAGE_AI_MODEL_KEY, cred.ai_model);
+          if (cred.ai_base_url) localStorage.setItem(STORAGE_AI_BASE_URL_KEY, cred.ai_base_url);
+          if (baseDb && baseDb.meta) {
+            baseDb.meta.gemini_api_key = cred.gemini_api_key;
+            if (cred.ai_model) baseDb.meta.ai_model = cred.ai_model;
+          }
+        }
+      }
+    } catch (e) {}
+  }
 
   if (!baseDb) {
     try {
@@ -1967,8 +2117,19 @@ async function initApp() {
     if (DB.meta.cloud_script_url && !localStorage.getItem(STORAGE_CLOUD_URL_KEY)) {
       localStorage.setItem(STORAGE_CLOUD_URL_KEY, DB.meta.cloud_script_url);
     }
-    if (DB.meta.gemini_api_key && (!localStorage.getItem(STORAGE_GEMINI_KEY) || DB.meta.gemini_api_key.startsWith("sk-ant-"))) {
+    const localSavedKey = localStorage.getItem(STORAGE_GEMINI_KEY);
+    if (localSavedKey && localSavedKey !== "(server-configured)") {
+      DB.meta.gemini_api_key = localSavedKey;
+    } else if (DB.meta.gemini_api_key && DB.meta.gemini_api_key !== "(server-configured)") {
       localStorage.setItem(STORAGE_GEMINI_KEY, DB.meta.gemini_api_key);
+    } else if (DB.meta.ai_key_encoded) {
+      try {
+        const decodedKey = atob(DB.meta.ai_key_encoded).trim();
+        if (decodedKey) {
+          localStorage.setItem(STORAGE_GEMINI_KEY, decodedKey);
+          DB.meta.gemini_api_key = decodedKey;
+        }
+      } catch (e) {}
     }
     if (DB.meta.ai_model || (DB.meta.gemini_api_key && DB.meta.gemini_api_key.startsWith("sk-ant-"))) {
       const activeModel = DB.meta.gemini_api_key && DB.meta.gemini_api_key.startsWith("sk-ant-")
@@ -2360,7 +2521,7 @@ function renderInteractiveQuickPreview(p) {
   bar.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%;">
       <span style="color:var(--accent);font-weight:700;">Sửa Chỉnh trước khi lưu:</span>
-      <input type="text" id="qp-content" class="input-control" style="padding:4px 9px;font-size:13px;min-width:140px;flex:1;" value="${(p.content || "").replace(/"/g, '&quot;')}" oninput="if(currentQuickParsed) currentQuickParsed.content=this.value" title="Nội dung chi tiêu" />
+      <input type="text" id="qp-content" class="input-control" style="padding:4px 9px;font-size:13px;min-width:140px;flex:1;" value="${escapeHtml(p.content || '')}" oninput="if(currentQuickParsed) currentQuickParsed.content=this.value" title="Nội dung chi tiêu" />
       <input type="number" id="qp-amount" class="input-control" style="padding:4px 9px;font-size:13px;width:110px;color:var(--positive);font-weight:700;" value="${p.amount || 0}" oninput="if(currentQuickParsed) currentQuickParsed.amount=Number(this.value)" title="Số tiền (VNĐ)" />
       <input type="date" id="qp-date" class="input-control" style="padding:4px 7px;font-size:13px;width:128px;" value="${p.date || defaultDateForMonth(p.month || activeInputMonth())}" onchange="if(currentQuickParsed){currentQuickParsed.date=this.value;const m=Number(this.value.split('-')[1]);if(m>=1&&m<=12)currentQuickParsed.month=m;}" title="Ngày giao dịch" />
       <select id="qp-category" class="input-control" style="padding:4px 8px;font-size:13px;" onchange="if(currentQuickParsed) currentQuickParsed.category=this.value">
@@ -2421,11 +2582,15 @@ async function addTransactionToState(payload) {
   renderAll();
   showToast(` Đã lưu "${tx.content}" (${fmtShortVND(tx.amount)}) vào Tháng ${finalMonth}!`, "success");
 
-  await fetch("/api/transactions", {
+  const res = await fetch("/api/transactions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(tx)
-  }).catch(() => {});
+  }).then(r => r.json()).catch(() => null);
+
+  if (res && res.excel_synced === false) {
+    showToast(`⚠️ Đã lưu vào CSDL nhưng file Excel đang mở. Hãy đóng Excel để ghi vào sổ cái!`, "warn", 5000);
+  }
 
   await persistAndSync({ action: "add_tx", transaction: tx });
   return tx;
@@ -2478,7 +2643,7 @@ async function submitQuickAdd() {
   document.getElementById("quick-preview-bar").innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%;">
       <span style="color:var(--positive);font-weight:700;"> Đã lưu T${tx.month} (Sửa nhanh nếu cần):</span>
-      <input type="text" class="input-control" style="padding:3px 8px;font-size:13px;min-width:130px;" value="${String(tx.content).replace(/"/g, '&quot;')}" onchange="inlineUpdateTx('${tx.id}', 'content', this.value)" />
+      <input type="text" class="input-control" style="padding:3px 8px;font-size:13px;min-width:130px;" value="${escapeHtml(tx.content || '')}" onchange="inlineUpdateTx('${tx.id}', 'content', this.value)" />
       <input type="number" class="input-control" style="padding:3px 8px;font-size:13px;width:105px;color:var(--positive);font-weight:700;" value="${tx.amount}" onchange="inlineUpdateTx('${tx.id}', 'amount', Number(this.value))" />
       <select class="input-control" style="padding:3px 7px;font-size:13px;" onchange="inlineUpdateTx('${tx.id}', 'category', this.value)">
         ${cats.map(c => `<option value="${c}" ${c === tx.category ? 'selected' : ''}>${c}</option>`).join("")}
@@ -3090,41 +3255,80 @@ Hãy viết bản tư vấn chiến lược tài chính rõ ràng, sắc bén, �
   }
 }
 
+const STORAGE_DISMISSED_WARNINGS_KEY = "FAMILY_DISMISSED_WARNINGS_2026";
+
+function getDismissedWarningIds() {
+  try {
+    const raw = localStorage.getItem(STORAGE_DISMISSED_WARNINGS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function dismissEarlyWarning(warnId) {
+  const dismissed = getDismissedWarningIds();
+  if (!dismissed.includes(warnId)) {
+    dismissed.push(warnId);
+    try {
+      localStorage.setItem(STORAGE_DISMISSED_WARNINGS_KEY, JSON.stringify(dismissed));
+    } catch (e) {}
+  }
+  renderEarlyWarnings();
+  showToast("🗑️ Đã xóa cảnh báo này khỏi màn hình!", "info");
+}
+
+function restoreAllEarlyWarnings() {
+  try {
+    localStorage.removeItem(STORAGE_DISMISSED_WARNINGS_KEY);
+  } catch (e) {}
+  renderEarlyWarnings();
+  showToast("🔄 Đã khôi phục hiển thị tất cả cảnh báo!", "success");
+}
+
 function renderEarlyWarnings() {
   const m10 = DB.months.find(m => m.month === 10);
   const m9 = DB.months.find(m => m.month === 9);
-  const warnings = [
+  const allWarnings = [
     {
+      id: "warn_etf_t10",
       type: "success",
-      icon: "",
+      icon: "🎉",
       title: "Đã khớp đủ 100% lệnh mua ETF & Quỹ Mở Tháng 10/2026 (12,000,000 đ)!",
       desc: `Đã giải ngân định kỳ Tháng 10: 3.6tr FUEVFVND • 3.0tr DCDS • 5.4tr VESAF (+ 4.0tr vào Quỹ Bắt Đáy). Tổng vốn gốc DCA 10 tháng đạt ${fmtVND(DB.investment.holdings.reduce((s,h)=>s+h.invested,0))}.`
     },
     {
+      id: "warn_phone_vk",
       type: "success",
-      icon: "",
+      icon: "📱",
       title: "Tin vui: Vợ đã tất toán 100% khoản trả góp Điện thoại (35,490,000 đ)!",
       desc: "Kỳ Tháng 10/2026 (2,490,000 đ) là kỳ cuối cùng trong 12 kỳ. Từ Tháng 11/2026, ngân sách cố định hàng tháng giảm được 3,000,000 đ."
     },
     {
+      id: "warn_cloud_sync",
       type: "success",
-      icon: "",
+      icon: "☁️",
       title: "Đồng bộ Cloud & Email nnt472@gmail.com hoạt động 24/7!",
       desc: "Link Apps Script trên Google Sheet của nnt472@gmail.com vừa đồng bộ Bảng thu chi 2 chiều, vừa quét luôn thông báo ngân hàng trong Gmail nnt472@gmail.com (có chống trùng lặp tự động)."
     },
     {
+      id: "warn_excel_leak",
       type: "danger",
-      icon: "",
+      icon: "🔍",
       title: "Phát hiện & Đã vá 945,000 đ chi tiêu bị lọt sổ trong Excel cũ",
       desc: "Tháng 1 bị sót 2 đơn Shopee (515,000 đ) do quên điền Hạng mục; Tháng 4 bị sót khoản 'học bơi' (430,000 đ) do quên điền Phân loại. App đã tự động khôi phục!"
     },
     {
+      id: "warn_t9_budget",
       type: "warn",
-      icon: "",
+      icon: "⚠️",
       title: "Cảnh báo từ Tháng 9: Chi tiêu thực tế vượt 25.1% hạn mức 70%",
-      desc: `Tháng 9 tiêu ${fmtVND(m9.actual_total_expense)} / hạn mức ${fmtVND(m9.target_expense)} (do phát sinh sửa xe 12.6tr & học phí đầu năm của Subo 22.8tr). Tháng 10 đã quay lại quỹ đạo an toàn (${fmtVND(m10.actual_total_expense)}).`
+      desc: `Tháng 9 tiêu ${fmtVND(m9 ? m9.actual_total_expense : 0)} / hạn mức ${fmtVND(m9 ? m9.target_expense : 0)} (do phát sinh sửa xe 12.6tr & học phí đầu năm của Subo 22.8tr). Tháng 10 đã quay lại quỹ đạo an toàn (${fmtVND(m10 ? m10.actual_total_expense : 0)}).`
     }
   ];
+
+  const dismissedIds = getDismissedWarningIds();
+  const warnings = allWarnings.filter(w => !dismissedIds.includes(w.id));
 
   const collapsed = isEarlyWarningsCollapsed();
   const btn = document.getElementById("btn-toggle-warnings");
@@ -3139,29 +3343,68 @@ function renderEarlyWarnings() {
     if (listEl) listEl.style.display = "none";
     if (summaryEl) {
       summaryEl.style.display = "block";
-      summaryEl.innerHTML = `
-        <div class="warnings-summary-pill" title="Bấm để mở rộng toàn bộ cảnh báo">
-          <div style="display:flex;align-items:center;gap:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-            <span>${warnings[0].icon}</span>
-            <span style="font-weight:700;font-size:13px;color:var(--text);">${warnings[0].title}</span>
+      if (warnings.length > 0) {
+        summaryEl.innerHTML = `
+          <div class="warnings-summary-pill" title="Bấm để mở rộng toàn bộ cảnh báo">
+            <div style="display:flex;align-items:center;gap:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+              <span>${warnings[0].icon}</span>
+              <span style="font-weight:700;font-size:13px;color:var(--text);">${warnings[0].title}</span>
+            </div>
+            <span style="font-size:13px;color:var(--accent);font-weight:700;white-space:nowrap;margin-left:10px;">${warnings.length > 1 ? `+${warnings.length - 1} khác ▾` : "▾"}</span>
           </div>
-          <span style="font-size:13px;color:var(--accent);font-weight:700;white-space:nowrap;margin-left:10px;">+${warnings.length - 1} khác ▾</span>
-        </div>
-      `;
+        `;
+      } else {
+        summaryEl.innerHTML = `
+          <div class="warnings-summary-pill" title="Bấm để mở rộng">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span>🎉</span>
+              <span style="font-size:13px;color:var(--text-secondary);">Không còn cảnh báo nào (đã xóa hết)</span>
+            </div>
+          </div>
+        `;
+      }
     }
   } else {
     if (btn) btn.innerHTML = `▴ Thu gọn`;
     if (summaryEl) summaryEl.style.display = "none";
     if (listEl) {
       listEl.style.display = "flex";
-      listEl.innerHTML = warnings.map(w => `
-        <div class="alert-item ${w.type}">
-          <div>
-            <div style="font-weight:700;margin-bottom:2px;">${w.title}</div>
-            <div style="color:var(--text-secondary);font-size:13px;">${w.desc}</div>
+      listEl.style.flexDirection = "column";
+      listEl.style.gap = "8px";
+
+      if (warnings.length === 0) {
+        listEl.innerHTML = `
+          <div style="padding:16px;text-align:center;color:var(--text-secondary);font-size:13px;background:var(--raised);border-radius:8px;border:1px dashed var(--border);">
+            🎉 Tuyệt vời! Bạn đã xóa hết cảnh báo, không còn mục nào cần xử lý.
+            <div style="margin-top:8px;">
+              <button class="btn btn-ghost" style="font-size:12px;padding:3px 10px;" onclick="restoreAllEarlyWarnings()">🔄 Khôi phục lại toàn bộ cảnh báo</button>
+            </div>
           </div>
-        </div>
-      `).join("");
+        `;
+      } else {
+        const itemsHtml = warnings.map(w => `
+          <div class="alert-item ${w.type}" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;position:relative;">
+            <div style="flex:1;">
+              <div style="font-weight:700;margin-bottom:2px;display:flex;align-items:center;gap:6px;">
+                <span>${w.icon}</span>
+                <span>${w.title}</span>
+              </div>
+              <div style="color:var(--text-secondary);font-size:13px;line-height:1.45;">${w.desc}</div>
+            </div>
+            <button class="btn btn-ghost" onclick="event.stopPropagation();dismissEarlyWarning('${w.id}')" title="Xóa / Ẩn cảnh báo này" style="padding:2px 8px;font-size:18px;line-height:1;border-radius:6px;color:var(--text-secondary);cursor:pointer;opacity:0.7;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+              ×
+            </button>
+          </div>
+        `).join("");
+
+        const restoreLinkHtml = dismissedIds.length > 0 ? `
+          <div style="display:flex;justify-content:flex-end;margin-top:4px;">
+            <button class="btn btn-ghost" style="font-size:12px;padding:3px 8px;color:var(--text-secondary);" onclick="restoreAllEarlyWarnings()">🔄 Khôi phục ${dismissedIds.length} cảnh báo đã xóa</button>
+          </div>
+        ` : "";
+
+        listEl.innerHTML = itemsHtml + restoreLinkHtml;
+      }
     }
   }
 }
@@ -3443,7 +3686,7 @@ function openEditTransactionModal(txId) {
     <div style="display:flex;flex-direction:column;gap:12px;">
       <div>
         <label style="font-size:13px;color:var(--text-secondary);">Nội dung chi tiêu (giữ nguyên dấu phẩy nếu nhiều món: VD "cá, ốc")</label>
-        <input type="text" id="edit-tx-content" class="input-control" style="width:100%;margin-top:4px;font-weight:600;" value="${String(tx.content || '').replace(/"/g, '&quot;')}" />
+        <input type="text" id="edit-tx-content" class="input-control" style="width:100%;margin-top:4px;font-weight:600;" value="${escapeHtml(tx.content || '')}" />
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 0.8fr;gap:10px;">
         <div>
@@ -3542,6 +3785,7 @@ async function submitEditTransactionModal(txId) {
 }
 
 async function deleteTransaction(id) {
+  const tx = DB.transactions.find(t => t.id === id);
   DB.transactions = DB.transactions.filter(t => t.id !== id);
   if (!DB.meta.deleted_tx_ids) DB.meta.deleted_tx_ids = [];
   if (!DB.meta.deleted_tx_ids.includes(id)) DB.meta.deleted_tx_ids.push(id);
@@ -3553,7 +3797,7 @@ async function deleteTransaction(id) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id })
   }).catch(() => {});
-  await persistAndSync({ action: "delete_tx", id });
+  await persistAndSync({ action: "delete_tx", id, transaction: tx });
 }
 
 // ============================================================================
@@ -4541,9 +4785,12 @@ async function recordMonthlyDcaOrder() {
 // TAB 5: AI ASSISTANT CHAT (CLIENT-SIDE ENGINE)
 // ============================================================================
 function formatMarkdownSimple(md) {
-  return (md || "")
+  const safe = escapeHtml(md || "");
+  return safe
     .replace(/^### (.*$)/gim, "<h3>$1</h3>")
+    .replace(/^#### (.*$)/gim, "<h4>$1</h4>")
     .replace(/\*\*(.*?)\*\*/g, "<b>$1</b>")
+    .replace(/\*(.*?)\*/g, "<i>$1</i>")
     .replace(/`(.*?)`/g, '<code style="background:var(--accent-soft);padding:2px 6px;border-radius:5px;color:var(--accent);">$1</code>')
     .replace(/\n/g, "<br/>");
 }
@@ -4566,7 +4813,10 @@ function initAiGreeting() {
 async function askAiQuestion(qText) {
   switchTab("ai");
   const box = document.getElementById("ai-chat-messages");
-  box.innerHTML += `<div class="chat-bubble user">${qText}</div>`;
+  const userBubble = document.createElement("div");
+  userBubble.className = "chat-bubble user";
+  userBubble.textContent = qText;
+  box.appendChild(userBubble);
 
   // 1. Instant local calculation from exact 2026 Family DB
   const localAnswer = answerFamilyQuestionJS(qText, DB);
@@ -4703,6 +4953,57 @@ async function exportLatestExcelFile() {
     a.click();
     alert("Đã tải file Excel chuẩn hóa về máy!");
   }
+}
+
+// ============================================================================
+// F66: JSON DATABASE BACKUP & RESTORE (SAO LƯU & KHÔI PHỤC TOÀN BỘ SỔ CÁI)
+// ============================================================================
+function exportJsonBackup() {
+  if (!DB) return;
+  const jsonStr = JSON.stringify(DB, null, 2);
+  const blob = new Blob([jsonStr], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const today = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `family_db_backup_${today}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast("📥 Đã tải file sao lưu JSON về máy!", "success");
+}
+
+function importJsonBackup(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      if (!parsed || !Array.isArray(parsed.transactions) || !Array.isArray(parsed.months)) {
+        showToast("⚠️ File sao lưu không hợp lệ! Thiếu cấu trúc transactions hoặc months.", "warn");
+        return;
+      }
+      if (!confirm(`Khôi phục dữ liệu sẽ ghi đè sổ chi tiêu hiện tại (${parsed.transactions.length} giao dịch). Bạn có chắc chắn muốn khôi phục?`)) {
+        return;
+      }
+      DB = parsed;
+      recomputeMonthsJS(DB);
+      localStorage.setItem(STORAGE_DB_KEY, JSON.stringify(DB));
+      
+      // Also sync to server if local backend is active
+      await fetch("/api/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(DB)
+      }).catch(() => {});
+
+      await persistAndSync({ action: "restore_backup" });
+      renderAll();
+      showToast(`✅ Đã khôi phục thành công ${parsed.transactions.length} giao dịch từ file sao lưu!`, "success");
+    } catch (err) {
+      showToast("⚠️ Lỗi đọc file JSON: " + err.message, "warn");
+    }
+  };
+  reader.readAsText(file);
 }
 
 // ============================================================================
@@ -5427,7 +5728,7 @@ async function analyzeQuickInputWithGemini() {
   const provider = getAIProviderName(key) || "Claude Sonnet 5.5";
   const bar = document.getElementById("quick-preview-bar");
   if (bar) {
-    bar.innerHTML = `<span style="color:var(--accent);font-weight:700;"> Não AI (${provider}) đang phân tích câu: "${raw}"...</span>`;
+    bar.innerHTML = `<span style="color:var(--accent);font-weight:700;"> Não AI (${escapeHtml(provider)}) đang phân tích câu: "${escapeHtml(raw)}"...</span>`;
   }
 
   const defaultSrc = document.getElementById("quick-default-source")?.value || localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt";
@@ -5554,12 +5855,95 @@ function closeModal() {
   document.getElementById("modal-overlay").style.display = "none";
 }
 
-function openCloudSettingsModal() {
+function getMobileSyncLink() {
   const currentUrl = getCloudScriptUrl();
   const baseAppUrl = window.location.origin + window.location.pathname;
-  const inviteLink = currentUrl
-    ? `${baseAppUrl}?cloud=${encodeURIComponent(currentUrl)}&pin=${encodeURIComponent(getFamilyPin())}`
-    : baseAppUrl;
+  let activeAiKey = (localStorage.getItem(STORAGE_GEMINI_KEY) || (DB && DB.meta && DB.meta.gemini_api_key) || "").trim();
+  if (activeAiKey === "(server-configured)") activeAiKey = "";
+  const aiModel = getAISelectedModel() || "claude-sonnet-5-5";
+
+  const queryParts = [];
+  if (currentUrl) queryParts.push(`cloud=${encodeURIComponent(currentUrl)}`);
+  queryParts.push(`pin=${encodeURIComponent(getFamilyPin())}`);
+  if (activeAiKey) {
+    queryParts.push(`ai_key=b64:${encodeURIComponent(btoa(activeAiKey))}`);
+    queryParts.push(`ai_model=${encodeURIComponent(aiModel)}`);
+  }
+  return `${baseAppUrl}?${queryParts.join("&")}`;
+}
+
+function openMobileSyncModal() {
+  const syncUrl = getMobileSyncLink();
+  const key = getGeminiApiKey();
+  const provider = getAIProviderName(key) || "Claude Sonnet 5.5";
+  const hasAi = Boolean(key);
+  const cloudUrl = getCloudScriptUrl();
+  const hasCloud = Boolean(cloudUrl);
+  const qrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(syncUrl)}`;
+
+  const modal = document.getElementById("modal-overlay");
+  const content = document.getElementById("modal-content");
+  content.innerHTML = `
+    <div class="card-header">
+      <div class="card-title">📱 Đồng Bộ Sang Điện Thoại & Thêm Vào Màn Hình Chính</div>
+      <button class="btn btn-ghost" style="padding:4px 10px;" onclick="closeModal()">×</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;font-size:13px;max-height:80vh;overflow-y:auto;padding-right:4px;">
+      <div style="background:var(--positive-soft);border:1px solid var(--positive-soft);border-radius:12px;padding:12px;">
+        <div style="font-weight:700;color:var(--positive);margin-bottom:4px;font-size:14px;"> Trạng Thái Sẵn Sàng Đồng Bộ</div>
+        <div style="color:var(--text-secondary);font-size:13px;line-height:1.6;">
+          • <b>Não AI:</b> <span style="color:var(--positive);font-weight:700;">${hasAi ? `Đã sẵn sàng (${provider})` : "Chưa bật"}</span> (tự động kích hoạt trên điện thoại, không cần gõ key).<br/>
+          • <b>Mã PIN Gia Đình:</b> <span style="font-weight:700;color:var(--text-primary);">${getFamilyPin()}</span> (tự động ghi nhớ).<br/>
+          • <b>Google Sheet Cloud:</b> <span style="color:${hasCloud ? "var(--positive)" : "var(--accent)"};font-weight:700;">${hasCloud ? "Đã kết nối 2 chiều" : "Chưa gắn link Cloud"}</span>.
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;align-items:center;background:var(--raised);border:1px solid var(--border-subtle);border-radius:12px;padding:16px;">
+        <div style="font-weight:700;margin-bottom:10px;text-align:center;">Cách 1: Quét mã QR bằng Camera điện thoại hoặc Zalo</div>
+        <div style="background:#fff;padding:10px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.06);display:inline-block;">
+          <img src="${qrImgSrc}" alt="QR Sync" style="width:200px;height:200px;display:block;" onerror="this.parentElement.innerHTML='<div style=\\'padding:20px;text-align:center;color:var(--text-secondary);\\'>Mở link bên dưới trên điện thoại để đồng bộ</div>'" />
+        </div>
+        <div style="color:var(--text-secondary);font-size:12px;margin-top:8px;text-align:center;">
+          Giơ Camera iPhone hoặc Zalo quét mã ➡️ Bấm mở link để kích hoạt ngay
+        </div>
+      </div>
+
+      <div>
+        <div style="font-weight:700;margin-bottom:6px;">Cách 2: Copy link gửi qua Zalo / iMessage cho vợ hoặc mở trên điện thoại</div>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="mobile-sync-link-input" class="input-control" style="flex:1;font-size:12px;" readonly value="${syncUrl}" />
+          <button class="btn btn-emerald" style="padding:8px 12px;font-size:13px;white-space:nowrap;" onclick="copyMobileSyncLink()">📋 Copy Link</button>
+        </div>
+      </div>
+
+      <div style="background:var(--warning-soft);border:1px solid var(--warning-border);border-radius:12px;padding:12px;line-height:1.55;">
+        <div style="font-weight:700;color:var(--warning);margin-bottom:4px;">📌 Mẹo thêm ra Màn hình chính (PWA) để dùng như App thật:</div>
+        <div style="color:var(--text-secondary);font-size:13px;">
+          • <b>Trên iPhone (Safari):</b> Bấm nút <b>Chia sẻ</b> (biểu tượng hình vuông có mũi tên hướng lên ở thanh dưới) ➡️ Cuộn xuống chọn <b>"Thêm vào MH chính" (Add to Home Screen)</b>.<br/>
+          • <b>Trên Android (Chrome):</b> Bấm biểu tượng <b>3 chấm</b> ở góc trên bên phải ➡️ Chọn <b>"Cài đặt ứng dụng"</b> hoặc <b>"Thêm vào Màn hình chính"</b>.<br/>
+          ✨ <b>Kết quả:</b> Biểu tượng App xuất hiện ngay trên màn hình điện thoại, mở lên toàn màn hình không có thanh địa chỉ duyệt web, và <b>Não AI Claude Sonnet 5.5 đã được kết nối sẵn</b>!
+        </div>
+      </div>
+    </div>
+  `;
+  modal.style.display = "flex";
+}
+
+function copyMobileSyncLink() {
+  const el = document.getElementById("mobile-sync-link-input");
+  if (!el) return;
+  el.select();
+  navigator.clipboard.writeText(el.value).then(() => {
+    showToast("✅ Đã copy link đồng bộ! Gửi qua Zalo/iMessage rồi mở trên điện thoại nhé.", "success");
+  }).catch(() => {
+    document.execCommand("copy");
+    showToast("✅ Đã copy link!", "success");
+  });
+}
+
+function openCloudSettingsModal() {
+  const currentUrl = getCloudScriptUrl();
+  const inviteLink = getMobileSyncLink();
 
   const modal = document.getElementById("modal-overlay");
   const content = document.getElementById("modal-content");
@@ -5568,7 +5952,7 @@ function openCloudSettingsModal() {
       <div class="card-title"> Trung Tâm Cloud & Đồng Bộ 2 Vợ Chồng</div>
       <button class="btn btn-ghost" style="padding:4px 10px;" onclick="closeModal()">×</button>
     </div>
-    <div style="display:flex;flex-direction:column;gap:14px;font-size:13px;">
+    <div style="display:flex;flex-direction:column;gap:14px;font-size:13px;max-height:80vh;overflow-y:auto;padding-right:4px;">
       <div style="background:var(--positive-soft);border:1px solid var(--positive-soft);border-radius:12px;padding:12px;">
         <div style="font-weight:700;color:var(--positive);margin-bottom:4px;"> App đang chạy 100% Đa Nền Tảng (Web • Điện Thoại • Máy Chủ Local)</div>
         <div style="color:var(--text-secondary);font-size:13px;">
@@ -5590,13 +5974,17 @@ function openCloudSettingsModal() {
       </div>
 
       <div style="border-top:1px solid var(--border-subtle);padding-top:12px;">
-        <label style="font-weight:700;display:block;margin-bottom:4px;"> Gửi Link Cho Vợ / Chồng (Tự động gắn sẵn Cloud & PIN):</label>
-        <div style="display:flex;gap:8px;">
-          <input type="text" id="spouse-invite-link" class="input-control" style="flex:1;font-size:13px;" readonly value="${inviteLink}" />
-          <button class="btn btn-emerald" style="padding:8px 12px;font-size:13px;" onclick="copySpouseInviteLink()"> Copy Link</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <label style="font-weight:700;"> Gửi Link Cài Cho Điện Thoại (Tự động gắn Claude & PIN):</label>
+          <button class="btn btn-ghost" style="padding:2px 8px;font-size:12px;color:var(--accent);" onclick="openMobileSyncModal()">📱 Quét Mã QR</button>
         </div>
-        <div style="font-size:13px;color:var(--text-secondary);margin-top:5px;">
-           <b>Mẹo cài như App thật trên điện thoại:</b> Mở link trên Safari (iPhone) chọn <i>Chia sẻ → Thêm vào MH chính</i>, hoặc trên Chrome (Android) chọn <i>Cài đặt ứng dụng</i>.
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="spouse-invite-link" class="input-control" style="flex:1;font-size:12px;" readonly value="${inviteLink}" />
+          <button class="btn btn-emerald" style="padding:8px 12px;font-size:13px;white-space:nowrap;" onclick="copySpouseInviteLink()"> Copy Link</button>
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:6px;line-height:1.5;">
+          • <b>Mẹo cài như App thật trên điện thoại:</b> Mở link trên Safari (iPhone) chọn <i>Chia sẻ → Thêm vào MH chính</i>, hoặc trên Chrome (Android) chọn <i>Cài đặt ứng dụng</i>.<br/>
+          • Link này tự động kết nối sẵn <b>Não AI Claude Sonnet 5.5</b> và cấu hình đồng bộ sang điện thoại!
         </div>
       </div>
     </div>
@@ -5634,34 +6022,45 @@ function openPinSettingsModal() {
   const content = document.getElementById("modal-content");
   content.innerHTML = `
     <div class="card-header">
-      <div class="card-title"> Đổi Mã PIN Bảo Mật Gia Đình</div>
+      <div class="card-title">🔐 Đổi Mã PIN Bảo Mật Gia Đình</div>
       <button class="btn btn-ghost" style="padding:4px 10px;" onclick="closeModal()">×</button>
     </div>
     <div style="display:flex;flex-direction:column;gap:12px;">
       <div style="font-size:13px;color:var(--text-secondary);">
-        Mã PIN hiện tại đang bảo vệ sổ chi tiêu trên Cloud. Hãy nhập 4 chữ số mới (VD: ngày cưới hoặc năm sinh của Subo/Sugi):
+        Mã PIN hiện tại đang bảo vệ sổ chi tiêu trên thiết bị và Cloud. Vui lòng nhập mã PIN hiện tại để xác thực trước khi đổi mã mới:
+      </div>
+      <div>
+        <label style="font-size:13px;color:var(--text-secondary);">Mã PIN hiện tại (4 chữ số)</label>
+        <input type="password" id="current-pin-input" maxlength="4" pattern="\\d{4}" class="input-control" style="width:100%;margin-top:4px;font-size:20px;letter-spacing:8px;text-align:center;font-weight:800;" placeholder="••••" />
       </div>
       <div>
         <label style="font-size:13px;color:var(--text-secondary);">Mã PIN mới (4 chữ số)</label>
-        <input type="text" id="new-pin-input" maxlength="4" pattern="\\d{4}" class="input-control" style="width:100%;margin-top:4px;font-size:20px;letter-spacing:8px;text-align:center;font-weight:800;" value="${getFamilyPin()}" />
+        <input type="password" id="new-pin-input" maxlength="4" pattern="\\d{4}" class="input-control" style="width:100%;margin-top:4px;font-size:20px;letter-spacing:8px;text-align:center;font-weight:800;" placeholder="••••" />
       </div>
-      <button class="btn btn-primary" style="width:100%;margin-top:6px;" onclick="saveNewFamilyPin()"> Lưu Mã PIN Mới</button>
+      <button class="btn btn-primary" style="width:100%;margin-top:6px;" onclick="saveNewFamilyPin()">💾 Lưu Mã PIN Mới</button>
     </div>
   `;
   modal.style.display = "flex";
 }
 
 async function saveNewFamilyPin() {
-  const val = (document.getElementById("new-pin-input")?.value || "").trim();
-  if (!/^\d{4}$/.test(val)) {
-    showToast(" Vui lòng nhập đúng 4 chữ số cho mã PIN (ví dụ: 2026)!", "warn");
+  const currentPinInput = (document.getElementById("current-pin-input")?.value || "").trim();
+  const newPinVal = (document.getElementById("new-pin-input")?.value || "").trim();
+  const currentFamilyPin = getFamilyPin();
+
+  if (currentPinInput !== currentFamilyPin) {
+    showToast("⚠️ Mã PIN hiện tại không chính xác!", "warn");
     return;
   }
-  localStorage.setItem(STORAGE_PIN_KEY, val);
-  if (DB && DB.meta) DB.meta.family_pin = val;
-  await persistAndSync({ action: "update_pin", family_pin: val });
+  if (!/^\d{4}$/.test(newPinVal)) {
+    showToast("⚠️ Vui lòng nhập đúng 4 chữ số cho mã PIN mới (ví dụ: 2026)!", "warn");
+    return;
+  }
+  localStorage.setItem(STORAGE_PIN_KEY, newPinVal);
+  if (DB && DB.meta) DB.meta.family_pin = newPinVal;
+  await persistAndSync({ action: "update_pin", family_pin: newPinVal });
   closeModal();
-  showToast(` Đã đổi mã PIN gia đình thành: ${val}`, "success");
+  showToast(`✅ Đã đổi mã PIN gia đình thành công!`, "success");
 }
 
 function openManualAddModal(targetM = null) {
