@@ -193,7 +193,7 @@ function deleteTxRow(ss, tx) {
 
 function scanBankGmail(minDateStr) {
   try {
-    let q = '(from:vpbank OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "Quoc Dan" OR "biến động số dư" OR "biendong" OR "thông báo số dư")';
+    let q = '(from:vpbank OR from:vpb.com.vn OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "Quoc Dan" OR "biến động số dư" OR "biendong" OR "thông báo số dư" OR "Biên lai chuyển tiền") -subject:"[PHS" -subject:"Sao kê thẻ tín dụng"';
     let minTime = 0;
     const now = new Date();
 
@@ -215,7 +215,7 @@ function scanBankGmail(minDateStr) {
       q += ' after:' + Utilities.formatDate(d30, "GMT+7", "yyyy/MM/dd");
     }
 
-    const threads = GmailApp.search(q, 0, 35);
+    const threads = GmailApp.search(q, 0, 45);
     const blocks = [];
     for (let i = 0; i < threads.length; i++) {
       const msgs = threads[i].getMessages();
@@ -224,7 +224,7 @@ function scanBankGmail(minDateStr) {
         if (minTime > 0 && msg.getDate().getTime() < minTime) continue;
         const dt = Utilities.formatDate(msg.getDate(), "GMT+7", "dd/MM/yyyy HH:mm");
         const body = msg.getPlainBody() || msg.getBody().replace(/<[^>]+>/g, " ");
-        blocks.push("From: " + msg.getFrom() + "\nSubject: " + msg.getSubject() + "\nDate: " + dt + "\n" + body.substring(0, 1000));
+        blocks.push("From: " + msg.getFrom() + "\nSubject: " + msg.getSubject() + "\nDate: " + dt + "\n" + body.substring(0, 2500));
       }
     }
     return blocks.join("\n---\n");

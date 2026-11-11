@@ -111,6 +111,34 @@ def normalize_payment_source(src, raw=""):
     return s or 'Tiền mặt / Chuyển khoản'
 
 
+def encode_ai_key(raw_key):
+    if not raw_key:
+        return ""
+    import base64
+    clean = str(raw_key).strip()[::-1]
+    salt = "FW2026"
+    xored = bytes([ord(ch) ^ ord(salt[i % len(salt)]) for i, ch in enumerate(clean)])
+    return "fw2:" + base64.b64encode(xored).decode("utf-8")
+
+
+def decode_ai_key(encoded_str):
+    if not encoded_str:
+        return ""
+    import base64
+    s = str(encoded_str).strip()
+    try:
+        if s.startswith("fw2:"):
+            raw_bytes = base64.b64decode(s[4:])
+            salt = "FW2026"
+            rev = "".join(chr(b ^ ord(salt[i % len(salt)])) for i, b in enumerate(raw_bytes))
+            return rev[::-1].strip()
+        if s.startswith("fw1:"):
+            return base64.b64decode(s[4:]).decode("utf-8")[::-1].strip()
+        return base64.b64decode(s).decode("utf-8").strip()
+    except Exception:
+        return ""
+
+
 def load_db():
     with DB_LOCK:
         with open(DATA_PATH, "r", encoding="utf-8") as f:
@@ -125,6 +153,10 @@ def load_db():
                     db["meta"]["gemini_api_key"] = secrets["gemini_api_key"]
             except Exception:
                 pass
+        if "meta" in db and not db["meta"].get("gemini_api_key") and db["meta"].get("ai_key_encoded"):
+            decoded_key = decode_ai_key(db["meta"]["ai_key_encoded"])
+            if decoded_key:
+                db["meta"]["gemini_api_key"] = decoded_key
         return db
 
 
@@ -145,8 +177,7 @@ def save_db(db):
         if "meta" in db_to_write and "gemini_api_key" in db_to_write["meta"]:
             db_to_write["meta"]["gemini_api_key"] = ""
         if api_key and "meta" in db_to_write:
-            import base64
-            db_to_write["meta"]["ai_key_encoded"] = base64.b64encode(api_key.encode("utf-8")).decode("utf-8")
+            db_to_write["meta"]["ai_key_encoded"] = encode_ai_key(api_key)
         tmp_path = f"{DATA_PATH}.tmp.{os.getpid()}.{threading.get_ident()}"
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(db_to_write, f, ensure_ascii=False, indent=2)
@@ -292,33 +323,133 @@ KEYWORD_RULES = [
     # (keywords_list, category, default_person, clean_label)
     (["học phí subo", "hphi subo", "hoc phi subo", "tiền học subo"], "Học tập", "Subo", "học phí subo"),
     (["đón bo", "đón subo", "don subo", "grab subo"], "Phí tiện ích", "Subo", "đón subo"),
-    (["tini", "khu vui chơi", "lego", "đồ chơi", "tô tượng", "super wing"], "Vui chơi", "Subo", None),
+    (["tini", "timezone", "onepayj*timezone", "khu vui chơi", "lego", "đồ chơi", "tô tượng", "super wing"], "Vui chơi", "Subo", None),
     (["bỉm", "sữa thanh", "kem hăm", "kem bôi hăm", "bình sữa", "túi trữ sữa", "tiêm chủng sugi", "con cưng", "concung"], "Đồ dùng GĐ", "Sugi", None),
     (["nhi đồng", "khám sugi", "thuốc sugi"], "Y tế", "Sugi", None),
     (["shinhan", "nợ ck shinhan"], "Nợ", "Chồng", "nợ ck shinhan"),
     (["thuế ck", "nợ thuế"], "Nợ", "Chồng", "nợ thuế ck"),
     (["nợ đt vk", "đt vk"], "Nợ", "Vợ", "nợ đt vk"),
-    (["xăng ck", "đổ xăng ck"], "Phí tiện ích", "Chồng", "xăng ck"),
+    (["xăng ck", "đổ xăng ck", "plx_sai gon", "plx sai gon", "petrolimex"], "Phí tiện ích", "Chồng", "xăng ck"),
     (["xăng vk", "xăng"], "Phí tiện ích", "Vợ", "xăng"),
     (["sửa xe", "rửa xe", "gửi xe", "thẻ xe"], "Phí tiện ích", "Chung", None),
     (["tiền điện", "evn", "điện lực"], "Phí tiện ích", "Chung", "tiền điện"),
     (["tiền nước", "sawaco", "nước cc"], "Phí tiện ích", "Chung", "tiền nước"),
     (["tiền mạng", "fpt", "viettel", "vnpt", "internet"], "Phí tiện ích", "Chung", "tiền mạng"),
     (["qlcc", "phí cc", "phí quản lý", "chung cư"], "Phí tiện ích", "Chung", "phí qlcc"),
-    (["grab", "be ", "be-", "xanh sm", "gsm", "taxi", "vé xe"], "Phí tiện ích", "Chung", None),
-    (["chatgpt", "chat gpt", "openai", "claude"], "Công việc", "Chung", "chat gpt"),
-    (["coop", "co.op", "bhx", "bách hóa xanh", "bach hoa xanh", "winmart", "emart", "aeon", "kingfood", "king food", "ministop", "circle k", "gs25", "thiso", "lotte", "mega market", "siêu thị", "đi chợ"], "Ăn uống", "Chung", None),
-    (["phở", "bún", "cơm", "bánh mì", "trà sữa", "cafe", "cà phê", "highlands", "phúc long", "starbucks", "kfc", "texas", "pizza", "lẩu", "nướng", "ốc", "gà", "thịt", "cá", "rau", "trái cây", "sầu riêng", "măng cụt", "sữa", "vinamilk", "th true", "ăn sáng", "ăn trưa", "ăn tối", "ăn vặt"], "Ăn uống", "Chung", None),
-    (["long châu", "pharmacity", "an khang", "thuốc tây", "thuốc", "bệnh viện", "khám", "nha khoa", "làm răng", "y tế", "tiểu đường"], "Y tế", "Chung", None),
+    (["grab", "begroup", "mpgs begroup", "be ", "be-", "xanh sm", "gsm", "taxi", "vé xe"], "Phí tiện ích", "Chung", None),
+    (["chatgpt", "chat gpt", "openai", "claude", "anthropic", "youtube premium", "google one"], "Công việc", "Chung", "chat gpt"),
+    (["st dien may", "dien may cho lon", "điện máy chợ lớn", "điện máy", "nước giặt", "nước rửa", "bao rác", "khăn giấy", "giấy vệ sinh", "bàn chải", "kem đr", "dầu gội", "sữa tắm", "vim", "finish", "khay", "nồi", "chảo", "đồ gia dụng"], "Đồ dùng GĐ", "Chung", None),
+    (["coop", "co.op", "bhx", "bách hóa xanh", "bach hoa xanh", "winmart", "emart", "aeon", "kingfood", "king food", "ministop", "circle k", "gs25", "7eleven", "7-eleven", "thiso retail", "thiso", "lotte", "mega market", "siêu thị", "đi chợ"], "Ăn uống", "Chung", None),
+    (["phở", "bún", "cơm", "bánh mì", "banh viet", "ca vien", "cá viên", "kichi kichi", "reverabat", "nha hang", "nhà hàng", "artisan", "trà sữa", "cafe", "cà phê", "highlands", "phúc long", "starbucks", "kfc", "texas", "pizza", "lẩu", "nướng", "ốc", "gà", "thịt", "cá", "rau", "trái cây", "sầu riêng", "măng cụt", "sữa", "vinamilk", "th true", "ăn sáng", "ăn trưa", "ăn tối", "ăn vặt"], "Ăn uống", "Chung", None),
+    (["long châu", "pharmacity", "an khang", "matkinh", "mắt kính", "thuốc tây", "thuốc", "bệnh viện", "khám", "nha khoa", "làm răng", "y tế", "tiểu đường"], "Y tế", "Chung", None),
     (["paula", "mỹ phẩm", "son", "kem chống nắng", "gội đầu", "làm tóc", "cắt tóc", "nail", "spa", "quần áo", "áo", "váy", "giày", "dép", "đồ lót", "uniqlo", "zara"], "Làm đẹp", "Vợ", None),
-    (["nước giặt", "nước rửa", "bao rác", "khăn giấy", "giấy vệ sinh", "bàn chải", "kem đr", "dầu gội", "sữa tắm", "vim", "finish", "khay", "nồi", "chảo", "đồ gia dụng"], "Đồ dùng GĐ", "Chung", None),
     (["shopee", "spee", "lazada", "tiktok shop", "tiki"], "Đồ dùng GĐ", "Chung", None),
     (["sinh nhật", "đám cưới", "mừng", "thăm", "du lịch", "khách sạn", "vé máy bay", "event"], "Event", "Chung", None),
 ]
 
+_STRICT_SHORT_KEYWORDS = {"son", "spa", "rau", "vim", "be", "ck", "vk", "tm", "con", "bo", "cá", "ốc", "áo", "gà", "nợ"}
 
-def classify_transaction_text(text):
-    t_low = text.lower().strip()
+
+def text_has_keyword(text_low, kw):
+    k = kw.strip().lower()
+    if not k:
+        return False
+    letters = re.sub(r'[^\w]', '', k, flags=re.UNICODE)
+    is_ascii = bool(re.match(r'^[a-z0-9]+$', letters))
+    need_boundary = (len(letters) <= 3 and not is_ascii) or (letters in _STRICT_SHORT_KEYWORDS) or (len(k) <= 3)
+    if need_boundary:
+        pat = r'(?:^|[^\w])' + re.escape(k) + r'(?!\w)'
+        return bool(re.search(pat, text_low, flags=re.IGNORECASE | re.UNICODE))
+    return k in text_low
+
+
+def _fold_vn_server(text):
+    import unicodedata
+    s = str(text or "").lower().replace("đ", "d")
+    s = unicodedata.normalize("NFD", s)
+    return "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
+
+
+def build_family_ledger_memory(db=None):
+    """
+    Học động (Dynamic Memory) trực tiếp từ 888+ giao dịch thực tế trong sổ chi tiêu gia đình (db['transactions'])
+    thay vì fix cứng danh sách cửa hàng. Tự động cập nhật khi gia đình thêm giao dịch mới.
+    """
+    if db is None:
+        try:
+            db = load_db()
+        except Exception:
+            db = {}
+    txs = db.get("transactions", []) if isinstance(db, dict) else []
+    phrase_stats = {}
+    for tx in txs:
+        if not isinstance(tx, dict):
+            continue
+        content = str(tx.get("content") or "").strip()
+        cat = str(tx.get("category") or "Ăn uống").strip()
+        person = str(tx.get("person") or "Chung").strip()
+        amt = safe_float(tx.get("amount", 0), 0.0)
+        if len(content) < 2:
+            continue
+        norm_key = re.sub(r"\s+", " ", _fold_vn_server(content)).strip()
+        if len(norm_key) < 3:
+            continue
+        entry = phrase_stats.setdefault(norm_key, {
+            "sample_content": content,
+            "counts": {},
+            "total_count": 0,
+            "avg_amount": amt
+        })
+        pair = (cat, person)
+        entry["counts"][pair] = entry["counts"].get(pair, 0) + 1
+        entry["total_count"] += 1
+        entry["avg_amount"] = (entry["avg_amount"] * (entry["total_count"] - 1) + amt) / entry["total_count"]
+
+    learned_map = {}
+    for norm_key, info in phrase_stats.items():
+        best_pair = max(info["counts"].items(), key=lambda kv: kv[1])[0]
+        learned_map[norm_key] = {
+            "category": best_pair[0],
+            "person": best_pair[1],
+            "sample_content": info["sample_content"],
+            "count": info["total_count"],
+            "avg_amount": round(info["avg_amount"])
+        }
+    return learned_map
+
+
+def build_family_context_prompt(db=None, max_examples_per_cat=4):
+    """
+    Xây dựng Few-Shot Context từ lịch sử chi tiêu thực tế của gia đình để truyền cho Não AI Claude.
+    """
+    if db is None:
+        try:
+            db = load_db()
+        except Exception:
+            db = {}
+    txs = db.get("transactions", []) if isinstance(db, dict) else []
+    by_cat = {}
+    for tx in txs[:250]:
+        if not isinstance(tx, dict):
+            continue
+        c = tx.get("category", "Ăn uống")
+        p = tx.get("person", "Chung")
+        content = str(tx.get("content") or "").strip()
+        amt = int(safe_float(tx.get("amount", 0), 0))
+        if not content or amt <= 0:
+            continue
+        lst = by_cat.setdefault(c, [])
+        sample_str = f'"{content}" ({amt:,}đ → {p})'
+        if len(lst) < max_examples_per_cat and not any(content.lower() in x.lower() for x in lst):
+            lst.append(sample_str)
+    lines = []
+    for cat_name, samples in by_cat.items():
+        lines.append(f"- {cat_name}: " + "; ".join(samples))
+    return "\n".join(lines)
+
+
+def classify_transaction_text(text, db=None):
+    t_low = (text or "").lower().strip()
     cat = "Ăn uống"
     person = "Chung"
     confidence = 0.78
@@ -326,25 +457,54 @@ def classify_transaction_text(text):
 
     # Detect explicit person mentions first (whole word match)
     explicit_person = None
-    if re.search(r'\b(subo|sn bo|đón bo)\b', t_low):
+    if re.search(r'(?:^|[^\w])(subo|sn bo|đón bo)(?!\w)', t_low, flags=re.UNICODE):
         explicit_person = "Subo"
-    elif re.search(r'\b(sugi)\b', t_low):
+    elif re.search(r'(?:^|[^\w])(sugi)(?!\w)', t_low, flags=re.UNICODE):
         explicit_person = "Sugi"
-    elif re.search(r'\b(chồng)\b', t_low):
+    elif re.search(r'(?:^|[^\w])(chồng)(?!\w)', t_low, flags=re.UNICODE):
         explicit_person = "Chồng"
-    elif re.search(r'\b(vk|vợ)\b', t_low):
+    elif re.search(r'(?:^|[^\w])(vk|vợ)(?!\w)', t_low, flags=re.UNICODE):
         explicit_person = "Vợ"
 
-    for kw_list, rule_cat, rule_person, _ in KEYWORD_RULES:
-        for kw in kw_list:
-            if kw in t_low:
-                cat = rule_cat
-                person = explicit_person or rule_person
-                confidence = 0.96
-                reason = f"Khớp mẫu lịch sử gia đình ('{kw}' → {cat} • {person})"
+    # 1. Đối chiếu bộ nhớ học động từ lịch sử giao dịch thực tế trong Sổ (DB.transactions)
+    t_fold = re.sub(r"\s+", " ", _fold_vn_server(t_low)).strip()
+    if len(t_fold) >= 3:
+        try:
+            learned = build_family_ledger_memory(db)
+            if t_fold in learned:
+                hit = learned[t_fold]
+                cat = hit["category"]
+                person = explicit_person or hit["person"]
+                confidence = 0.97
+                reason = f"Học từ lịch sử sổ gia đình ('{hit['sample_content']}' [{hit['count']} lần] → {cat} • {person})"
+            else:
+                best_hit = None
+                best_len = 0
+                for norm_k, info in learned.items():
+                    if len(norm_k) >= 4 and info["count"] >= 2 and text_has_keyword(t_fold, norm_k):
+                        if len(norm_k) > best_len:
+                            best_hit = info
+                            best_len = len(norm_k)
+                if best_hit:
+                    cat = best_hit["category"]
+                    person = explicit_person or best_hit["person"]
+                    confidence = 0.94
+                    reason = f"Học từ lịch sử sổ gia đình ('{best_hit['sample_content']}' → {cat} • {person})"
+        except Exception:
+            pass
+
+    # 2. Bộ quy tắc nền tảng nếu chưa có trong lịch sử khớp trực tiếp
+    if confidence < 0.9:
+        for kw_list, rule_cat, rule_person, _ in KEYWORD_RULES:
+            for kw in kw_list:
+                if text_has_keyword(t_low, kw):
+                    cat = rule_cat
+                    person = explicit_person or rule_person
+                    confidence = 0.96
+                    reason = f"Khớp mẫu lịch sử gia đình ('{kw}' → {cat} • {person})"
+                    break
+            if confidence > 0.9:
                 break
-        if confidence > 0.9:
-            break
 
     if explicit_person and confidence < 0.9:
         person = explicit_person
@@ -357,7 +517,7 @@ def classify_transaction_text(text):
         ("làm đẹp", "Làm đẹp"), ("y tế", "Y tế"), ("event", "Event"), ("nợ", "Nợ")
     ]:
         if c_key == "nợ":
-            if re.search(r'(?<!ghi\s)(?<!báo\s)(?<!dư\s)\bnợ\b', t_low):
+            if re.search(r'(?<!ghi\s)(?<!báo\s)(?<!dư\s)(?:^|[^\w])nợ(?!\w)', t_low, flags=re.UNICODE):
                 cat = "Nợ"
                 confidence = 0.98
                 break
@@ -377,9 +537,9 @@ def is_unclear_email_transaction(friendly_note, raw_content, confidence):
     fn = (friendly_note or "").strip().lower()
     rc = (raw_content or "").strip().lower()
 
-    # 1. Độ tin cậy thấp từ bộ từ khóa gia đình
+    # 1. Độ tin cậy thấp từ bộ nhớ lịch sử gia đình
     if confidence < 0.88:
-        return True, "Nội dung giao dịch chưa khớp từ khóa nào của gia đình, AI cần bạn xác nhận."
+        return True, "Nội dung giao dịch mới/chưa khớp mẫu trong sổ gia đình, Não AI Claude cần bạn xác nhận."
 
     # 2. Nội dung quá ngắn hoặc chỉ toàn chữ số / mã giao dịch
     if len(fn) < 4:
@@ -399,15 +559,59 @@ def is_unclear_email_transaction(friendly_note, raw_content, confidence):
     return False, None
 
 
-def get_smart_clarification_suggestions(amount, bank, raw_content):
-    """Tạo các lựa chọn gợi ý 1 chạm thông minh khi email chưa rõ nội dung"""
-    return [
+def get_smart_clarification_suggestions(amount, bank, raw_content, db=None):
+    """
+    Tạo các lựa chọn gợi ý 1 chạm thông minh dựa trên lịch sử giao dịch có mức tiền/ngân hàng tương đương
+    trong Sổ chi tiêu gia đình (thay vì chỉ trả về danh sách tĩnh).
+    """
+    suggestions = []
+    seen_pairs = set()
+    amt = safe_float(amount, 0.0)
+    try:
+        if db is None:
+            db = load_db()
+        txs = db.get("transactions", []) if isinstance(db, dict) else []
+        if amt > 0 and txs:
+            # Tìm các giao dịch lịch sử có số tiền gần giống (±35%)
+            similar_txs = [
+                t for t in txs
+                if isinstance(t, dict) and t.get("amount") and abs(float(t["amount"]) - amt) <= max(amt * 0.35, 30000)
+            ]
+            pair_freq = {}
+            pair_note = {}
+            for t in similar_txs:
+                pair = (t.get("category", "Ăn uống"), t.get("person", "Chung"))
+                pair_freq[pair] = pair_freq.get(pair, 0) + 1
+                if pair not in pair_note and t.get("content"):
+                    pair_note[pair] = str(t["content"]).strip()
+            for (cat, person), _cnt in sorted(pair_freq.items(), key=lambda x: x[1], reverse=True)[:3]:
+                if (cat, person) not in seen_pairs:
+                    seen_pairs.add((cat, person))
+                    sample_note = pair_note.get((cat, person), f"{cat} ({person})")
+                    suggestions.append({
+                        "label": f"✨ {sample_note[:22]} • {cat} ({person})",
+                        "category": cat,
+                        "person": person,
+                        "note": sample_note[:40]
+                    })
+    except Exception:
+        pass
+
+    defaults = [
         {"label": "🍲 Ăn uống • Chung", "category": "Ăn uống", "person": "Chung", "note": "Ăn uống gia đình"},
         {"label": "🧺 Đồ dùng GĐ • Vợ", "category": "Đồ dùng GĐ", "person": "Vợ", "note": "Mua đồ dùng gia đình"},
         {"label": "⛽ Tiện ích / Xăng • Chồng", "category": "Phí tiện ích", "person": "Chồng", "note": "Đổ xăng / Tiện ích"},
         {"label": "👶 Bỉm sữa / Y tế • Sugi", "category": "Đồ dùng GĐ", "person": "Sugi", "note": "Mua đồ cho Sugi"},
         {"label": "👦 Học tập / Đồ chơi • Subo", "category": "Học tập", "person": "Subo", "note": "Chi phí cho Subo"}
     ]
+    for d in defaults:
+        if len(suggestions) >= 5:
+            break
+        pair = (d["category"], d["person"])
+        if pair not in seen_pairs:
+            seen_pairs.add(pair)
+            suggestions.append(d)
+    return suggestions
 
 
 def parse_quick_input(raw_text, default_month=10):
@@ -506,111 +710,335 @@ def parse_quick_input(raw_text, default_month=10):
     }
 
 
+def clean_bank_merchant_label(raw_content, db=None):
+    """
+    Chỉ loại bỏ các tiền tố định tuyến kỹ thuật của ngân hàng (VPB;090...;, .OP*, ONEPAYJ*, VNPAY, IBFT, NAPAS...)
+    và đối chiếu bộ nhớ học động từ lịch sử Sổ chi tiêu gia đình (không fix cứng danh sách cửa hàng).
+    """
+    rc = (raw_content or "").strip().strip("*").strip()
+    cleaned = re.sub(r'^(?:VPB|BIDV|NCB|UOB|MBVCB|IBFT|NAPAS)\s*;\s*(?:\d+\s*;\s*)?', '', rc, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(
+        r'^(\.OP\*|ONEPAYJ\*|VNPAY\s+|MBVCB|IBFT|NAPAS|QR|POS|ECOM|TT|GD|CHUYEN TIEN|THANH TOAN)[\s._:-]*',
+        '',
+        cleaned,
+        flags=re.IGNORECASE
+    ).strip(" *.")
+    norm_c = re.sub(r"\s+", " ", _fold_vn_server(cleaned or rc)).strip()
+    if len(norm_c) >= 3:
+        try:
+            learned = build_family_ledger_memory(db)
+            if norm_c in learned:
+                return learned[norm_c]["sample_content"]
+        except Exception:
+            pass
+    return cleaned or rc
+
+
 def parse_bank_emails(raw_email_text, min_date="2026-11-01"):
     """
     Parses 1 or multiple bank notification emails / SMS messages from VPBank, BIDV, NCB, UOB.
-    Splits by '---' or email headers or processes line-by-line / block-by-block.
-    Filters out transactions before min_date (defaults to 2026-11-01).
+    Supports:
+    - Real VPBank Credit Card HTML-to-text emails (value-before-label layout, USD foreign currency, + repayment/cashback skip)
+    - Real VPBank NEO Bill Payment emails (₫ symbol, EVN/VNPT service extraction, AUTO<tx_code> deduplication)
+    - Real BIDV Transfer Receipts (Transaction amount, Reference number, Beneficiary name, self-transfer detection)
+    - Standard SMS/email notifications from VPBank, BIDV, NCB, UOB
+    Filters out non-expense emails (card limit changes, monthly statements, promos, newsletters) and transactions before min_date.
     """
-    blocks = [b.strip() for b in re.split(r'(?:^|\n)---+(?:\n|$)|(?=(?:From|Từ|Sender)\s*:)', raw_email_text, flags=re.IGNORECASE) if b.strip()]
-    if not blocks:
-        blocks = [raw_email_text.strip()]
+    if isinstance(raw_email_text, list):
+        blocks = [str(b).strip() for b in raw_email_text if str(b).strip()]
+    else:
+        blocks = [b.strip() for b in re.split(r'(?:^|\n)---+(?:\n|$)|(?=(?:From|Từ|Sender)\s*:)', raw_email_text or "", flags=re.IGNORECASE) if b.strip()]
+        if not blocks and (raw_email_text or "").strip():
+            blocks = [raw_email_text.strip()]
 
-    parsed_items = []
+    raw_candidates = []
     for idx, block in enumerate(blocks, 1):
         b_low = block.lower()
-        # Detect bank: VPBank only has 2 cards: VPBank Step Up & VPBank Shopee
+
+        # 0. Filter out non-expense emails (newsletters, card limit changes, statements, promos)
+        if any(nw in b_low for nw in ["[phs daily news]", "[phs legal]", "bản tin nội bộ", "sao kê thẻ tín dụng", "credit card monthly statement"]):
+            continue
+        if any(lim in b_low for lim in [
+            "dịch vụ tăng/giảm hạn mức",
+            "thay đổi hạn mức giao dịch",
+            "change daily online transaction limit",
+            "change credit card spending limit",
+            "hạn mức chi tiêu thẻ/ngày",
+            "hạn mức giao dịch trực tuyến ngày"
+        ]):
+            continue
+        if any(pr in b_low for pr in ["mừng sinh nhật", "tặng bạn quà", "evoucher", "ưu đãi đặc quyền"]) and not any(
+            tx_kw in b_low for tx_kw in ["số tiền thay đổi", "changed amount", "số tiền giao dịch", "số tiền thanh toán", "trừ -"]
+        ):
+            continue
+        # Ignore self-sent non-bank emails
+        m_from = re.search(r'^From:\s*([^\r\n]+)', block, re.IGNORECASE | re.MULTILINE)
+        m_subj = re.search(r'^Subject:\s*([^\r\n]+)', block, re.IGNORECASE | re.MULTILINE)
+        from_low = m_from.group(1).lower() if m_from else ""
+        subj_low = m_subj.group(1).lower() if m_subj else ""
+        if "nnt472@gmail.com" in from_low and not any(
+            bk in subj_low for bk in ["vpbank", "bidv", "ncb", "uob", "biến động", "bien dong", "biên lai", "thanh toán", "fwd:"]
+        ):
+            continue
+
+        # 1. Detect bank: Check header (From + Subject) first to avoid random substrings in body/URLs
+        header_low = f"{from_low} {subj_low}"
         bank = "VPBank Step Up"
-        if "bidv" in b_low or "smartbanking" in b_low:
+        if any(k in b_low for k in ["vpbank shopee card", "thẻ vpbank shopee", "the vpbank shopee", "thẻ shopee", "the shopee", "thẻ vpsp", "vpsp", "vp sp"]):
+            bank = "VPBank Shopee"
+        elif "vpbank" in header_low or "vpb.com.vn" in header_low:
+            bank = "VPBank Step Up"
+        elif "bidv" in header_low or "smartbanking" in header_low:
+            bank = "BIDV"
+        elif "ncb" in header_low or "quốc dân" in header_low or "izimobile" in header_low:
+            bank = "NCB"
+        elif "uob" in header_low:
+            bank = "UOB"
+        elif "bidv" in b_low or "smartbanking" in b_low:
             bank = "BIDV"
         elif "ncb" in b_low or "quốc dân" in b_low or "izimobile" in b_low:
             bank = "NCB"
         elif "uob" in b_low:
             bank = "UOB"
-        # Chỉ nhận là VPBank Shopee khi trên email/SMS ghi rõ là THẺ Shopee / VPSP
-        # Mua hàng trên sàn Shopee bằng thẻ Step Up vẫn là VPBank Step Up
-        elif any(k in b_low for k in ["vpbank shopee card", "thẻ vpbank shopee", "the vpbank shopee", "thẻ shopee", "the shopee", "thẻ vpsp", "vpsp", "vp sp"]):
-            bank = "VPBank Shopee"
-        elif any(k in b_low for k in ["vpbank", "step up", "stepup", "neo", "vp"]):
+        elif any(k in b_low for k in ["vpbank", "vpb.com.vn", "step up", "stepup", "neo", "vp"]):
             bank = "VPBank Step Up"
 
-        # Detect outgoing vs incoming
-        is_income = False
-        if re.search(r'\+\s*\d', block) and not re.search(r'-\s*\d', block):
-            if any(w in b_low for w in ["lương", "salary", "nhận tiền", "ghi có", "cổ tức"]):
-                is_income = True
-
-        # Extract amount
-        # Look for patterns like -1,440,000 VND, So tien: 378,000 VND, GD: -500,000VND, etc.
         amt = 0.0
-        amt_patterns = [
-            r'(?:số tiền|so tien|giá trị|gia tri|biến động|bien dong|gd|amount)[:\s]*([+-]?\s*\d{1,3}(?:[.,]\d{3})+|\d{4,10})\s*(?:vnd|đ|vnđ)',
-            r'([+-]\s*\d{1,3}(?:[.,]\d{3})+)\s*(?:vnd|đ|vnđ)',
-            r'(\d{1,3}(?:[.,]\d{3})+)\s*(?:vnd|đ|vnđ)'
-        ]
-        for pat in amt_patterns:
-            m_a = re.search(pat, block, re.IGNORECASE)
-            if m_a:
-                num_s = re.sub(r'[^\d]', '', m_a.group(1))
-                if num_s:
-                    amt = float(num_s)
-                    break
+        tx_code = ""
+        content_extracted = ""
+        friendly_note = ""
+        foreign_currency_note = None
+        is_self_transfer = False
+        explicit_date_match = None
 
-        # Extract Date (D5 fix: check ISO YYYY-MM-DD first, then DD/MM/YYYY)
+        # ======================================================================
+        # FORMAT A: VPBank Credit Card ("Số tiền thay đổi / *Changed Amount*")
+        # Value appears on the line ABOVE each label
+        # ======================================================================
+        if "số tiền thay đổi" in b_low or "changed amount" in b_low:
+            m_cc_amt = re.search(
+                r'\*?([+-]?\s*\d[\d.,]*)\s*(VND|VNĐ|USD|EUR|SGD|JPY|AUD|GBP|₫|đ)\*?\s*[\r\n]+\s*Số tiền thay đổi',
+                block,
+                re.IGNORECASE
+            )
+            if m_cc_amt:
+                raw_val_s = m_cc_amt.group(1).strip()
+                curr_s = m_cc_amt.group(2).upper()
+                # Credit card '+' balance change is a statement repayment or cashback refund, NOT an expense!
+                if raw_val_s.startswith("+"):
+                    continue
+                if curr_s in ("VND", "VNĐ", "Đ", "₫"):
+                    digits = re.sub(r'[^\d]', '', raw_val_s)
+                    amt = float(digits) if digits else 0.0
+                else:
+                    # Foreign currency (e.g. - 111.11 USD)
+                    clean_num = re.sub(r'[^0-9.]', '', raw_val_s.replace(',', '.')) if ',' in raw_val_s and '.' not in raw_val_s else re.sub(r'[^0-9.]', '', raw_val_s.replace(',', ''))
+                    fc_val = float(clean_num) if clean_num else 0.0
+                    fx_rates = {"USD": 26823.4, "EUR": 28500.0, "SGD": 19800.0, "JPY": 175.0, "AUD": 17500.0, "GBP": 33500.0}
+                    amt = round(fc_val * fx_rates.get(curr_s, 26000.0))
+                    foreign_currency_note = f"{fc_val:g} {curr_s}"
+
+            m_cc_nd = re.search(
+                r'\*?([^\r\n*]+)\*?\s*[\r\n]+\s*Nội dung\s*/\s*\*?Transaction Content',
+                block,
+                re.IGNORECASE
+            )
+            if m_cc_nd:
+                content_extracted = m_cc_nd.group(1).strip().strip("*").strip()
+
+            m_cc_time = re.search(
+                r'\*?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?\*?\s*[\r\n]+\s*Thời gian\s*/\s*\*?Time',
+                block,
+                re.IGNORECASE
+            )
+            if m_cc_time:
+                explicit_date_match = m_cc_time.group(1)
+
+            m_cc_code = re.search(
+                r'\*?([A-Za-z0-9_/-]+)\*?\s*[\r\n]+\s*Mã giao dịch\s*/\s*\*?Transaction Code',
+                block,
+                re.IGNORECASE
+            )
+            if m_cc_code:
+                tx_code = m_cc_code.group(1).strip().strip("*")
+
+            friendly_note = clean_bank_merchant_label(content_extracted)
+            if foreign_currency_note:
+                friendly_note = f"{friendly_note} ({foreign_currency_note})"
+
+        # ======================================================================
+        # FORMAT B: VPBank NEO Bill Payment ("Số tiền thanh toán:" / "Dịch vụ thanh toán:")
+        # ======================================================================
+        elif "số tiền thanh toán" in b_low or "dịch vụ thanh toán" in b_low:
+            m_bill_amt = re.search(r'Số tiền thanh toán[:\s]*([\d.,]+)\s*(?:vnd|vnđ|đ|₫)', block, re.IGNORECASE)
+            if m_bill_amt:
+                digits = re.sub(r'[^\d]', '', m_bill_amt.group(1))
+                amt = float(digits) if digits else 0.0
+
+            m_bill_code = re.search(r'Mã giao dịch[:\s]*([A-Za-z0-9]+)(?:/[A-Za-z0-9]+)?', block, re.IGNORECASE)
+            if m_bill_code:
+                tx_code = m_bill_code.group(1).strip()
+
+            m_bill_dt = re.search(r'Ngày thực hiện giao dịch[:\s]*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})', block, re.IGNORECASE)
+            if m_bill_dt:
+                explicit_date_match = m_bill_dt.group(1)
+
+            m_srv = re.search(r'Dịch vụ thanh toán[:\s]*([A-Za-z0-9_]+)', block, re.IGNORECASE)
+            m_prv = re.search(r'Nhà cung cấp[:\s]*(.+?)(?=\s*Mã hóa đơn|\s*Trạng thái|[\r\n]|$)', block, re.IGNORECASE)
+            m_inv = re.search(r'Mã hóa đơn[:\s]*([A-Za-z0-9_-]+)', block, re.IGNORECASE)
+            srv_raw = m_srv.group(1).strip() if m_srv else ""
+            prv_raw = m_prv.group(1).strip() if m_prv else ""
+            inv_raw = m_inv.group(1).strip() if m_inv else ""
+            srv_map = {"DIEN": "Tiền điện", "NET": "Tiền mạng Internet", "NUOC": "Tiền nước"}
+            srv_label = srv_map.get(srv_raw.upper(), f"Hóa đơn {srv_raw}".strip())
+            content_extracted = f"{srv_label} {prv_raw}".strip() + (f" ({inv_raw})" if inv_raw else "")
+            friendly_note = content_extracted
+
+        # ======================================================================
+        # FORMAT C: BIDV Transfer Receipt ("Biên lai chuyển tiền" / "Beneficiary name")
+        # ======================================================================
+        elif "beneficiary name" in b_low or "tên người thụ hưởng" in b_low or "biên lai chuyển tiền" in b_low:
+            m_bidv_amt = re.search(
+                r'(?:Transaction amount|Số tiền giao dịch)[\s\S]{0,180}?(\d{1,3}(?:[.,]\d{3})+|\d{4,10})\s*(?:VND|VNĐ|đ|₫)',
+                block,
+                re.IGNORECASE
+            )
+            if m_bidv_amt:
+                digits = re.sub(r'[^\d]', '', m_bidv_amt.group(1))
+                amt = float(digits) if digits else 0.0
+
+            m_ref = re.search(r'Reference number\*?[:\s]*([A-Za-z0-9_-]+)', block, re.IGNORECASE) or re.search(r'Số tham chiếu\*?[:\s]+([0-9A-Za-z_-]{5,})', block, re.IGNORECASE)
+            if m_ref:
+                tx_code = m_ref.group(1).strip()
+
+            m_b_dt = re.search(r'(?:Transaction(?: date,)?\s*time|Ngày,\s*giờ giao dịch|Thời gian giao dịch)\*?[:\s]*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})', block, re.IGNORECASE)
+            if m_b_dt:
+                explicit_date_match = m_b_dt.group(1)
+
+            m_sender = re.search(r'(?:Dear(?:\s+Valued)?\s+Customer|Kính gửi quý khách)\*?[:\s]*([^\r\n*]+)', block, re.IGNORECASE)
+            m_benef = re.search(r'Beneficiary name\*?[:\s]*([^\r\n*]+)', block, re.IGNORECASE)
+            m_nd_bidv = re.search(r'Transaction content\*?[:\s]*([^\r\n*]+)', block, re.IGNORECASE)
+
+            sender_name = re.sub(r'^[:\s]+', '', m_sender.group(1)).strip() if m_sender else ""
+            benef_name = re.sub(r'^[:\s]+', '', m_benef.group(1)).strip() if m_benef else ""
+            bidv_note = re.sub(r'^[:\s]+', '', m_nd_bidv.group(1)).strip() if m_nd_bidv else ""
+            if any(skip_w in bidv_note.lower() for skip_w in ["số tiền bằng chữ", "amount in words", "số tiền phí", "fee amount"]):
+                bidv_note = ""
+
+            if sender_name and benef_name and sender_name.upper() == benef_name.upper():
+                is_self_transfer = True
+                content_extracted = f"Chuyển khoản nội bộ BIDV → {benef_name}"
+                friendly_note = content_extracted
+            else:
+                friendly_benef = clean_bank_merchant_label(benef_name)
+                if bidv_note and not re.search(r'chuyen\s*tien|chuyển\s*tiền', bidv_note, re.IGNORECASE):
+                    content_extracted = f"{bidv_note} ({benef_name})" if benef_name else bidv_note
+                    friendly_note = f"{bidv_note} ({friendly_benef})" if friendly_benef else bidv_note
+                elif benef_name:
+                    content_extracted = f"CK BIDV → {benef_name}"
+                    friendly_note = f"CK BIDV → {friendly_benef}" if friendly_benef != benef_name else f"CK BIDV → {benef_name}"
+
+        # ======================================================================
+        # FORMAT D: Standard / SMS / Generic Bank Notification
+        # ======================================================================
+        is_income = False
+        if amt <= 0:
+            if re.search(r'\+\s*\d', block) and not re.search(r'-\s*\d', block):
+                if any(w in b_low for w in ["lương", "salary", "nhận tiền", "ghi có", "cổ tức"]):
+                    is_income = True
+
+            # Remove Available Limit / Số dư khả dụng lines before matching generic amount
+            block_for_amt = re.sub(
+                r'[^\r\n]*(?:hạn mức còn lại|available limit|số dư khả dụng|số dư cuối|available balance)[^\r\n]*',
+                '',
+                block,
+                flags=re.IGNORECASE
+            )
+            amt_patterns = [
+                r'(?:số tiền|so tien|giá trị|gia tri|biến động|bien dong|gd|amount|charged)[:\s]*([+-]?\s*\d{1,3}(?:[.,]\d{3})+|\d{4,10})\s*(?:vnd|đ|₫|vnđ)',
+                r'([+-]\s*\d{1,3}(?:[.,]\d{3})+)\s*(?:vnd|đ|₫|vnđ)',
+                r'(\d{1,3}(?:[.,]\d{3})+)\s*(?:vnd|đ|₫|vnđ)'
+            ]
+            for pat in amt_patterns:
+                m_a = re.search(pat, block_for_amt, re.IGNORECASE)
+                if m_a:
+                    num_s = re.sub(r'[^\d]', '', m_a.group(1))
+                    if num_s:
+                        amt = float(num_s)
+                        break
+
+        # Extract Date (ISO YYYY-MM-DD first, then explicit_date_match, then DD/MM/YYYY)
         now = datetime.datetime.now()
-        month_num = now.month if 1 <= now.month <= 12 else 10
+        month_num = now.month if 1 <= now.month <= 12 else 11
         date_str = clamp_date_2026(month_num, now.day)
 
-        # 1. Check ISO format (e.g. "2026-11-05 14:30:00" or "2026/11/05")
-        m_iso = re.search(r'(?<!\d)(20\d\d)[/-](\d{1,2})[/-](\d{1,2})(?!\d)', block)
-        if m_iso:
-            y_i = int(m_iso.group(1))
-            m_i = int(m_iso.group(2))
-            d_i = int(m_iso.group(3))
-            if 1 <= m_i <= 12 and 1 <= d_i <= 31:
-                month_num = m_i
-                date_str = clamp_date_2026(m_i, d_i)
-        else:
-            # 2. Check standard Vietnamese DD/MM or DD/MM/YYYY format
-            m_dt = re.search(r'(?<!\d)(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?(?!\d)', block)
-            if m_dt:
-                d_i = int(m_dt.group(1))
-                m_i = int(m_dt.group(2))
+        if explicit_date_match:
+            m_ed = re.match(r'(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?', explicit_date_match.strip())
+            if m_ed:
+                d_i, m_i = int(m_ed.group(1)), int(m_ed.group(2))
                 if 1 <= m_i <= 12 and 1 <= d_i <= 31:
                     month_num = m_i
                     date_str = clamp_date_2026(m_i, d_i)
-
-        # Extract merchant / transaction content
-        content_extracted = ""
-        nd_match = re.search(r'(?:nội dung|noi dung|mô tả|mo ta|merchant|chi tiết)[:\s]+([^\n\r;]+)', block, re.IGNORECASE)
-        if nd_match:
-            content_extracted = re.split(r'\.\s*(?:số dư|so du|sd)', nd_match.group(1), flags=re.IGNORECASE)[0].strip(" .")
         else:
-            # Take the most informative line
-            lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
-            content_extracted = lines[-1] if lines else block[:80]
+            m_iso = re.search(r'(?<!\d)(20\d\d)[/-](\d{1,2})[/-](\d{1,2})(?!\d)', block)
+            if m_iso:
+                m_i = int(m_iso.group(2))
+                d_i = int(m_iso.group(3))
+                if 1 <= m_i <= 12 and 1 <= d_i <= 31:
+                    month_num = m_i
+                    date_str = clamp_date_2026(m_i, d_i)
+            else:
+                m_dt = re.search(r'(?<!\d)(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?(?!\d)', block)
+                if m_dt:
+                    d_i = int(m_dt.group(1))
+                    m_i = int(m_dt.group(2))
+                    if 1 <= m_i <= 12 and 1 <= d_i <= 31:
+                        month_num = m_i
+                        date_str = clamp_date_2026(m_i, d_i)
 
-        # Clean bank noise words from content_extracted to make it family-notebook friendly
-        friendly_note = content_extracted
-        friendly_note = re.sub(r'^(MBVCB|IBFT|NAPAS|QR|POS|ECOM|TT|GD|CHUYEN TIEN|THANH TOAN)[\s._:-]*', '', friendly_note, flags=re.IGNORECASE).strip()
+        if not content_extracted:
+            nd_match = re.search(r'(?:nội dung|noi dung|mô tả|mo ta|merchant|chi tiết)[:\s]+([^\n\r]+)', block, re.IGNORECASE)
+            if nd_match and "*transaction content*" not in nd_match.group(1).lower():
+                content_extracted = re.split(r'\.\s*(?:số dư|so du|sd)', nd_match.group(1), flags=re.IGNORECASE)[0].strip(" .")
+            else:
+                lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
+                content_extracted = lines[-1] if lines else block[:80]
+
+        if not friendly_note:
+            friendly_note = clean_bank_merchant_label(content_extracted)
 
         cat, person, conf, reason = classify_transaction_text(content_extracted + " " + friendly_note)
         is_unclear, unclear_msg = is_unclear_email_transaction(friendly_note, content_extracted, conf)
+
+        if is_self_transfer:
+            is_unclear = True
+            unclear_msg = "Chuyển khoản cùng tên chủ tài khoản (NGUYEN NGOC THANH) — Xác nhận là chi tiêu hay chuyển nội bộ để bỏ qua."
+        elif foreign_currency_note:
+            is_unclear = True
+            unclear_msg = f"Giao dịch ngoại tệ ({foreign_currency_note}) quy đổi tạm tính ~{round(amt):,}đ — Vui lòng xác nhận số tiền thực tế."
+        elif re.match(r'^AUTO\d+$', content_extracted, re.IGNORECASE):
+            is_unclear = True
+            unclear_msg = f"Thanh toán hóa đơn tự động ({content_extracted}) — Cần đối chiếu dịch vụ."
 
         # Skip emails before min_date
         if min_date and date_str < min_date:
             continue
 
         if amt > 0:
+            display_content = friendly_note if any(ord(c) > 127 for c in friendly_note) or friendly_note != content_extracted else (
+                friendly_note.lower() if len(friendly_note) < 40 else friendly_note[:45]
+            )
             item_data = {
                 "temp_id": f"EMAIL-{idx}-{int(amt)}",
                 "bank": bank,
                 "date": date_str,
                 "month": month_num,
                 "amount": round(amt),
+                "tx_code": tx_code or None,
                 "is_income": is_income,
+                "is_self_transfer": is_self_transfer,
                 "raw_content": content_extracted,
-                "content": friendly_note.lower() if len(friendly_note) < 40 else friendly_note[:45],
+                "content": display_content[:60],
                 "category": cat,
                 "person": person,
                 "source": bank,
@@ -621,7 +1049,27 @@ def parse_bank_emails(raw_email_text, min_date="2026-11-01"):
                 "ai_question": f"Giao dịch {round(amt):,}đ tại {bank} ('{friendly_note}') chi cho mục đích gì và của ai trong gia đình?" if is_unclear else None,
                 "suggested_options": get_smart_clarification_suggestions(amt, bank, content_extracted) if is_unclear else []
             }
-            parsed_items.append(item_data)
+            raw_candidates.append(item_data)
+
+    # Deduplicate within batch (e.g. VPBank NEO bill payment tx_code 263119003878 + Credit card AUTO263119003878)
+    parsed_items = []
+    by_code_amt = {}
+    for item in raw_candidates:
+        code_norm = (item.get("tx_code") or "").strip()
+        raw_upper = (item.get("raw_content") or "").strip().upper()
+        if raw_upper.startswith("AUTO") and raw_upper[4:].isdigit():
+            code_norm = raw_upper[4:]
+        if code_norm:
+            dedup_key = f"{item['date']}|{item['amount']}|{code_norm}"
+            if dedup_key in by_code_amt:
+                existing_idx = by_code_amt[dedup_key]
+                existing = parsed_items[existing_idx]
+                # Prefer the richer bill payment description over "AUTO<tx_code>"
+                if (existing.get("raw_content") or "").upper().startswith("AUTO") and not raw_upper.startswith("AUTO"):
+                    parsed_items[existing_idx] = item
+                continue
+            by_code_amt[dedup_key] = len(parsed_items)
+        parsed_items.append(item)
 
     return parsed_items
 
@@ -989,7 +1437,17 @@ def handle_ai_proxy_request(body):
         preferred_model = "claude-sonnet-5-5"
 
     candidate_models = [preferred_model]
-    for fallback_m in ["claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5", "claude-3-7-sonnet-20250219", "claude-3-5-sonnet-20241022"]:
+    for fallback_m in [
+        "claude-sonnet-5-5",
+        "claude-haiku-5-5",
+        "claude-opus-5-5",
+        "claude-sonnet-5",
+        "claude-fable-5-2",
+        "claude-sonnet-4-6",
+        "claude-sonnet-4-5-20250929",
+        "claude-3-7-sonnet-20250219",
+        "claude-3-5-sonnet-20241022"
+    ]:
         if fallback_m not in candidate_models:
             candidate_models.append(fallback_m)
 
@@ -1068,6 +1526,161 @@ def handle_ai_proxy_request(body):
             last_error = str(e)
 
     return {"ok": False, "error": last_error or "Không nhận được phản hồi từ Claude API"}, 502
+
+
+def _extract_json_from_ai_text(text):
+    if not text:
+        return None
+    raw = str(text).strip()
+    try:
+        return json.loads(raw)
+    except Exception:
+        pass
+    clean = re.sub(r"```(?:json)?\s*", "", raw, flags=re.IGNORECASE).replace("```", "").strip()
+    try:
+        return json.loads(clean)
+    except Exception:
+        pass
+    fb = clean.find("{")
+    lb = clean.rfind("}")
+    if fb != -1 and lb != -1 and lb > fb:
+        try:
+            return json.loads(clean[fb:lb + 1])
+        except Exception:
+            pass
+    return None
+
+
+def enrich_emails_with_claude_ai(items, db=None):
+    """
+    Dùng Não AI Claude kết hợp bộ nhớ lịch sử chi tiêu gia đình (DB.transactions) để đọc hiểu sâu
+    các giao dịch ngân hàng mới, dịch mã POS/chuyển khoản sang tiếng Việt tự nhiên, gán Hạng mục & Thành viên,
+    và tạo câu hỏi + gợi ý 1 chạm thông minh theo đúng ngữ cảnh.
+    """
+    if not items:
+        return items
+    if db is None:
+        db = load_db()
+    api_key = str(db.get("meta", {}).get("gemini_api_key") or "").strip()
+    if not api_key:
+        return items
+
+    categories_list = ", ".join(db.get("meta", {}).get("categories", []))
+    members_list = ", ".join(db.get("meta", {}).get("members", []))
+    family_context = build_family_context_prompt(db)
+
+    compact_inputs = []
+    for idx, it in enumerate(items):
+        compact_inputs.append({
+            "idx": idx,
+            "bank": it.get("bank"),
+            "date": it.get("date"),
+            "amount": it.get("amount"),
+            "raw_content": it.get("raw_content"),
+            "is_self_transfer": bool(it.get("is_self_transfer", False))
+        })
+
+    prompt = f"""Bạn là Não AI Claude quản lý tài chính gia đình (Chồng, Vợ, con lớn Subo, bé nhỏ Sugi, và chi tiêu Chung).
+Dưới đây là BỘ NHỚ THÓI QUEN CHI TIÊU THỰC TẾ được trích xuất từ sổ cái 888+ giao dịch của gia đình:
+{family_context}
+
+Hãy phân tích danh sách {len(compact_inputs)} giao dịch ngân hàng mới dưới đây:
+{json.dumps(compact_inputs, ensure_ascii=False)}
+
+Yêu cầu cho từng giao dịch (giữ nguyên "idx"):
+1. "content": Dịch mã máy POS / nội dung ngân hàng sang tiếng Việt tự nhiên, ngắn gọn, dễ hiểu nhất.
+2. "category": Chọn đúng 1 trong 10 hạng mục: {categories_list}.
+3. "person": Chọn đúng 1 trong 5 thành viên: {members_list}.
+4. "needs_clarification": true NẾU chỉ có tên người nhận chuyển khoản cá nhân mà chưa rõ mua gì, chuyển khoản nội bộ cùng tên chủ TK, hoặc tên công ty/mã POS lạ chưa rõ mục đích; false nếu đã rõ cửa hàng/dịch vụ.
+5. "unclear_reason": Nếu needs_clarification=true, giải thích ngắn gọn vì sao cần hỏi lại.
+6. "ai_question": Nếu needs_clarification=true, đặt 1 câu hỏi tự nhiên, cụ thể cho đúng giao dịch đó.
+7. "suggested_options": Nếu needs_clarification=true, sinh 3-4 lựa chọn gợi ý 1 chạm phù hợp nhất với số tiền và ngữ cảnh giao dịch đó, mỗi lựa chọn gồm {{"label": "...", "category": "...", "person": "...", "note": "..."}}.
+
+Trả về DUY NHẤT JSON thuần (không markdown):
+{{"items": [{{"idx": 0, "content": "...", "category": "...", "person": "...", "needs_clarification": false, "unclear_reason": null, "ai_question": null, "suggested_options": []}}]}}"""
+
+    res_data, status_code = handle_ai_proxy_request({"prompt": prompt, "max_tokens": 2200})
+    if status_code == 200 and res_data.get("ok") and res_data.get("text"):
+        parsed = _extract_json_from_ai_text(res_data["text"])
+        if isinstance(parsed, dict) and isinstance(parsed.get("items"), list):
+            valid_cats = set(db.get("meta", {}).get("categories", []))
+            valid_members = set(db.get("meta", {}).get("members", []))
+            model_label = res_data.get("model", "Claude AI")
+            by_idx = {int(x["idx"]): x for x in parsed["items"] if isinstance(x, dict) and "idx" in x}
+            for i, item in enumerate(items):
+                ai_it = by_idx.get(i)
+                if not ai_it:
+                    continue
+                if ai_it.get("content"):
+                    item["content"] = str(ai_it["content"]).strip()[:70]
+                if ai_it.get("category") in valid_cats:
+                    item["category"] = ai_it["category"]
+                if ai_it.get("person") in valid_members:
+                    item["person"] = ai_it["person"]
+                if isinstance(ai_it.get("needs_clarification"), bool):
+                    item["needs_clarification"] = ai_it["needs_clarification"] or bool(item.get("is_self_transfer"))
+                if ai_it.get("unclear_reason"):
+                    item["unclear_reason"] = str(ai_it["unclear_reason"]).strip()
+                if ai_it.get("ai_question"):
+                    item["ai_question"] = str(ai_it["ai_question"]).strip()
+                if isinstance(ai_it.get("suggested_options"), list) and len(ai_it["suggested_options"]) > 0:
+                    item["suggested_options"] = ai_it["suggested_options"]
+                item["reason"] = f"Não AI ({model_label}) phân tích theo lịch sử gia đình"
+                item["resolved_by_ai"] = not item["needs_clarification"]
+    return items
+
+
+def clarify_email_with_claude_ai(raw_content, amount, bank="VPBank Step Up", user_reply="", db=None):
+    """
+    Dùng Não AI Claude + Lịch sử gia đình để làm rõ 1 giao dịch email dựa trên phản hồi tự nhiên của người dùng.
+    """
+    if db is None:
+        db = load_db()
+    cat, person, conf, reason = classify_transaction_text(f"{raw_content} {user_reply}".strip(), db=db)
+    result = {
+        "ok": True,
+        "content": user_reply or clean_bank_merchant_label(raw_content, db=db),
+        "category": cat,
+        "person": person,
+        "confidence": max(conf, 0.95),
+        "reason": f"Cập nhật theo phản hồi: '{user_reply}'" if user_reply else reason,
+        "needs_clarification": False
+    }
+    api_key = str(db.get("meta", {}).get("gemini_api_key") or "").strip()
+    if not api_key:
+        return result
+
+    categories_list = ", ".join(db.get("meta", {}).get("categories", []))
+    members_list = ", ".join(db.get("meta", {}).get("members", []))
+    family_context = build_family_context_prompt(db, max_examples_per_cat=3)
+    prompt = f"""Bạn là Não AI Claude kế toán gia đình.
+Lịch sử chi tiêu thực tế của gia đình:
+{family_context}
+
+Giao dịch ngân hàng cần làm rõ:
+- Ngân hàng: {bank}
+- Số tiền: {int(amount):,} VNĐ
+- Nội dung gốc từ Bank: "{raw_content}"
+- Giải thích của người dùng: "{user_reply or '(Người dùng bấm nhờ AI tự suy luận)'}"
+
+Hãy trả về DUY NHẤT JSON thuần:
+{{"content": "tên khoản chi ngắn gọn tự nhiên", "category": "1 trong ({categories_list})", "person": "1 trong ({members_list})", "reason": "giải thích ngắn gọn"}}"""
+
+    res_data, status_code = handle_ai_proxy_request({"prompt": prompt, "max_tokens": 500})
+    if status_code == 200 and res_data.get("ok") and res_data.get("text"):
+        parsed = _extract_json_from_ai_text(res_data["text"])
+        if isinstance(parsed, dict):
+            valid_cats = set(db.get("meta", {}).get("categories", []))
+            valid_members = set(db.get("meta", {}).get("members", []))
+            if parsed.get("content"):
+                result["content"] = str(parsed["content"]).strip()
+            if parsed.get("category") in valid_cats:
+                result["category"] = parsed["category"]
+            if parsed.get("person") in valid_members:
+                result["person"] = parsed["person"]
+            if parsed.get("reason"):
+                result["reason"] = f"Não AI ({res_data.get('model', 'Claude')}): {parsed['reason']}"
+    return result
 
 
 GAS_FILE_PATH = os.path.join(BASE_DIR, "google_apps_script_cloud.gs")
@@ -1507,13 +2120,23 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
             raw_text = body.get("raw_text", SAMPLE_BANK_EMAILS)
             min_date = body.get("min_date", "2026-11-01")
             parsed_list = parse_bank_emails(raw_text, min_date=min_date)
+            if body.get("use_ai"):
+                try:
+                    parsed_list = enrich_emails_with_claude_ai(parsed_list)
+                except Exception:
+                    pass
             self._send_json({"ok": True, "items": parsed_list})
             return
 
         elif parsed.path == "/api/email/clarify":
             raw_content = body.get("raw_content", "")
             amount = float(body.get("amount", 0))
+            bank = body.get("bank", "VPBank Step Up")
             user_reply = body.get("user_reply", "").strip()
+            if body.get("use_ai"):
+                res_clarify = clarify_email_with_claude_ai(raw_content, amount, bank=bank, user_reply=user_reply)
+                self._send_json(res_clarify)
+                return
             cat, person, conf, reason = classify_transaction_text(raw_content + " " + user_reply)
             self._send_json({
                 "ok": True,

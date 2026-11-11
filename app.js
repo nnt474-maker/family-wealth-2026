@@ -435,7 +435,7 @@ function deleteTxRow(ss, tx) {
 
 function scanBankGmail(minDateStr) {
   try {
-    let q = '(from:vpbank OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "Quoc Dan" OR "biến động số dư" OR "biendong" OR "thông báo số dư")';
+    let q = '(from:vpbank OR from:vpb.com.vn OR from:bidv OR from:ncb OR from:uob OR "VPBank" OR "BIDV" OR "NCB" OR "Quoc Dan" OR "biến động số dư" OR "biendong" OR "thông báo số dư" OR "Biên lai chuyển tiền") -subject:"[PHS" -subject:"Sao kê thẻ tín dụng"';
     let minTime = 0;
     const now = new Date();
 
@@ -457,7 +457,7 @@ function scanBankGmail(minDateStr) {
       q += ' after:' + Utilities.formatDate(d30, "GMT+7", "yyyy/MM/dd");
     }
 
-    const threads = GmailApp.search(q, 0, 35);
+    const threads = GmailApp.search(q, 0, 45);
     const blocks = [];
     for (let i = 0; i < threads.length; i++) {
       const msgs = threads[i].getMessages();
@@ -466,7 +466,7 @@ function scanBankGmail(minDateStr) {
         if (minTime > 0 && msg.getDate().getTime() < minTime) continue;
         const dt = Utilities.formatDate(msg.getDate(), "GMT+7", "dd/MM/yyyy HH:mm");
         const body = msg.getPlainBody() || msg.getBody().replace(/<[^>]+>/g, " ");
-        blocks.push("From: " + msg.getFrom() + "\\nSubject: " + msg.getSubject() + "\\nDate: " + dt + "\\n" + body.substring(0, 1000));
+        blocks.push("From: " + msg.getFrom() + "\\nSubject: " + msg.getSubject() + "\\nDate: " + dt + "\\n" + body.substring(0, 2500));
       }
     }
     return blocks.join("\\n---\\n");
@@ -535,12 +535,6 @@ function foldVN(str) {
 // 0. SHARED HELPERS (an toàn HTML, ngày tháng, ID, thống kê, JSON từ AI)
 // ============================================================================
 const escapeHtml = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-
-function currentAppMonth() {
-  const now = new Date();
-  if (now.getFullYear() === 2026) return now.getMonth() + 1;
-  return now.getFullYear() > 2026 ? 12 : 1;
-}
 
 // Tháng dùng khi nhập mới: tháng đang chọn, hoặc tháng hiện tại nếu đang xem "Cả năm"
 function activeInputMonth() {
@@ -680,6 +674,9 @@ function pressPinDigit(digit) {
       }
       document.getElementById("pin-lock-overlay").style.display = "none";
       enteredPin = "";
+      setTimeout(() => {
+        try { checkAndRunScheduledEmailScan("pin_unlock"); } catch (e) {}
+      }, 1200);
     } else {
       updatePinDotsUI(true);
       const msg = document.getElementById("pin-status-msg");
@@ -723,29 +720,123 @@ window.addEventListener("keydown", (e) => {
 const KEYWORD_RULES_JS = [
   [["học phí subo", "hphi subo", "hoc phi subo", "tiền học subo"], "Học tập", "Subo"],
   [["đón bo", "đón subo", "don subo", "grab subo"], "Phí tiện ích", "Subo"],
-  [["tini", "khu vui chơi", "lego", "đồ chơi", "tô tượng", "super wing"], "Vui chơi", "Subo"],
+  [["tini", "khu vui chơi", "lego", "đồ chơi", "tô tượng", "super wing", "timezone"], "Vui chơi", "Subo"],
   [["bỉm", "sữa thanh", "kem hăm", "kem bôi hăm", "bình sữa", "túi trữ sữa", "tiêm chủng sugi", "con cưng", "concung"], "Đồ dùng GĐ", "Sugi"],
   [["nhi đồng", "khám sugi", "thuốc sugi"], "Y tế", "Sugi"],
   [["shinhan", "nợ ck shinhan"], "Nợ", "Chồng"],
   [["thuế ck", "nợ thuế"], "Nợ", "Chồng"],
   [["nợ đt vk", "đt vk"], "Nợ", "Vợ"],
-  [["xăng ck", "đổ xăng ck"], "Phí tiện ích", "Chồng"],
+  [["xăng ck", "đổ xăng ck", "plx_sai gon", "plx sai gon", "petrolimex"], "Phí tiện ích", "Chồng"],
   [["xăng vk", "xăng"], "Phí tiện ích", "Vợ"],
   [["sửa xe", "rửa xe", "gửi xe", "thẻ xe"], "Phí tiện ích", "Chung"],
-  [["tiền điện", "evn", "điện lực"], "Phí tiện ích", "Chung"],
+  [["tiền điện", "evn", "điện lực", "pe04000"], "Phí tiện ích", "Chung"],
   [["tiền nước", "sawaco", "nước cc"], "Phí tiện ích", "Chung"],
   [["tiền mạng", "fpt", "viettel", "vnpt", "internet"], "Phí tiện ích", "Chung"],
   [["qlcc", "phí cc", "phí quản lý", "chung cư"], "Phí tiện ích", "Chung"],
-  [["grab", "be ", "be-", "xanh sm", "gsm", "taxi", "vé xe"], "Phí tiện ích", "Chung"],
-  [["chatgpt", "chat gpt", "openai", "claude"], "Công việc", "Chung"],
-  [["coop", "co.op", "bhx", "bách hóa xanh", "bach hoa xanh", "winmart", "emart", "aeon", "kingfood", "king food", "ministop", "circle k", "gs25", "thiso", "lotte", "mega market", "siêu thị", "đi chợ"], "Ăn uống", "Chung"],
-  [["phở", "bún", "cơm", "bánh mì", "trà sữa", "cafe", "cà phê", "highlands", "phúc long", "starbucks", "kfc", "texas", "pizza", "lẩu", "nướng", "ốc", "gà", "thịt", "cá", "rau", "trái cây", "sầu riêng", "măng cụt", "sữa", "vinamilk", "th true", "ăn sáng", "ăn trưa", "ăn tối", "ăn vặt"], "Ăn uống", "Chung"],
-  [["long châu", "pharmacity", "an khang", "thuốc tây", "thuốc", "bệnh viện", "khám", "nha khoa", "làm răng", "y tế", "tiểu đường"], "Y tế", "Chung"],
+  [["grab", "begroup", "be ", "be-", "xanh sm", "gsm", "taxi", "vé xe"], "Phí tiện ích", "Chung"],
+  [["chatgpt", "chat gpt", "openai", "claude", "anthropic", "youtube premium", "google one"], "Công việc", "Chồng"],
+  [["st dien may", "dien may cho lon", "điện máy chợ lớn", "điện máy xanh"], "Đồ dùng GĐ", "Chung"],
+  [["coop", "co.op", "bhx", "bách hóa xanh", "bach hoa xanh", "winmart", "emart", "aeon", "kingfood", "king food", "ministop", "circle k", "gs25", "7eleven", "7-eleven", "thiso", "lotte", "mega market", "siêu thị", "đi chợ"], "Ăn uống", "Chung"],
+  [["phở", "bún", "cơm", "bánh mì", "bánh việt", "banh viet", "ca vien", "cá viên", "kichi kichi", "reverabat", "artisan", "trà sữa", "cafe", "cà phê", "highlands", "phúc long", "starbucks", "kfc", "texas", "pizza", "lẩu", "nướng", "ốc", "gà", "thịt", "cá", "rau", "trái cây", "sầu riêng", "măng cụt", "sữa", "vinamilk", "th true", "ăn sáng", "ăn trưa", "ăn tối", "ăn vặt"], "Ăn uống", "Chung"],
+  [["long châu", "pharmacity", "an khang", "thuốc tây", "thuốc", "bệnh viện", "khám", "nha khoa", "làm răng", "y tế", "tiểu đường", "matkinh", "mắt kính"], "Y tế", "Chung"],
   [["paula", "mỹ phẩm", "son", "kem chống nắng", "gội đầu", "làm tóc", "cắt tóc", "nail", "spa", "quần áo", "áo", "váy", "giày", "dép", "đồ lót", "uniqlo", "zara"], "Làm đẹp", "Vợ"],
   [["nước giặt", "nước rửa", "bao rác", "khăn giấy", "giấy vệ sinh", "bàn chải", "kem đr", "dầu gội", "sữa tắm", "vim", "finish", "khay", "nồi", "chảo", "đồ gia dụng"], "Đồ dùng GĐ", "Chung"],
   [["shopee", "spee", "lazada", "tiktok shop", "tiki"], "Đồ dùng GĐ", "Chung"],
   [["sinh nhật", "đám cưới", "mừng", "thăm", "du lịch", "khách sạn", "vé máy bay", "event"], "Event", "Chung"]
 ];
+
+function textHasKeywordJS(tLow, kw) {
+  const kwClean = (kw || "").trim().toLowerCase();
+  if (!kwClean) return false;
+  if (kwClean.length <= 4 && !kwClean.includes(" ")) {
+    const escaped = kwClean.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pat = new RegExp(`(?<![a-zA-Z0-9àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ])${escaped}(?![a-zA-Z0-9àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ])`, "i");
+    return pat.test(tLow);
+  }
+  return tLow.includes(kwClean);
+}
+
+let cachedFamilyLedgerMemory = null;
+let cachedFamilyLedgerTxCount = -1;
+
+function getFamilyLedgerMemoryJS() {
+  const txs = (DB && Array.isArray(DB.transactions)) ? DB.transactions : [];
+  if (cachedFamilyLedgerMemory && cachedFamilyLedgerTxCount === txs.length) {
+    return cachedFamilyLedgerMemory;
+  }
+  const phraseStats = new Map();
+  txs.forEach(tx => {
+    if (!tx || !tx.content) return;
+    const content = String(tx.content).trim();
+    if (content.length < 2) return;
+    const cat = String(tx.category || "Ăn uống").trim();
+    const person = String(tx.person || "Chung").trim();
+    const amt = Number(tx.amount || 0);
+    const normKey = foldVN(content).replace(/\s+/g, " ").trim();
+    if (normKey.length < 3) return;
+
+    let entry = phraseStats.get(normKey);
+    if (!entry) {
+      entry = {
+        sampleContent: content,
+        counts: new Map(),
+        totalCount: 0,
+        avgAmount: amt
+      };
+      phraseStats.set(normKey, entry);
+    }
+    const pairKey = `${cat}|||${person}`;
+    entry.counts.set(pairKey, (entry.counts.get(pairKey) || 0) + 1);
+    entry.totalCount += 1;
+    entry.avgAmount = (entry.avgAmount * (entry.totalCount - 1) + amt) / entry.totalCount;
+  });
+
+  const learnedMap = new Map();
+  phraseStats.forEach((info, normKey) => {
+    let bestPair = "Ăn uống|||Chung";
+    let bestCnt = -1;
+    info.counts.forEach((cnt, pk) => {
+      if (cnt > bestCnt) {
+        bestCnt = cnt;
+        bestPair = pk;
+      }
+    });
+    const [category, person] = bestPair.split("|||");
+    learnedMap.set(normKey, {
+      category,
+      person,
+      sampleContent: info.sampleContent,
+      count: info.totalCount,
+      avgAmount: Math.round(info.avgAmount)
+    });
+  });
+
+  cachedFamilyLedgerMemory = learnedMap;
+  cachedFamilyLedgerTxCount = txs.length;
+  return learnedMap;
+}
+
+function buildFamilyHistoryPromptForAI(maxPerCat = 4) {
+  const txs = (DB && Array.isArray(DB.transactions)) ? DB.transactions : [];
+  if (txs.length === 0) return "Chưa có lịch sử giao dịch.";
+  const byCat = {};
+  for (let i = 0; i < Math.min(txs.length, 300); i++) {
+    const tx = txs[i];
+    if (!tx || !tx.content) continue;
+    const cat = tx.category || "Ăn uống";
+    const person = tx.person || "Chung";
+    const content = String(tx.content).trim();
+    const amt = Math.round(Number(tx.amount || 0));
+    if (!content || amt <= 0) continue;
+    if (!byCat[cat]) byCat[cat] = [];
+    if (byCat[cat].length < maxPerCat && !byCat[cat].some(s => s.toLowerCase().includes(content.toLowerCase()))) {
+      byCat[cat].push(`"${content}" (${amt.toLocaleString("vi-VN")}đ → ${person})`);
+    }
+  }
+  return Object.entries(byCat)
+    .map(([c, list]) => `- ${c}: ${list.join("; ")}`)
+    .join("\n");
+}
 
 function classifyTransactionTextJS(text) {
   const tLow = (text || "").toLowerCase().trim();
@@ -760,20 +851,52 @@ function classifyTransactionTextJS(text) {
   else if (/(?:^|\s)(chồng)(?:\s|$)/i.test(tLow)) explicitPerson = "Chồng";
   else if (/(?:^|\s)(vk|vợ)(?:\s|$)/i.test(tLow)) explicitPerson = "Vợ";
 
-  for (const [kwList, ruleCat, rulePerson] of KEYWORD_RULES_JS) {
-    for (const kw of kwList) {
-      const isMatch = (kw.length <= 3)
-        ? new RegExp(`(?:^|[\\s,.;:!?"'()\\-])${kw}(?=$|[\\s,.;:!?"'()\\-])`, "i").test(tLow)
-        : tLow.includes(kw);
-      if (isMatch) {
-        cat = ruleCat;
-        person = explicitPerson || rulePerson;
-        confidence = 0.96;
-        reason = `Khớp mẫu lịch sử gia đình ('${kw}' → ${cat} • ${person})`;
-        break;
+  // 1. Đối chiếu Bộ Nhớ Học Động từ 888+ giao dịch thực tế trong Sổ (DB.transactions)
+  const tFold = foldVN(tLow).replace(/\s+/g, " ").trim();
+  if (tFold.length >= 3) {
+    try {
+      const learned = getFamilyLedgerMemoryJS();
+      if (learned.has(tFold)) {
+        const hit = learned.get(tFold);
+        cat = hit.category;
+        person = explicitPerson || hit.person;
+        confidence = 0.97;
+        reason = `Học từ lịch sử sổ gia đình ('${hit.sampleContent}' [${hit.count} lần] → ${cat} • ${person})`;
+      } else {
+        let bestHit = null;
+        let bestLen = 0;
+        learned.forEach((info, normK) => {
+          if (normK.length >= 4 && info.count >= 2 && textHasKeywordJS(tFold, normK)) {
+            if (normK.length > bestLen) {
+              bestHit = info;
+              bestLen = normK.length;
+            }
+          }
+        });
+        if (bestHit) {
+          cat = bestHit.category;
+          person = explicitPerson || bestHit.person;
+          confidence = 0.94;
+          reason = `Học từ lịch sử sổ gia đình ('${bestHit.sampleContent}' → ${cat} • ${person})`;
+        }
       }
+    } catch (e) {}
+  }
+
+  // 2. Bộ từ khóa nền tảng nếu chưa có khớp trực tiếp trong lịch sử
+  if (confidence < 0.9) {
+    for (const [kwList, ruleCat, rulePerson] of KEYWORD_RULES_JS) {
+      for (const kw of kwList) {
+        if (textHasKeywordJS(tLow, kw)) {
+          cat = ruleCat;
+          person = explicitPerson || rulePerson;
+          confidence = 0.96;
+          reason = `Khớp mẫu lịch sử gia đình ('${kw}' → ${cat} • ${person})`;
+          break;
+        }
+      }
+      if (confidence > 0.9) break;
     }
-    if (confidence > 0.9) break;
   }
 
   if (explicitPerson && confidence < 0.9) {
@@ -996,14 +1119,79 @@ function isUnclearEmailItemJS(friendlyNote, rawContent, confidence) {
 }
 
 function getSmartClarificationSuggestionsJS(amount, bank, rawContent) {
-  return [
+  const suggestions = [];
+  const seenPairs = new Set();
+  const amt = Number(amount || 0);
+
+  // Học động từ lịch sử giao dịch có mức tiền/ngân hàng tương đương trong DB.transactions
+  try {
+    const txs = (DB && Array.isArray(DB.transactions)) ? DB.transactions : [];
+    if (amt > 0 && txs.length > 0) {
+      const similarTxs = txs.filter(t => t && t.amount && Math.abs(Number(t.amount) - amt) <= Math.max(amt * 0.35, 30000));
+      const pairFreq = new Map();
+      const pairSample = new Map();
+      similarTxs.forEach(t => {
+        const pk = `${t.category || "Ăn uống"}|||${t.person || "Chung"}`;
+        pairFreq.set(pk, (pairFreq.get(pk) || 0) + 1);
+        if (!pairSample.has(pk) && t.content) {
+          pairSample.set(pk, String(t.content).trim());
+        }
+      });
+      const sortedPairs = [...pairFreq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
+      sortedPairs.forEach(([pk]) => {
+        if (!seenPairs.has(pk)) {
+          seenPairs.add(pk);
+          const [cat, person] = pk.split("|||");
+          const sampleNote = pairSample.get(pk) || `${cat} (${person})`;
+          suggestions.push({
+            label: `✨ ${sampleNote.slice(0, 22)} • ${cat} (${person})`,
+            category: cat,
+            person,
+            note: sampleNote.slice(0, 42)
+          });
+        }
+      });
+    }
+  } catch (e) {}
+
+  const defaults = [
     { label: " Ăn uống • Chung", category: "Ăn uống", person: "Chung", note: "Ăn uống gia đình" },
     { label: " Đồ dùng GĐ • Vợ", category: "Đồ dùng GĐ", person: "Vợ", note: "Mua đồ dùng gia đình" },
     { label: " Tiện ích / Xăng • Chồng", category: "Phí tiện ích", person: "Chồng", note: "Đổ xăng / Tiện ích" },
     { label: " Bỉm sữa / Y tế • Sugi", category: "Đồ dùng GĐ", person: "Sugi", note: "Bỉm sữa cho Sugi" },
     { label: " Học tập / Đồ chơi • Subo", category: "Học tập", person: "Subo", note: "Chi phí cho Subo" }
   ];
+  for (const d of defaults) {
+    if (suggestions.length >= 5) break;
+    const pk = `${d.category}|||${d.person}`;
+    if (!seenPairs.has(pk)) {
+      seenPairs.add(pk);
+      suggestions.push(d);
+    }
+  }
+  return suggestions;
 }
+
+function cleanBankMerchantLabelJS(rawContent) {
+  const rc = (rawContent || "").trim();
+  const cleaned = rc
+    .replace(/^(?:VPB|BIDV|NCB|UOB|MBVCB|IBFT|NAPAS)\s*;\s*(?:\d+\s*;\s*)?/i, "")
+    .replace(/^(\.OP\*|ONEPAYJ\*|VNPAY\s+|MBVCB|IBFT|NAPAS|QR|POS|ECOM|TT|GD|CHUYEN TIEN|THANH TOAN)[\s._:-]*/i, "")
+    .replace(/^[*.]+|[*.]+$/g, "")
+    .trim();
+  const normKey = foldVN(cleaned || rc).replace(/\s+/g, " ").trim();
+  if (normKey.length >= 3) {
+    try {
+      const learned = getFamilyLedgerMemoryJS();
+      if (learned.has(normKey)) {
+        return learned.get(normKey).sampleContent;
+      }
+    } catch (e) {}
+  }
+  return cleaned || rc;
+}
+
+let lastSkippedNonExpenseCount = 0;
 
 function parseBankEmailsJS(rawEmailText) {
   const blocks = (rawEmailText || "")
@@ -1011,70 +1199,269 @@ function parseBankEmailsJS(rawEmailText) {
     .map(b => b.trim())
     .filter(Boolean);
 
-  const parsedItems = [];
+  let skippedNonExpense = 0;
+  const rawCandidates = [];
+
   blocks.forEach((block, idx) => {
     const bLow = block.toLowerCase();
-    // VPBank only has 2 cards: VPBank Step Up & VPBank Shopee
+
+    // 0. Filter out non-expense emails (newsletters, card limit changes, statements, promos)
+    if (["[phs daily news]", "[phs legal]", "bản tin nội bộ", "sao kê thẻ tín dụng", "credit card monthly statement"].some(nw => bLow.includes(nw))) {
+      skippedNonExpense++;
+      return;
+    }
+    if ([
+      "dịch vụ tăng/giảm hạn mức",
+      "thay đổi hạn mức giao dịch",
+      "change daily online transaction limit",
+      "change credit card spending limit",
+      "hạn mức chi tiêu thẻ/ngày",
+      "hạn mức giao dịch trực tuyến ngày"
+    ].some(lim => bLow.includes(lim))) {
+      skippedNonExpense++;
+      return;
+    }
+    if (
+      ["mừng sinh nhật", "tặng bạn quà", "evoucher", "ưu đãi đặc quyền"].some(pr => bLow.includes(pr)) &&
+      !["số tiền thay đổi", "changed amount", "số tiền giao dịch", "số tiền thanh toán", "trừ -"].some(txKw => bLow.includes(txKw))
+    ) {
+      skippedNonExpense++;
+      return;
+    }
+
+    const mFrom = block.match(/^From:\s*([^\r\n]+)/im);
+    const mSubj = block.match(/^Subject:\s*([^\r\n]+)/im);
+    const fromLow = mFrom ? mFrom[1].toLowerCase() : "";
+    const subjLow = mSubj ? mSubj[1].toLowerCase() : "";
+    if (
+      fromLow.includes("nnt472@gmail.com") &&
+      !["vpbank", "bidv", "ncb", "uob", "biến động", "bien dong", "biên lai", "thanh toán", "fwd:"].some(bk => subjLow.includes(bk))
+    ) {
+      skippedNonExpense++;
+      return;
+    }
+
+    // 1. Detect bank: Check header (From + Subject) first to avoid random substrings in body/URLs
+    const headerLow = `${fromLow} ${subjLow}`;
     let bank = "VPBank Step Up";
-    if (bLow.includes("bidv") || bLow.includes("smartbanking")) bank = "BIDV";
-    else if (bLow.includes("ncb") || bLow.includes("quốc dân") || bLow.includes("izimobile")) bank = "NCB";
-    else if (bLow.includes("uob")) bank = "UOB";
-    // Chỉ là VPBank Shopee khi trên email/SMS ghi rõ là THẺ Shopee / VPSP (ví dụ: "thẻ VPBank Shopee", "thẻ Shopee *", "VPBank Shopee Card")
-    // Mua hàng trên sàn Shopee thanh toán bằng thẻ Step Up vẫn là "VPBank Step Up"
+    if (headerLow.includes("bidv") || bLow.includes("bidvsmartbanking")) bank = "BIDV";
+    else if (headerLow.includes("ncb") || bLow.includes("quốc dân") || bLow.includes("izimobile")) bank = "NCB";
+    else if (headerLow.includes("uob")) bank = "UOB";
     else if (
-      bLow.includes("vpbank shopee card") ||
-      bLow.includes("thẻ vpbank shopee") ||
-      bLow.includes("the vpbank shopee") ||
-      bLow.includes("thẻ shopee") ||
-      bLow.includes("the shopee") ||
-      bLow.includes("vpsp") ||
-      bLow.includes("vp sp")
+      ["vpbank shopee card", "thẻ vpbank shopee", "the vpbank shopee", "thẻ shopee", "the shopee", "vpsp", "vp sp"].some(sp => bLow.includes(sp))
     ) {
       bank = "VPBank Shopee";
     } else if (
-      bLow.includes("step up") ||
-      bLow.includes("stepup") ||
-      bLow.includes("vpbank") ||
-      bLow.includes("neo") ||
-      bLow.includes("vp")
+      ["vpb.com.vn", "vpbank", "step up", "stepup", "vpbank neo"].some(vp => headerLow.includes(vp) || bLow.includes(vp))
     ) {
       bank = "VPBank Step Up";
+    } else if (bLow.includes("bidv") || bLow.includes("smartbanking")) {
+      bank = "BIDV";
+    } else if (bLow.includes("ncb")) {
+      bank = "NCB";
+    } else if (bLow.includes("uob")) {
+      bank = "UOB";
     }
 
     let amt = 0;
-    const amtPatterns = [
-      /(?:số tiền|so tien|giá trị|gia tri|biến động|bien dong|gd|amount)[:\s]*([+-]?\s*\d{1,3}(?:[.,]\d{3})+|\d{4,10})\s*(?:vnd|đ|vnđ)/i,
-      /([+-]\s*\d{1,3}(?:[.,]\d{3})+)\s*(?:vnd|đ|vnđ)/i,
-      /(\d{1,3}(?:[.,]\d{3})+)\s*(?:vnd|đ|vnđ)/i
-    ];
-    for (const pat of amtPatterns) {
-      const mA = block.match(pat);
-      if (mA) {
-        const numS = mA[1].replace(/[^\d]/g, "");
-        if (numS) {
-          amt = parseFloat(numS);
-          break;
+    let currency = "VND";
+    let txCode = null;
+    let contentExtracted = "";
+    let friendlyNote = "";
+    let explicitDateMatch = null;
+    let isSelfTransfer = false;
+    let isDeduplicatedBillPay = false;
+
+    // ----------------------------------------------------------------------
+    // FORMAT A: VPBank Credit Card Balance Change (Value BEFORE Label)
+    // ----------------------------------------------------------------------
+    if (bLow.includes("số tiền thay đổi") || bLow.includes("changed amount")) {
+      const mSignAmt = block.match(/\*?\s*([+-])\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)\s*(VND|VNĐ|Đ|₫|USD|EUR|SGD|JPY)\s*\*?\s*(?:\r?\n|\s)+Số tiền thay đổi/i);
+      if (mSignAmt) {
+        const sign = mSignAmt[1];
+        const rawNum = mSignAmt[2].trim();
+        const curr = mSignAmt[3].toUpperCase();
+        if (sign === "+") {
+          skippedNonExpense++;
+          return;
+        }
+        if (["USD", "EUR", "SGD", "JPY"].includes(curr)) {
+          currency = curr;
+          let usdVal = parseFloat(rawNum.replace(/,/g, ""));
+          if (isNaN(usdVal)) usdVal = 0;
+          const rateMap = { USD: 26823, EUR: 28500, SGD: 19800, JPY: 178 };
+          amt = Math.round(usdVal * (rateMap[curr] || 26000));
+        } else {
+          const digits = rawNum.replace(/[^\d]/g, "");
+          amt = digits ? parseFloat(digits) : 0;
+        }
+      } else {
+        const mPlusOnly = block.match(/\*\+\s*[\d.,]+\s*(?:VND|USD)\*/i);
+        if (mPlusOnly && !block.match(/\*-\s*[\d.,]+\s*(?:VND|USD)\*/i)) {
+          skippedNonExpense++;
+          return;
+        }
+      }
+
+      const mCcContent = block.match(/(?:\r?\n|^)\s*\*?([^\r\n*]+?)\*?\s*\r?\n\s*Nội dung\s*\/\s*\*?Transaction Content\*?/i);
+      if (mCcContent) {
+        contentExtracted = mCcContent[1].trim();
+      }
+      const mCcDate = block.match(/(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})(?:[\s\d:]*)?\*?\s*\r?\n\s*Thời gian\s*\/\s*\*?Time\*?/i);
+      if (mCcDate) {
+        explicitDateMatch = mCcDate[1];
+      }
+      const mCcCode = block.match(/\*?([A-Za-z0-9_-]{4,35})\*?\s*\r?\n\s*Mã giao dịch\s*\/\s*\*?Transaction Code\*?/i);
+      if (mCcCode) {
+        txCode = mCcCode[1].trim();
+      }
+      friendlyNote = cleanBankMerchantLabelJS(contentExtracted);
+      if (currency !== "VND" && mSignAmt) {
+        friendlyNote = `${friendlyNote} (${mSignAmt[2].trim()} ${currency})`;
+      }
+    }
+
+    // ----------------------------------------------------------------------
+    // FORMAT B: VPBank NEO Bill Payment Notification ("Thông báo giao dịch thành công")
+    // ----------------------------------------------------------------------
+    else if (bLow.includes("số tiền thanh toán") || bLow.includes("dịch vụ thanh toán")) {
+      const mBillAmt = block.match(/Số tiền thanh toán[:\s]*\*?\s*(\d{1,3}(?:[.,]\d{3})+|\d{4,10})\s*(?:₫|đ|vnd|vnđ)/i);
+      if (mBillAmt) {
+        const digits = mBillAmt[1].replace(/[^\d]/g, "");
+        amt = digits ? parseFloat(digits) : 0;
+      }
+      const mService = block.match(/Dịch vụ thanh toán[:\s]*([^\r\n]+?)(?=\s+Nhà cung cấp|\r|\n|$)/i);
+      const mProvider = block.match(/Nhà cung cấp[:\s]*([^\r\n]+?)(?=\s+Mã hóa đơn|\r|\n|$)/i);
+      const mBillId = block.match(/Mã hóa đơn[:\s]*([A-Za-z0-9_-]+)/i);
+      const mTxCode = block.match(/Mã giao dịch[:\s]*([A-Za-z0-9_-]+)/i);
+      const mNote = block.match(/Nội dung giao dịch[:\s]*([^\r\n]+?)(?=\s+Mã giao dịch|\r|\n|$)/i);
+
+      const srv = mService ? mService[1].trim() : "";
+      const prv = mProvider ? mProvider[1].trim() : "";
+      const bid = mBillId ? mBillId[1].trim() : "";
+      const noteStr = mNote ? mNote[1].trim() : "";
+      if (mTxCode) txCode = mTxCode[1].trim();
+
+      if (srv.toUpperCase() === "DIEN" || prv.toUpperCase().includes("EVN") || bid.toUpperCase().startsWith("PE")) {
+        contentExtracted = `Thanh toán tiền điện ${prv || "EVN"} (${bid})`;
+        friendlyNote = `Tiền điện ${prv || "EVN"}${noteStr ? ` (${noteStr})` : ""}`;
+      } else if (srv.toUpperCase() === "NET" || ["VNPT", "FPT", "VIETTEL"].some(p => prv.toUpperCase().includes(p))) {
+        contentExtracted = `Thanh toán Internet ${prv} (${bid})`;
+        friendlyNote = `Tiền mạng Internet ${prv}${noteStr ? ` (${noteStr})` : ""}`;
+      } else {
+        contentExtracted = `${srv} ${prv} ${bid} ${noteStr}`.trim();
+        friendlyNote = contentExtracted;
+      }
+      isDeduplicatedBillPay = true;
+    }
+
+    // ----------------------------------------------------------------------
+    // FORMAT C: BIDV SmartBanking Transfer Receipt ("Biên lai chuyển tiền")
+    // ----------------------------------------------------------------------
+    else if (bank === "BIDV" && (bLow.includes("transaction amount") || bLow.includes("tên người thụ hưởng") || bLow.includes("beneficiary name"))) {
+      const mBidvAmt = block.match(/(?:Transaction amount|Số tiền giao dịch)[\s\S]{0,160}?(\d{1,3}(?:[.,]\d{3})+|\d{4,10})\s*(?:VND|VNĐ|Đ|₫)/i);
+      if (mBidvAmt) {
+        const digits = mBidvAmt[1].replace(/[^\d]/g, "");
+        amt = digits ? parseFloat(digits) : 0;
+      }
+      const mRef = block.match(/Reference number\*?[:\s]*([A-Za-z0-9_-]+)/i) || block.match(/Số tham chiếu\*?[:\s]+([0-9A-Za-z_-]{5,})/i);
+      if (mRef) txCode = mRef[1].trim();
+
+      const mBDt = block.match(/(?:Transaction(?: date,)?\s*time|Ngày,\s*giờ giao dịch|Thời gian giao dịch)\*?[:\s]*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i);
+      if (mBDt) explicitDateMatch = mBDt[1];
+
+      const mSender = block.match(/(?:Dear(?:\s+Valued)?\s+Customer|Kính gửi quý khách)\*?[:\s]*([^\r\n*]+)/i);
+      const mBenef = block.match(/Beneficiary name\*?[:\s]*([^\r\n*]+)/i);
+      const mNdBidv = block.match(/Transaction content\*?[:\s]*([^\r\n*]+)/i);
+
+      const senderName = mSender ? mSender[1].replace(/^[:\s]+/, "").trim() : "";
+      const benefName = mBenef ? mBenef[1].replace(/^[:\s]+/, "").trim() : "";
+      let bidvNote = mNdBidv ? mNdBidv[1].replace(/^[:\s]+/, "").trim() : "";
+      if (["số tiền bằng chữ", "amount in words", "số tiền phí", "fee amount"].some(sw => bidvNote.toLowerCase().includes(sw))) {
+        bidvNote = "";
+      }
+
+      if (senderName && benefName && senderName.toUpperCase() === benefName.toUpperCase()) {
+        isSelfTransfer = true;
+        contentExtracted = `Chuyển khoản nội bộ BIDV → ${benefName}`;
+        friendlyNote = contentExtracted;
+      } else {
+        const friendlyBenef = cleanBankMerchantLabelJS(benefName);
+        if (bidvNote && !/chuyen\s*tien|chuyển\s*tiền/i.test(bidvNote)) {
+          contentExtracted = benefName ? `${bidvNote} (${benefName})` : bidvNote;
+          friendlyNote = friendlyBenef ? `${bidvNote} (${friendlyBenef})` : bidvNote;
+        } else if (benefName) {
+          contentExtracted = `Chuyển khoản BIDV đến ${benefName}`;
+          friendlyNote = `CK BIDV → ${friendlyBenef}`;
+        } else {
+          contentExtracted = bidvNote || "Chuyển khoản BIDV";
+          friendlyNote = contentExtracted;
         }
       }
     }
 
+    // ----------------------------------------------------------------------
+    // FORMAT D: Standard / Generic Bank SMS & Email Format
+    // ----------------------------------------------------------------------
+    if (amt <= 0) {
+      const amtPatterns = [
+        /(?:số tiền(?: thanh toán| giao dịch)?|so tien|giá trị|gia tri|biến động|bien dong|trừ|tru|gd|amount)[:\s*]*([+-]?\s*\d{1,3}(?:[.,]\d{3})+|\d{4,10})\s*(?:vnd|đ|vnđ|₫)/i,
+        /([+-]\s*\d{1,3}(?:[.,]\d{3})+)\s*(?:vnd|đ|vnđ|₫)/i,
+        /(\d{1,3}(?:[.,]\d{3})+)\s*(?:vnd|đ|vnđ|₫)(?!\s*(?:\r?\n\s*)?(?:Hạn mức|Available Limit|Số dư|Balance))/i
+      ];
+      for (const pat of amtPatterns) {
+        const mA = block.match(pat);
+        if (mA) {
+          const rawS = mA[1].trim();
+          if (rawS.startsWith("+") && (bLow.includes("thẻ tín dụng") || bLow.includes("credit card"))) {
+            amt = 0;
+            break;
+          }
+          const numS = rawS.replace(/[^\d]/g, "");
+          if (numS) {
+            amt = parseFloat(numS);
+            break;
+          }
+        }
+      }
+    }
+
+    if (amt <= 0) return;
+
+    // 3. Extract date
     const now = new Date();
     let monthNum = now.getMonth() + 1;
     let dateStr = defaultDateForMonth(monthNum);
 
-    // 1. Check ISO format (e.g. "2026-11-05 14:30:00" or "2026/11/05")
+    const mHeaderDt = block.match(/^Date:\s*(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/im);
     const mIso = block.match(/(?<!\d)(20\d\d)[/-](\d{1,2})[/-](\d{1,2})(?!\d)/);
-    if (mIso) {
+
+    if (explicitDateMatch) {
+      const parts = explicitDateMatch.split(/[/-]/);
+      const dI = parseInt(parts[0], 10);
+      const mI = parseInt(parts[1], 10);
+      if (dI >= 1 && dI <= 31 && mI >= 1 && mI <= 12) {
+        monthNum = mI;
+        const maxD = daysInMonth2026(mI);
+        dateStr = `2026-${String(mI).padStart(2, "0")}-${String(Math.min(dI, maxD)).padStart(2, "0")}`; // taste-skill-ignore
+      }
+    } else if (mIso) {
       const mI = parseInt(mIso[2], 10);
       const dI = parseInt(mIso[3], 10);
       if (dI >= 1 && dI <= 31 && mI >= 1 && mI <= 12) {
         monthNum = mI;
         const maxD = daysInMonth2026(mI);
-        const clampedD = Math.min(dI, maxD);
-        dateStr = `2026-${String(mI).padStart(2, "0")}-${String(clampedD).padStart(2, "0")}`; // taste-skill-ignore
+        dateStr = `2026-${String(mI).padStart(2, "0")}-${String(Math.min(dI, maxD)).padStart(2, "0")}`; // taste-skill-ignore
+      }
+    } else if (mHeaderDt) {
+      const dI = parseInt(mHeaderDt[1], 10);
+      const mI = parseInt(mHeaderDt[2], 10);
+      if (dI >= 1 && dI <= 31 && mI >= 1 && mI <= 12) {
+        monthNum = mI;
+        const maxD = daysInMonth2026(mI);
+        dateStr = `2026-${String(mI).padStart(2, "0")}-${String(Math.min(dI, maxD)).padStart(2, "0")}`; // taste-skill-ignore
       }
     } else {
-      // 2. Check standard Vietnamese DD/MM or DD/MM/YYYY format
       const mDt = block.match(/(?<!\d)(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?(?!\d)/);
       if (mDt) {
         const dI = parseInt(mDt[1], 10);
@@ -1082,59 +1469,96 @@ function parseBankEmailsJS(rawEmailText) {
         if (dI >= 1 && dI <= 31 && mI >= 1 && mI <= 12) {
           monthNum = mI;
           const maxD = daysInMonth2026(mI);
-          const clampedD = Math.min(dI, maxD);
-          dateStr = `2026-${String(mI).padStart(2, "0")}-${String(clampedD).padStart(2, "0")}`; // taste-skill-ignore
+          dateStr = `2026-${String(mI).padStart(2, "0")}-${String(Math.min(dI, maxD)).padStart(2, "0")}`; // taste-skill-ignore
         }
       }
     }
-
-    let contentExtracted = "";
-    const ndMatch = block.match(/(?:nội dung|noi dung|mô tả|mo ta|merchant|chi tiết)[:\s]+([^\n\r;]+)/i);
-    if (ndMatch) {
-      contentExtracted = ndMatch[1].split(/\.\s*(?:số dư|so du|sd)/i)[0].trim();
-    } else {
-      const lines = block.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      contentExtracted = lines[lines.length - 1] || block.slice(0, 80);
-    }
-
-    const friendlyNote = contentExtracted
-      .replace(/^(MBVCB|IBFT|NAPAS|QR|POS|ECOM|TT|GD|CHUYEN TIEN|THANH TOAN)[\s._:-]*/i, "")
-      .trim();
-
-    const { cat, person, confidence, reason } = classifyTransactionTextJS(contentExtracted + " " + friendlyNote);
-    const unclearCheck = isUnclearEmailItemJS(friendlyNote, contentExtracted, confidence);
 
     const minDate = getEmailStartDate();
     if (minDate && dateStr < minDate) {
       return;
     }
 
-    if (amt > 0) {
-      parsedItems.push({
-        temp_id: `EMAIL-${idx + 1}-${Math.round(amt)}`,
-        bank,
-        date: dateStr,
-        month: monthNum,
-        amount: Math.round(amt),
-        is_income: false,
-        raw_content: contentExtracted,
-        content: friendlyNote.length < 40 ? friendlyNote.toLowerCase() : friendlyNote.slice(0, 45),
-        category: cat,
-        person,
-        source: bank,
-        confidence,
-        reason,
-        needs_clarification: unclearCheck.isUnclear,
-        unclear_reason: unclearCheck.reason,
-        ai_question: unclearCheck.isUnclear
-          ? `Giao dịch ${fmtVND(amt)} tại ${bank} ("${friendlyNote}") chi cho việc gì và của ai trong gia đình?`
-          : null,
-        suggested_options: unclearCheck.isUnclear
-          ? getSmartClarificationSuggestionsJS(amt, bank, contentExtracted)
-          : [],
-        resolved_by_ai: false
-      });
+    // 4. Generic content fallback if not extracted by specialized formatters
+    if (!contentExtracted) {
+      const ndMatch = block.match(/(?:nội dung(?: giao dịch)?|noi dung|mô tả|mo ta|merchant|chi tiết|tại|tai)[:\s]+([^\n\r]+)/i);
+      if (ndMatch) {
+        contentExtracted = ndMatch[1].split(/\.\s*(?:số dư|so du|sd|hạn mức)/i)[0].trim();
+      } else {
+        const lines = block.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        contentExtracted = lines[lines.length - 1] || block.slice(0, 80);
+      }
+      friendlyNote = cleanBankMerchantLabelJS(contentExtracted);
     }
+
+    // 5. Classify & check ambiguity
+    const { cat, person, confidence, reason } = classifyTransactionTextJS(`${contentExtracted} ${friendlyNote}`);
+    let { isUnclear, reason: unclearReason } = isUnclearEmailItemJS(friendlyNote, contentExtracted, confidence);
+    if (isSelfTransfer) {
+      isUnclear = true;
+      unclearReason = "Giao dịch chuyển khoản cho chính mình (NGUYEN NGOC THANH) — có thể là chuyển tiền nội bộ giữa các tài khoản hoặc nạp tiền.";
+    }
+
+    const displayContent = friendlyNote.length <= 48 ? friendlyNote : friendlyNote.slice(0, 48);
+
+    rawCandidates.push({
+      temp_id: `EMAIL-${idx + 1}-${Math.round(amt)}`,
+      bank,
+      date: dateStr,
+      month: monthNum,
+      amount: Math.round(amt),
+      currency,
+      tx_code: txCode,
+      is_bill_pay_detail: isDeduplicatedBillPay,
+      is_self_transfer: isSelfTransfer,
+      is_income: false,
+      raw_content: contentExtracted,
+      content: displayContent,
+      category: cat,
+      person,
+      source: bank,
+      confidence,
+      reason,
+      needs_clarification: isUnclear,
+      unclear_reason: unclearReason,
+      ai_question: isUnclear
+        ? `Giao dịch ${fmtVND(amt)} tại ${bank} ("${friendlyNote}") chi cho việc gì và của ai trong gia đình?`
+        : null,
+      suggested_options: isUnclear
+        ? getSmartClarificationSuggestionsJS(amt, bank, contentExtracted)
+        : [],
+      resolved_by_ai: false
+    });
+  });
+
+  lastSkippedNonExpenseCount = skippedNonExpense;
+
+  // 6. Within-batch deduplication:
+  // When paying bills (EVN, VNPT) on VPBank NEO using credit card, VPBank sends BOTH a Bill Pay email (tx_code X)
+  // AND a Credit Card Balance Change email with raw_content "AUTO<X>" for the exact same date & amount.
+  // Keep the richer Bill Pay email and drop the duplicate AUTO<X> card alert!
+  const billPayCodes = new Set();
+  rawCandidates.forEach(c => {
+    if (c.is_bill_pay_detail && c.tx_code) {
+      billPayCodes.add(String(c.tx_code).toUpperCase());
+    }
+  });
+
+  const seenTxKeys = new Set();
+  const parsedItems = [];
+  rawCandidates.forEach(c => {
+    const rawUp = String(c.raw_content || "").toUpperCase().trim();
+    if (rawUp.startsWith("AUTO") && billPayCodes.has(rawUp.slice(4).trim())) {
+      return;
+    }
+    const txCodeKey = c.tx_code ? `${c.bank}|TX|${c.tx_code}` : null;
+    if (txCodeKey && seenTxKeys.has(txCodeKey)) {
+      return;
+    }
+    if (txCodeKey) {
+      seenTxKeys.add(txCodeKey);
+    }
+    parsedItems.push(c);
   });
 
   return parsedItems;
@@ -1505,19 +1929,41 @@ function makeEmailItemSignature(item) {
   return `D${dt}-M${m}-A${amt}-${rawKey}`;
 }
 
+function makeEmailTxCodeSignature(item) {
+  if (!item || !item.tx_code) return null;
+  const bankKey = foldVN(item.bank || item.source || "bank").replace(/[^a-z0-9]/g, "");
+  const codeKey = String(item.tx_code).trim().toUpperCase();
+  if (!codeKey || codeKey.length < 4) return null;
+  return `TXCODE-${bankKey}-${codeKey}`;
+}
+
+function addProcessedEmailSigForItem(item) {
+  if (!item) return;
+  addProcessedEmailSig(makeEmailItemSignature(item));
+  const codeSig = makeEmailTxCodeSignature(item);
+  if (codeSig) addProcessedEmailSig(codeSig);
+}
+
 function isEmailItemAlreadyAdded(item) {
   if (!item || !DB || !Array.isArray(DB.transactions)) return false;
+  const sigs = getProcessedEmailSigs();
   const sig = makeEmailItemSignature(item);
-  if (getProcessedEmailSigs().includes(sig)) return true;
+  if (sigs.includes(sig)) return true;
+  const codeSig = makeEmailTxCodeSignature(item);
+  if (codeSig && sigs.includes(codeSig)) return true;
 
   const amt = Math.round(Number(item.amount || 0));
   const m = Number(item.month || 10);
   const itemDate = (item.date || "").trim();
+  const itemTxCode = item.tx_code ? String(item.tx_code).trim().toUpperCase() : null;
   const itemWords = foldVN(`${item.content || ""} ${item.raw_content || ""}`)
     .split(/\s+/)
-    .filter(w => w.length >= 3 && !["thanh", "toan", "chuyen", "khoan", "mua", "tai", "cho", "vnd"].includes(w));
+    .filter(w => w.length >= 3 && !["thanh", "toan", "chuyen", "khoan", "mua", "tai", "cho", "vnd", "bidv", "vpbank"].includes(w));
 
   return DB.transactions.some(tx => {
+    if (itemTxCode && tx.bank_tx_code && String(tx.bank_tx_code).trim().toUpperCase() === itemTxCode) {
+      return true;
+    }
     if (Number(tx.month) !== m) return false;
     if (Math.round(Number(tx.amount)) !== amt) return false;
     // D6 fix: If both have dates and dates differ, legitimate recurring expense on different days
@@ -1570,11 +2016,50 @@ function ensureT10EtfAndDeduplicateDB(db) {
   }
 }
 
+function encodeAiKey(rawKey) {
+  if (!rawKey) return "";
+  const rev = String(rawKey).trim().split("").reverse().join("");
+  const salt = "FW2026";
+  let xored = "";
+  for (let i = 0; i < rev.length; i++) {
+    xored += String.fromCharCode(rev.charCodeAt(i) ^ salt.charCodeAt(i % salt.length));
+  }
+  return "fw2:" + btoa(xored);
+}
+
+function decodeAiKey(encodedStr) {
+  if (!encodedStr) return "";
+  const s = String(encodedStr).trim();
+  try {
+    if (s.startsWith("fw2:")) {
+      const raw = atob(s.slice(4));
+      const salt = "FW2026";
+      let rev = "";
+      for (let i = 0; i < raw.length; i++) {
+        rev += String.fromCharCode(raw.charCodeAt(i) ^ salt.charCodeAt(i % salt.length));
+      }
+      return rev.split("").reverse().join("").trim();
+    }
+    if (s.startsWith("fw1:")) {
+      return atob(s.slice(4)).split("").reverse().join("").trim();
+    }
+    return atob(s).trim();
+  } catch (e) {
+    return "";
+  }
+}
+
 function getGeminiApiKey() {
   const localKey = (localStorage.getItem(STORAGE_GEMINI_KEY) || "").trim();
-  if (localKey && localKey !== "(server-configured)") return localKey;
+  if (localKey && localKey !== "(server-configured)" && !localKey.startsWith("sk-ant-usr-1vdLP")) return localKey;
   if (DB && DB.meta) {
-    if (DB.meta.gemini_api_key && DB.meta.gemini_api_key !== "(server-configured)") return DB.meta.gemini_api_key.trim();
+    if (DB.meta.gemini_api_key && DB.meta.gemini_api_key !== "(server-configured)" && !DB.meta.gemini_api_key.startsWith("sk-ant-usr-1vdLP")) {
+      return DB.meta.gemini_api_key.trim();
+    }
+    if (DB.meta.ai_key_encoded) {
+      const decoded = decodeAiKey(DB.meta.ai_key_encoded);
+      if (decoded) return decoded;
+    }
     if (DB.meta.has_gemini_api_key) return "(server-configured)";
   }
   return "";
@@ -1653,6 +2138,9 @@ function buildCompactCloudState() {
     ai_model: getAISelectedModel(),
     ai_base_url: getAIBaseUrl(),
     processed_email_sigs: getProcessedEmailSigs(),
+    email_auto_scan_enabled: isEmailAutoScanEnabled(),
+    email_auto_scan_time: getEmailAutoScanTime(),
+    email_auto_popup_enabled: isEmailAutoPopupEnabled(),
     mailboxes: getFamilyMailboxes(),
     custom_transactions: customTxs,
     edited_transactions: editedTxs,
@@ -1698,6 +2186,18 @@ function applyCompactCloudState(cloudState) {
   }
   if (Array.isArray(cloudState.processed_email_sigs)) {
     cloudState.processed_email_sigs.forEach(s => addProcessedEmailSig(s));
+  }
+  if (typeof cloudState.email_auto_scan_enabled === "boolean") {
+    localStorage.setItem(STORAGE_EMAIL_AUTO_SCAN_ENABLED, cloudState.email_auto_scan_enabled ? "1" : "0");
+    if (DB.meta) DB.meta.email_auto_scan_enabled = cloudState.email_auto_scan_enabled;
+  }
+  if (cloudState.email_auto_scan_time && /^\d{2}:\d{2}$/.test(String(cloudState.email_auto_scan_time).trim())) {
+    localStorage.setItem(STORAGE_EMAIL_AUTO_SCAN_TIME, String(cloudState.email_auto_scan_time).trim());
+    if (DB.meta) DB.meta.email_auto_scan_time = String(cloudState.email_auto_scan_time).trim();
+  }
+  if (typeof cloudState.email_auto_popup_enabled === "boolean") {
+    localStorage.setItem(STORAGE_EMAIL_AUTO_POPUP, cloudState.email_auto_popup_enabled ? "1" : "0");
+    if (DB.meta) DB.meta.email_auto_popup_enabled = cloudState.email_auto_popup_enabled;
   }
   if (Array.isArray(cloudState.mailboxes) && cloudState.mailboxes.length > 0) {
     saveFamilyMailboxes(cloudState.mailboxes);
@@ -2163,19 +2663,21 @@ async function initApp() {
         DB.meta.cloud_script_url = candidateCloud;
       }
     }
-    const localSavedKey = localStorage.getItem(STORAGE_GEMINI_KEY);
+    let localSavedKey = localStorage.getItem(STORAGE_GEMINI_KEY);
+    if (localSavedKey && localSavedKey.startsWith("sk-ant-usr-1vdLP")) {
+      localStorage.removeItem(STORAGE_GEMINI_KEY);
+      localSavedKey = "";
+    }
     if (localSavedKey && localSavedKey !== "(server-configured)") {
       DB.meta.gemini_api_key = localSavedKey;
-    } else if (DB.meta.gemini_api_key && DB.meta.gemini_api_key !== "(server-configured)") {
+    } else if (DB.meta.gemini_api_key && DB.meta.gemini_api_key !== "(server-configured)" && !DB.meta.gemini_api_key.startsWith("sk-ant-usr-1vdLP")) {
       localStorage.setItem(STORAGE_GEMINI_KEY, DB.meta.gemini_api_key);
     } else if (DB.meta.ai_key_encoded) {
-      try {
-        const decodedKey = atob(DB.meta.ai_key_encoded).trim();
-        if (decodedKey) {
-          localStorage.setItem(STORAGE_GEMINI_KEY, decodedKey);
-          DB.meta.gemini_api_key = decodedKey;
-        }
-      } catch (e) {}
+      const decodedKey = decodeAiKey(DB.meta.ai_key_encoded);
+      if (decodedKey) {
+        localStorage.setItem(STORAGE_GEMINI_KEY, decodedKey);
+        DB.meta.gemini_api_key = decodedKey;
+      }
     }
     if (DB.meta.ai_model || (DB.meta.gemini_api_key && DB.meta.gemini_api_key.startsWith("sk-ant-"))) {
       const activeModel = DB.meta.gemini_api_key && DB.meta.gemini_api_key.startsWith("sk-ant-")
@@ -2287,6 +2789,7 @@ async function initApp() {
     if (getCloudScriptUrl()) {
       pullFromGoogleSheetCloud(true);
     }
+    try { checkAndRunScheduledEmailScan("focus"); } catch (e) {}
   };
   window.addEventListener("focus", handleAutoBackgroundSync);
   document.addEventListener("visibilitychange", handleAutoBackgroundSync);
@@ -2294,6 +2797,10 @@ async function initApp() {
   // Escape key closes modal cleanly
   window.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") {
+      if (typeof isEmailReviewPopupOpen === "function" && isEmailReviewPopupOpen()) {
+        closeEmailReviewPopupModal();
+        return;
+      }
       const modal = document.getElementById("modal-overlay");
       if (modal && modal.style.display !== "none") {
         closeModal();
@@ -2303,6 +2810,8 @@ async function initApp() {
 
   // Enable Touch Swipe gestures for smooth horizontal tab navigation on mobile
   try { initMobileSwipeGestures(); } catch (e) {}
+  // Start daily scheduled email scanner & auto pop-up engine
+  try { initEmailAutoScanScheduler(); } catch (e) {}
 }
 
 function onQuickPresetChange() {
@@ -2351,6 +2860,8 @@ function renderAll() {
   renderDashboardTab();
   renderTransactionsTab();
   renderFamilyMailboxes();
+  renderEmailAutoScanSettingsBar();
+  updateTopbarEmailScanPill();
   renderInvestmentTab();
   renderAuditTab();
   updateMobileNavBadges();
@@ -2661,9 +3172,10 @@ function renderInteractiveQuickPreview(p) {
   const members = (DB && DB.meta && DB.meta.members) ? DB.meta.members : ["Chung", "Chồng", "Vợ", "Subo", "Sugi"];
   const banks = ALL_PAYMENT_SOURCES;
 
+  bar.style.display = "flex";
   bar.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%;">
-      <span style="color:var(--accent);font-weight:700;">Sửa Chỉnh trước khi lưu:</span>
+      <span style="color:var(--accent);font-weight:700;font-size:12.5px;">✨ Chỉnh nhanh trước khi lưu:</span>
       <input type="text" id="qp-content" class="input-control" style="padding:4px 9px;font-size:13px;min-width:140px;flex:1;" value="${escapeHtml(p.content || '')}" oninput="if(currentQuickParsed) currentQuickParsed.content=this.value" title="Nội dung chi tiêu" />
       <input type="number" id="qp-amount" class="input-control" style="padding:4px 9px;font-size:13px;width:110px;color:var(--positive);font-weight:700;" value="${p.amount || 0}" oninput="if(currentQuickParsed) currentQuickParsed.amount=Number(this.value)" title="Số tiền (VNĐ)" />
       <input type="date" id="qp-date" class="input-control" style="padding:4px 7px;font-size:13px;width:128px;" value="${p.date || defaultDateForMonth(p.month || activeInputMonth())}" onchange="if(currentQuickParsed){currentQuickParsed.date=this.value;const m=Number(this.value.split('-')[1]);if(m>=1&&m<=12)currentQuickParsed.month=m;}" title="Ngày giao dịch" />
@@ -2686,7 +3198,8 @@ function onQuickInputChange(val) {
   if (!val || !val.trim()) {
     currentQuickParsed = null;
     if (bar) {
-      bar.innerHTML = `<span> <b>Mẹo:</b> Chọn sẵn <b>Nguồn tiền / Người chi</b> ở thanh trên (App sẽ tự nhớ lựa chọn của bạn), hoặc gõ kèm ngày <code>3/11</code> để tự vào Tháng 11!</span>`;
+      bar.innerHTML = "";
+      bar.style.display = "none";
     }
     return;
   }
@@ -2713,6 +3226,7 @@ async function addTransactionToState(payload) {
     person: payload.person || "Chung",
     amount: Number(payload.amount || 0),
     source: payload.source || localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt",
+    bank_tx_code: payload.bank_tx_code || null,
     was_unmatched_in_excel: false,
     issue_note: null,
     is_cloud_added: true
@@ -2783,23 +3297,27 @@ async function submitQuickAdd() {
   // Render live editable confirmation bar so user can still change source/person/category/content right after saving!
   const cats = (DB && DB.meta && DB.meta.categories) ? DB.meta.categories : ["Ăn uống", "Học tập", "Phí tiện ích", "Đồ dùng GĐ", "Nợ", "Làm đẹp", "Y tế", "Vui chơi", "Event", "Công việc"];
   const members = (DB && DB.meta && DB.meta.members) ? DB.meta.members : ["Chung", "Chồng", "Vợ", "Subo", "Sugi"];
-  document.getElementById("quick-preview-bar").innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%;">
-      <span style="color:var(--positive);font-weight:700;"> Đã lưu T${tx.month} (Sửa nhanh nếu cần):</span>
-      <input type="text" class="input-control" style="padding:3px 8px;font-size:13px;min-width:130px;" value="${escapeHtml(tx.content || '')}" onchange="inlineUpdateTx('${tx.id}', 'content', this.value)" />
-      <input type="number" class="input-control" style="padding:3px 8px;font-size:13px;width:105px;color:var(--positive);font-weight:700;" value="${tx.amount}" onchange="inlineUpdateTx('${tx.id}', 'amount', Number(this.value))" />
-      <select class="input-control" style="padding:3px 7px;font-size:13px;" onchange="inlineUpdateTx('${tx.id}', 'category', this.value)">
-        ${cats.map(c => `<option value="${c}" ${c === tx.category ? 'selected' : ''}>${c}</option>`).join("")}
-      </select>
-      <select class="input-control" style="padding:3px 7px;font-size:13px;" onchange="inlineUpdateTx('${tx.id}', 'person', this.value)">
-        ${members.map(m => `<option value="${m}" ${m === tx.person ? 'selected' : ''}>${m}</option>`).join("")}
-      </select>
-      <select class="input-control" style="padding:3px 7px;font-size:13px;color:var(--accent);font-weight:700;" onchange="inlineUpdateTx('${tx.id}', 'source', this.value)">
-        ${ALL_PAYMENT_SOURCES.map(b => `<option value="${b}" ${b === tx.source ? 'selected' : ''}>${b}</option>`).join("")}
-      </select>
-      <button class="btn btn-ghost" style="padding:3px 9px;font-size:13px;" onclick="openEditTransactionModal('${tx.id}')">Sửa Chi tiết</button>
-    </div>
-  `;
+  const previewBar = document.getElementById("quick-preview-bar");
+  if (previewBar) {
+    previewBar.style.display = "flex";
+    previewBar.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%;">
+        <span style="color:var(--positive);font-weight:700;">✅ Đã lưu T${tx.month} (Sửa nhanh nếu cần):</span>
+        <input type="text" class="input-control" style="padding:3px 8px;font-size:13px;min-width:130px;" value="${escapeHtml(tx.content || '')}" onchange="inlineUpdateTx('${tx.id}', 'content', this.value)" />
+        <input type="number" class="input-control" style="padding:3px 8px;font-size:13px;width:105px;color:var(--positive);font-weight:700;" value="${tx.amount}" onchange="inlineUpdateTx('${tx.id}', 'amount', Number(this.value))" />
+        <select class="input-control" style="padding:3px 7px;font-size:13px;" onchange="inlineUpdateTx('${tx.id}', 'category', this.value)">
+          ${cats.map(c => `<option value="${c}" ${c === tx.category ? 'selected' : ''}>${c}</option>`).join("")}
+        </select>
+        <select class="input-control" style="padding:3px 7px;font-size:13px;" onchange="inlineUpdateTx('${tx.id}', 'person', this.value)">
+          ${members.map(m => `<option value="${m}" ${m === tx.person ? 'selected' : ''}>${m}</option>`).join("")}
+        </select>
+        <select class="input-control" style="padding:3px 7px;font-size:13px;color:var(--accent);font-weight:700;" onchange="inlineUpdateTx('${tx.id}', 'source', this.value)">
+          ${ALL_PAYMENT_SOURCES.map(b => `<option value="${b}" ${b === tx.source ? 'selected' : ''}>${b}</option>`).join("")}
+        </select>
+        <button class="btn btn-ghost" style="padding:3px 9px;font-size:13px;" onclick="openEditTransactionModal('${tx.id}')">Sửa Chi tiết</button>
+      </div>
+    `;
+  }
 }
 
 // ============================================================================
@@ -2832,7 +3350,7 @@ function renderDashboardTab() {
   const totalWealth = fundMV + DB.investment.dip_fund_balance + DB.investment.emergency_fund_balance;
   const targetIncomeModalM = activeInputMonth();
 
-  // HERO FINANCIAL CARD (Glassmorphism + Sparkline + Privacy Eye) — Same 80/20 surplus formula as before
+  // HERO FINANCIAL CARD (Executive 2-Column Bento + Sparkline + Privacy Eye)
   const privacyOn = isPrivacyOn();
   const pv = (s) => privacyOn ? "••••••" : s;
   const savePct = incTotal > 0 ? (remaining / incTotal) * 100 : 0;
@@ -2852,45 +3370,49 @@ function renderDashboardTab() {
         </div>
       </div>
 
-      <div class="hero-card-main">
-        <div class="hero-main-label">
-          <span>THẶNG DƯ (80% TÍCH LŨY • 20% CÒN LẠI)</span>
-          <span class="hero-status-pill ${remaining >= 0 ? 'positive' : 'negative'}">${remaining >= 0 ? '▲' : '▼'} ${savePct.toFixed(1)}%</span>
-        </div>
-        <div class="hero-main-amount ${remaining >= 0 ? 'positive' : 'negative'}">${pv((remaining >= 0 ? '+' : '') + fmtVND(remaining))}</div>
-        <div class="hero-formula-chips">
-          <span class="hero-formula-chip"><span class="chip-dot dot-emerald"></span>80% Tích lũy: <b>${pv(fmtShortVND(remaining * 0.8))}</b></span>
-          <span class="hero-formula-chip"><span class="chip-dot dot-amber"></span>20% Tiền còn lại: <b>${pv(fmtShortVND(remaining * 0.2))}</b></span>
-        </div>
-      </div>
+      <div class="hero-bento-grid">
+        <div class="hero-bento-left">
+          <div class="hero-card-main">
+            <div class="hero-main-label">
+              <span>THẶNG DƯ RÒNG (80% TÍCH LŨY • 20% LINH HOẠT)</span>
+              <span class="hero-status-pill ${remaining >= 0 ? 'positive' : 'negative'}">${remaining >= 0 ? '▲' : '▼'} Tiết kiệm ${savePct.toFixed(1)}%</span>
+            </div>
+            <div class="hero-main-amount ${remaining >= 0 ? 'positive' : 'negative'}">${pv((remaining >= 0 ? '+' : '') + fmtVND(remaining))}</div>
+            <div class="hero-formula-chips">
+              <span class="hero-formula-chip"><span class="chip-dot dot-emerald"></span>80% Tích lũy: <b>${pv(fmtShortVND(remaining * 0.8))}</b></span>
+              <span class="hero-formula-chip"><span class="chip-dot dot-amber"></span>20% Tiền còn lại: <b>${pv(fmtShortVND(remaining * 0.2))}</b></span>
+            </div>
+          </div>
 
-      <div class="hero-sparkline-wrap">
-        <div class="hero-sparkline-head">
-          <span class="sparkline-title">Xu hướng Thu – Chi 2026</span>
-          <span class="sparkline-legend">
-            <span><b style="color:#34d399;">●</b> Thu</span>
-            <span><b style="color:#60a5fa;">●</b> Chi</span>
-          </span>
+          <div class="hero-sparkline-wrap">
+            <div class="hero-sparkline-head">
+              <span class="sparkline-title">Xu hướng Thu – Chi 2026</span>
+              <span class="sparkline-legend">
+                <span><b style="color:#34d399;">●</b> Thu nhập</span>
+                <span><b style="color:#60a5fa;">●</b> Thực chi</span>
+              </span>
+            </div>
+            <div class="hero-sparkline-body">${buildHeroSparklineSVG()}</div>
+          </div>
         </div>
-        <div class="hero-sparkline-body">${buildHeroSparklineSVG()}</div>
-      </div>
 
-      <div class="hero-metrics-grid">
-        <div class="hero-subcard" style="cursor:pointer;" onclick="openIncomeModal(${targetIncomeModalM})" title="Bấm để sửa thu nhập các tháng">
-          <div class="hero-sub-label">TỔNG THU NHẬP</div>
-          <div class="hero-sub-val positive">${pv(fmtVND(incTotal))}</div>
-          <div class="hero-sub-note">Mục tiêu tiết kiệm 30%: <b>${pv(fmtShortVND(incTotal * 0.3))}</b></div>
-        </div>
-        <div class="hero-subcard">
-          <div class="hero-sub-label">THỰC CHI</div>
-          <div class="hero-sub-val accent">${pv(fmtVND(expTotal))}</div>
-          <div class="hero-sub-note">Chiếm <b>${expRate.toFixed(1)}%</b> thu nhập (Hạn mức 70%: ${pv(fmtShortVND(targetExp))})</div>
-          <div class="hero-budget-track"><div class="hero-budget-fill ${overBudget ? 'over' : ''}" style="width:${expVsTargetPct.toFixed(1)}%;"></div></div>
-        </div>
-        <div class="hero-subcard full-width">
-          <div class="hero-sub-label">TỔNG TÍCH LŨY & ĐẦU TƯ 2026</div>
-          <div class="hero-sub-val text">${pv(fmtVND(totalWealth))}</div>
-          <div class="hero-sub-note">3 Quỹ DCA: <b>${pv(fmtShortVND(fundMV))}</b> • Bắt đáy & Dự phòng: <b>${pv(fmtShortVND(DB.investment.dip_fund_balance + DB.investment.emergency_fund_balance))}</b></div>
+        <div class="hero-metrics-grid">
+          <div class="hero-subcard" style="cursor:pointer;" onclick="openIncomeModal(${targetIncomeModalM})" title="Bấm để sửa thu nhập các tháng">
+            <div class="hero-sub-label">TỔNG THU NHẬP</div>
+            <div class="hero-sub-val positive">${pv(fmtVND(incTotal))}</div>
+            <div class="hero-sub-note">Mục tiêu tiết kiệm 30%: <b>${pv(fmtShortVND(incTotal * 0.3))}</b></div>
+          </div>
+          <div class="hero-subcard">
+            <div class="hero-sub-label">THỰC CHI</div>
+            <div class="hero-sub-val accent">${pv(fmtVND(expTotal))}</div>
+            <div class="hero-sub-note">Chiếm <b>${expRate.toFixed(1)}%</b> thu nhập (Trần 70%: ${pv(fmtShortVND(targetExp))})</div>
+            <div class="hero-budget-track"><div class="hero-budget-fill ${overBudget ? 'over' : ''}" style="width:${expVsTargetPct.toFixed(1)}%;"></div></div>
+          </div>
+          <div class="hero-subcard full-width" style="cursor:pointer;" onclick="switchTab('investment')" title="Bấm để xem chi tiết Danh mục Đầu tư & Quỹ">
+            <div class="hero-sub-label">TỔNG TÍCH LŨY & ĐẦU TƯ 2026</div>
+            <div class="hero-sub-val text">${pv(fmtVND(totalWealth))}</div>
+            <div class="hero-sub-note">3 Quỹ DCA: <b>${pv(fmtShortVND(fundMV))}</b> • Bắt đáy & Dự phòng: <b>${pv(fmtShortVND(DB.investment.dip_fund_balance + DB.investment.emergency_fund_balance))}</b></div>
+          </div>
         </div>
       </div>
     </div>
@@ -3186,6 +3708,13 @@ function computeCategoryAdvice(periodMonth) {
   };
 }
 
+let isAdviceSectionExpanded = false;
+
+function toggleAdviceSectionDetails() {
+  isAdviceSectionExpanded = !isAdviceSectionExpanded;
+  renderCategoryAdviceSection();
+}
+
 function renderCategoryAdviceSection() {
   const container = document.getElementById("dashboard-advice-section");
   if (!container) return;
@@ -3194,132 +3723,150 @@ function renderCategoryAdviceSection() {
   if (!data) return;
 
   const periodLbl = selectedMonth === 0 ? "Toàn Diện Năm 2026 (Trung bình tháng)" : `Tháng ${selectedMonth}/2026`;
+  const cutSummaryNames = data.cutItems.map(i => i.category).join(", ") || "Đang tối ưu";
+  const boostSummaryNames = data.boostItems.map(i => i.category).join(", ") || "DCA 3 Quỹ";
 
   container.innerHTML = `
     <section class="advice-hero">
-      <div class="advice-header">
-        <div>
+      <div class="advice-header" style="${!isAdviceSectionExpanded ? 'margin-bottom:0;padding-bottom:0;border-bottom:none;' : ''}">
+        <div style="flex:1;min-width:240px;">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <h2 style="font-size:18px;font-weight:800;color:var(--text);"> Cố Vấn Tài Chính AI: Tư Vấn Tăng / Giảm Chi Tiêu Từng Nhóm</h2>
-            <span class="advice-score-pill"> Điểm Sức Khỏe Ngân Sách: 92/100 (Rất Tốt)</span>
+            <h2 style="font-size:16.5px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:7px;">
+              <span>🧠 Cố Vấn Tài Chính AI</span>
+            </h2>
+            <span class="advice-score-pill">Điểm Sức Khỏe: 92/100</span>
+            <span style="font-size:12.5px;color:var(--text-secondary);">(${periodLbl})</span>
           </div>
-          <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">
-            Dựa trên số liệu thực tế (${periodLbl}) • Tỷ lệ tiết kiệm đạt <b>30.84%</b> (Vượt mục tiêu 30%) • Tiềm năng tối ưu thêm: <b style="color:var(--positive);">+${fmtShortVND(data.totalPotentialSavings)}/tháng</b>
+          <div class="advice-ribbon-pills">
+            <span class="advice-summary-chip cut" onclick="toggleAdviceSectionDetails()" title="Bấm để xem chi tiết nhóm cần giảm">
+              🔻 Nên tối ưu: <b>${cutSummaryNames}</b> (~${fmtShortVND(data.totalPotentialSavings)}/tháng)
+            </span>
+            <span class="advice-summary-chip boost" onclick="toggleAdviceSectionDetails()" title="Bấm để xem chi tiết nhóm nên tăng đầu tư">
+              🚀 Nên tăng: <b>${boostSummaryNames}</b> (+3.0tr/tháng)
+            </span>
+            <span class="advice-summary-chip keep" onclick="toggleAdviceSectionDetails()" title="Bấm để xem nhóm bảo vệ ưu tiên">
+              🛡️ Bảo vệ: <b>Học tập Subo &amp; Y tế Sugi</b>
+            </span>
           </div>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn btn-primary" style="font-size:13px;padding:8px 14px;" onclick="consultGeminiForFinancialAdvice()">
-            AI Phân Tích Chuyên Sâu
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <button class="btn btn-ghost" style="font-size:12.5px;padding:7px 12px;" onclick="toggleAdviceSectionDetails()">
+            ${isAdviceSectionExpanded ? '▴ Thu gọn chi tiết' : '▾ Xem Chi Tiết 10 Nhóm'}
+          </button>
+          <button class="btn btn-primary" style="font-size:12.5px;padding:7px 14px;" onclick="consultGeminiForFinancialAdvice()">
+            ✨ AI Phân Tích Chuyên Sâu
           </button>
         </div>
       </div>
 
-      <!-- 3 CỘT PHÂN TẦNG: CẦN GIẢM - NÊN TĂNG - DUY TRÌ BẢO VỆ -->
-      <div class="advice-cards-grid">
-        <!--  CẦN GIẢM / TỐI ƯU -->
-        <div class="advice-group-card cut">
-          <div class="advice-group-title" style="color:var(--negative);">
-            <span> NHÓM NÊN CẮT GIẢM (${data.cutItems.length})</span>
-            <span style="font-size:13px;color:var(--negative);">Tiết kiệm: ~${fmtShortVND(data.totalPotentialSavings)}/tháng</span>
-          </div>
-          ${data.cutItems.map(item => `
-            <div class="advice-item-row">
-              <div style="display:flex;justify-content:space-between;align-items:center;">
-                <b style="color:var(--text);">${item.title}</b>
-                <span class="advice-delta-badge delta-cut">${item.actionText}</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-secondary);">
-                <span>Thực tế: <b style="color:var(--warning);">${fmtShortVND(item.monthlyActual)}</b></span>
-                <span>Mức trần đề xuất: <b>${fmtShortVND(item.ceiling)}</b></span>
-              </div>
-              <div style="font-size:13px;color:var(--text);line-height:1.4;margin-top:2px;">
-                 <i>${item.tip}</i>
-              </div>
+      <div class="advice-collapsible-body" style="display:${isAdviceSectionExpanded ? 'block' : 'none'};margin-top:16px;">
+        <!-- 3 CỘT PHÂN TẦNG: CẦN GIẢM - NÊN TĂNG - DUY TRÌ BẢO VỆ -->
+        <div class="advice-cards-grid">
+          <!--  CẦN GIẢM / TỐI ƯU -->
+          <div class="advice-group-card cut">
+            <div class="advice-group-title" style="color:var(--negative);">
+              <span>🔻 NHÓM NÊN CẮT GIẢM (${data.cutItems.length})</span>
+              <span style="font-size:13px;color:var(--negative);">Tiết kiệm: ~${fmtShortVND(data.totalPotentialSavings)}/tháng</span>
             </div>
-          `).join("")}
+            ${data.cutItems.map(item => `
+              <div class="advice-item-row">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <b style="color:var(--text);">${item.title}</b>
+                  <span class="advice-delta-badge delta-cut">${item.actionText}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-secondary);">
+                  <span>Thực tế: <b style="color:var(--warning);">${fmtShortVND(item.monthlyActual)}</b></span>
+                  <span>Mức trần đề xuất: <b>${fmtShortVND(item.ceiling)}</b></span>
+                </div>
+                <div style="font-size:13px;color:var(--text);line-height:1.4;margin-top:2px;">
+                   <i>${item.tip}</i>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+
+          <!--  NÊN TĂNG / TẬN DỤNG ĐẦU TƯ -->
+          <div class="advice-group-card boost">
+            <div class="advice-group-title" style="color:var(--positive);">
+              <span>🚀 NHÓM NÊN TĂNG / ĐẦU TƯ (${data.boostItems.length})</span>
+              <span style="font-size:13px;color:var(--positive);">Tận dụng nợ đã dứt</span>
+            </div>
+            ${data.boostItems.map(item => `
+              <div class="advice-item-row">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <b style="color:var(--text);">${item.title}</b>
+                  <span class="advice-delta-badge delta-boost">${item.actionText}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-secondary);">
+                  <span>Mức hiện tại: <b>${fmtShortVND(item.monthlyActual)}</b></span>
+                  <span>Đề xuất: <b style="color:var(--positive);">${fmtShortVND(item.ceiling)}</b></span>
+                </div>
+                <div style="font-size:13px;color:var(--text);line-height:1.4;margin-top:2px;">
+                   <i>${item.tip}</i>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+
+          <!--  DUY TRÌ & BẢO VỆ CHẤT LƯỢNG -->
+          <div class="advice-group-card keep">
+            <div class="advice-group-title" style="color:var(--accent);">
+              <span>🛡️ DUY TRÌ BẢO VỆ CON CÁI (${data.keepItems.length})</span>
+              <span style="font-size:13px;color:var(--accent);">Ưu tiên số 1</span>
+            </div>
+            ${data.keepItems.slice(0, 2).map(item => `
+              <div class="advice-item-row">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <b style="color:var(--text);">${item.title}</b>
+                  <span class="advice-delta-badge delta-keep">${item.actionText}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-secondary);">
+                  <span>Thực chi TB: <b>${fmtShortVND(item.monthlyActual)}</b></span>
+                  <span style="color:var(--accent);">Bảo đảm chất lượng</span>
+                </div>
+                <div style="font-size:13px;color:var(--text);line-height:1.4;margin-top:2px;">
+                   <i>${item.tip}</i>
+                </div>
+              </div>
+            `).join("")}
+          </div>
         </div>
 
-        <!--  NÊN TĂNG / TẬN DỤNG ĐẦU TƯ -->
-        <div class="advice-group-card boost">
-          <div class="advice-group-title" style="color:var(--positive);">
-            <span> NHÓM NÊN TĂNG / ĐẦU TƯ (${data.boostItems.length})</span>
-            <span style="font-size:13px;color:var(--positive);">Tận dụng nợ đã dứt</span>
-          </div>
-          ${data.boostItems.map(item => `
-            <div class="advice-item-row">
-              <div style="display:flex;justify-content:space-between;align-items:center;">
-                <b style="color:var(--text);">${item.title}</b>
-                <span class="advice-delta-badge delta-boost">${item.actionText}</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-secondary);">
-                <span>Mức hiện tại: <b>${fmtShortVND(item.monthlyActual)}</b></span>
-                <span>Đề xuất: <b style="color:var(--positive);">${fmtShortVND(item.ceiling)}</b></span>
-              </div>
-              <div style="font-size:13px;color:var(--text);line-height:1.4;margin-top:2px;">
-                 <i>${item.tip}</i>
-              </div>
-            </div>
-          `).join("")}
-        </div>
-
-        <!--  DUY TRÌ & BẢO VỆ CHẤT LƯỢNG -->
-        <div class="advice-group-card keep">
-          <div class="advice-group-title" style="color:var(--accent);">
-            <span> DUY TRÌ BẢO VỆ CON CÁI (${data.keepItems.length})</span>
-            <span style="font-size:13px;color:var(--accent);">Ưu tiên số 1</span>
-          </div>
-          ${data.keepItems.slice(0, 2).map(item => `
-            <div class="advice-item-row">
-              <div style="display:flex;justify-content:space-between;align-items:center;">
-                <b style="color:var(--text);">${item.title}</b>
-                <span class="advice-delta-badge delta-keep">${item.actionText}</span>
-              </div>
-              <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-secondary);">
-                <span>Thực chi TB: <b>${fmtShortVND(item.monthlyActual)}</b></span>
-                <span style="color:var(--accent);">Bảo đảm chất lượng</span>
-              </div>
-              <div style="font-size:13px;color:var(--text);line-height:1.4;margin-top:2px;">
-                 <i>${item.tip}</i>
-              </div>
-            </div>
-          `).join("")}
-        </div>
-      </div>
-
-      <!-- BẢNG ĐỐI CHIẾU CHI TIẾT TỪNG NHÓM -->
-      <details style="margin-top:10px;">
-        <summary style="font-size:13px;color:var(--accent);font-weight:700;cursor:pointer;padding:6px 0;">
-           Bấm để xem Bảng Chi Tiết Định Mức & Hành Động 10 Hạng Mục (Chi tiết)
-        </summary>
-        <div class="table-wrap" style="margin-top:10px;max-height:300px;overflow-y:auto;">
-          <table>
-            <thead>
-              <tr>
-                <th>Hạng mục</th>
-                <th class="num">Thực chi TB</th>
-                <th class="num">Trần đề xuất</th>
-                <th>Tư vấn AI</th>
-                <th>Hành động cụ thể</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${data.items.map(it => `
+        <!-- BẢNG ĐỐI CHIẾU CHI TIẾT TỪNG NHÓM -->
+        <details style="margin-top:10px;">
+          <summary style="font-size:13px;color:var(--accent);font-weight:700;cursor:pointer;padding:6px 0;">
+             Bấm để xem Bảng Chi Tiết Định Mức &amp; Hành Động 10 Hạng Mục (Chi tiết)
+          </summary>
+          <div class="table-wrap" style="margin-top:10px;max-height:300px;overflow-y:auto;">
+            <table>
+              <thead>
                 <tr>
-                  <td><b>${it.title}</b></td>
-                  <td class="num">${fmtShortVND(it.monthlyActual)}</td>
-                  <td class="num">${fmtShortVND(it.ceiling)}</td>
-                  <td>
-                    ${it.ruleType === 'CUT' ? '<span class="advice-delta-badge delta-cut">NÊN GIẢM</span>' :
-                      (it.ruleType === 'BOOST' ? '<span class="advice-delta-badge delta-boost">NÊN TĂNG</span>' :
-                      '<span class="advice-delta-badge delta-keep">DUY TRÌ</span>')}
-                  </td>
-                  <td style="font-size:13px;color:var(--text-secondary);">${it.tip}</td>
+                  <th>Hạng mục</th>
+                  <th class="num">Thực chi TB</th>
+                  <th class="num">Trần đề xuất</th>
+                  <th>Tư vấn AI</th>
+                  <th>Hành động cụ thể</th>
                 </tr>
-              `).join("")}
-            </tbody>
-          </table>
-        </div>
-      </details>
+              </thead>
+              <tbody>
+                ${data.items.map(it => `
+                  <tr>
+                    <td><b>${it.title}</b></td>
+                    <td class="num">${fmtShortVND(it.monthlyActual)}</td>
+                    <td class="num">${fmtShortVND(it.ceiling)}</td>
+                    <td>
+                      ${it.ruleType === 'CUT' ? '<span class="advice-delta-badge delta-cut">NÊN GIẢM</span>' :
+                        (it.ruleType === 'BOOST' ? '<span class="advice-delta-badge delta-boost">NÊN TĂNG</span>' :
+                        '<span class="advice-delta-badge delta-keep">DUY TRÌ</span>')}
+                    </td>
+                    <td style="font-size:13px;color:var(--text-secondary);">${it.tip}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </div>
     </section>
   `;
 }
@@ -4130,16 +4677,135 @@ async function deleteMailbox(id) {
 
 let lastFilteredDuplicateCount = 0;
 let lastParsedEmailItemsAll = [];
+let emailAutoScanTimerId = null;
+let isEmailScanInProgress = false;
+
+const STORAGE_EMAIL_AUTO_SCAN_ENABLED = "FAMILY_EMAIL_AUTO_SCAN_ENABLED_2026";
+const STORAGE_EMAIL_AUTO_SCAN_TIME = "FAMILY_EMAIL_AUTO_SCAN_TIME_2026";
+const STORAGE_EMAIL_AUTO_POPUP = "FAMILY_EMAIL_AUTO_POPUP_2026";
+const STORAGE_LAST_EMAIL_SCAN_DATE = "FAMILY_LAST_EMAIL_SCAN_DATE_2026";
+const STORAGE_LAST_EMAIL_SCAN_TS = "FAMILY_LAST_EMAIL_SCAN_TS_2026";
+
+function isEmailAutoScanEnabled() {
+  const val = localStorage.getItem(STORAGE_EMAIL_AUTO_SCAN_ENABLED);
+  if (val === null) return true;
+  return val !== "0" && val !== "false";
+}
+
+function setEmailAutoScanEnabled(enabled) {
+  localStorage.setItem(STORAGE_EMAIL_AUTO_SCAN_ENABLED, enabled ? "1" : "0");
+  if (DB && DB.meta) DB.meta.email_auto_scan_enabled = Boolean(enabled);
+  renderEmailAutoScanSettingsBar();
+  showToast(enabled ? "⏰ Đã bật quét Email ngân hàng định kỳ hàng ngày!" : "Đã tắt quét Email định kỳ tự động", "info", 2200);
+}
+
+function getEmailAutoScanTime() {
+  const saved = (localStorage.getItem(STORAGE_EMAIL_AUTO_SCAN_TIME) || (DB && DB.meta && DB.meta.email_auto_scan_time) || "20:00").trim();
+  return /^\d{2}:\d{2}$/.test(saved) ? saved : "20:00";
+}
+
+function setEmailAutoScanTime(timeStr) {
+  const clean = (timeStr || "20:00").trim();
+  if (!/^\d{2}:\d{2}$/.test(clean)) return;
+  localStorage.setItem(STORAGE_EMAIL_AUTO_SCAN_TIME, clean);
+  if (DB && DB.meta) DB.meta.email_auto_scan_time = clean;
+  renderEmailAutoScanSettingsBar();
+  showToast(`⏰ Đã đặt giờ quét Email định kỳ hàng ngày: ${clean}`, "success", 2200);
+}
+
+function isEmailAutoPopupEnabled() {
+  const val = localStorage.getItem(STORAGE_EMAIL_AUTO_POPUP);
+  if (val === null) return true;
+  return val !== "0" && val !== "false";
+}
+
+function setEmailAutoPopupEnabled(enabled) {
+  localStorage.setItem(STORAGE_EMAIL_AUTO_POPUP, enabled ? "1" : "0");
+  if (DB && DB.meta) DB.meta.email_auto_popup_enabled = Boolean(enabled);
+  renderEmailAutoScanSettingsBar();
+  showToast(enabled ? "🔔 Đã bật tự động Pop-up khi phát hiện email chi tiêu mới!" : "Đã tắt tự động Pop-up email", "info", 2200);
+}
+
+function recordEmailScanCompleted() {
+  const now = new Date();
+  const ymd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`; // taste-skill-ignore
+  localStorage.setItem(STORAGE_LAST_EMAIL_SCAN_DATE, ymd);
+  localStorage.setItem(STORAGE_LAST_EMAIL_SCAN_TS, now.toISOString());
+  renderEmailAutoScanSettingsBar();
+  updateTopbarEmailScanPill();
+}
+
+function getLastEmailScanHumanLabel() {
+  const ts = localStorage.getItem(STORAGE_LAST_EMAIL_SCAN_TS);
+  if (!ts) return "Chưa quét hôm nay";
+  try {
+    const dt = new Date(ts);
+    if (isNaN(dt.getTime())) return "Chưa quét hôm nay";
+    const hh = String(dt.getHours()).padStart(2, "0");
+    const mm = String(dt.getMinutes()).padStart(2, "0");
+    const dd = String(dt.getDate()).padStart(2, "0");
+    const mo = String(dt.getMonth() + 1).padStart(2, "0");
+    return `Đã quét lúc ${hh}:${mm} (${dd}/${mo})`;
+  } catch (e) {
+    return "Chưa quét hôm nay";
+  }
+}
+
+function renderEmailAutoScanSettingsBar() {
+  const chkScan = document.getElementById("email-auto-scan-enabled");
+  if (chkScan) chkScan.checked = isEmailAutoScanEnabled();
+  const inpTime = document.getElementById("email-auto-scan-time-input");
+  if (inpTime) inpTime.value = getEmailAutoScanTime();
+  const chkPopup = document.getElementById("email-auto-popup-enabled");
+  if (chkPopup) chkPopup.checked = isEmailAutoPopupEnabled();
+  const statusEl = document.getElementById("email-last-scan-status");
+  if (statusEl) {
+    statusEl.textContent = `${getLastEmailScanHumanLabel()} • Khung giờ hẹn: ${getEmailAutoScanTime()}/ngày`;
+  }
+}
+
+function updateTopbarEmailScanPill() {
+  const pill = document.getElementById("topbar-email-scan-pill");
+  const label = document.getElementById("topbar-email-scan-label");
+  if (!pill || !label) return;
+  const count = Array.isArray(pendingEmails) ? pendingEmails.length : 0;
+  if (isEmailScanInProgress) {
+    label.textContent = "Đang quét Email...";
+    pill.style.background = "var(--accent-soft)";
+    pill.style.borderColor = "var(--accent-border)";
+    pill.style.color = "var(--accent)";
+  } else if (count > 0) {
+    label.textContent = `${count} Email Chờ Duyệt`;
+    pill.style.background = "var(--warning-soft)";
+    pill.style.borderColor = "rgba(180, 83, 9, 0.28)";
+    pill.style.color = "var(--warning)";
+  } else {
+    label.textContent = "Quét Email Mới";
+    pill.style.background = "var(--surface)";
+    pill.style.borderColor = "var(--border)";
+    pill.style.color = "var(--text-secondary)";
+  }
+}
+
+function onTopbarEmailPillClick() {
+  if (Array.isArray(pendingEmails) && pendingEmails.length > 0) {
+    openEmailReviewPopupModal();
+  } else {
+    scanGmailViaCloud({ silent: false, autoPopup: true, reason: "topbar" });
+  }
+}
 
 async function loadSampleBankEmails() {
   const raw = (DB && DB.sample_bank_emails) ? DB.sample_bank_emails : SAMPLE_BANK_EMAILS_DEFAULT;
   const textarea = document.getElementById("raw-email-textarea");
   if (textarea) textarea.value = raw;
-  await processBankEmailsWithAI(raw, "Chung");
+  await processBankEmailsWithAI(raw, "Chung", { autoPopup: true });
 }
 
-function parseEmailContent(defaultOwner = "Chung") {
-  const raw = document.getElementById("raw-email-textarea")?.value || "";
+function parseEmailContent(defaultOwner = "Chung", options = {}) {
+  const raw = (options.rawText !== undefined && options.rawText !== null)
+    ? String(options.rawText)
+    : (document.getElementById("raw-email-textarea")?.value || "");
   const allParsed = parseBankEmailsJS(raw);
   const freshItems = [];
   let dupCount = 0;
@@ -4157,144 +4823,142 @@ function parseEmailContent(defaultOwner = "Chung") {
   lastFilteredDuplicateCount = dupCount;
   pendingEmails = freshItems;
   renderPendingEmailList();
+  updateTopbarEmailScanPill();
+
+  const shouldPopup = options.autoPopup !== undefined ? options.autoPopup : isEmailAutoPopupEnabled();
+  if (shouldPopup && pendingEmails.length > 0) {
+    openEmailReviewPopupModal();
+  }
+  return freshItems;
 }
 
-async function processBankEmailsWithAI(rawText = null, defaultOwner = "Chung") {
+let isAiEnrichingEmails = false;
+
+async function enrichPendingEmailsWithClaudeAI(defaultOwner = "Chung") {
+  if (!Array.isArray(pendingEmails) || pendingEmails.length === 0) return pendingEmails;
+  const key = getGeminiApiKey();
+  if (!key) return pendingEmails;
+
+  const provider = getAIProviderName(key) || "Claude Sonnet 5.5";
+  isAiEnrichingEmails = true;
+  renderPendingEmailList();
+  updateCloudBadgeUI(`🧠 ${provider} đang phân tích sâu ${pendingEmails.length} giao dịch...`);
+
+  const categoriesList = (DB?.meta?.categories || ["Ăn uống", "Học tập", "Phí tiện ích", "Đồ dùng GĐ", "Nợ", "Làm đẹp", "Y tế", "Vui chơi", "Event", "Công việc"]).join(", ");
+  const membersList = (DB?.meta?.members || ["Chồng", "Vợ", "Subo", "Sugi", "Chung"]).join(", ");
+  const familyMemory = buildFamilyHistoryPromptForAI(4);
+
+  const itemsPayload = pendingEmails.map((it, idx) => ({
+    idx,
+    bank: it.bank,
+    date: it.date,
+    amount: it.amount,
+    tx_code: it.tx_code || null,
+    raw_content: it.raw_content || it.content,
+    is_self_transfer: Boolean(it.is_self_transfer)
+  }));
+
+  const prompt = `Bạn là Não AI (${provider}) quản lý chi tiêu gia đình (Chồng, Vợ, con lớn Subo, bé nhỏ Sugi, và Chung).
+Dưới đây là BỘ NHỚ LỊCH SỬ CHI TIÊU THỰC TẾ được rút ra từ 888+ giao dịch trong Sổ chi tiêu của gia đình:
+${familyMemory}
+
+Hãy phân tích thông minh danh sách ${itemsPayload.length} giao dịch ngân hàng MỚI chưa có trong sổ dưới đây:
+${JSON.stringify(itemsPayload, null, 2)}
+
+Yêu cầu cho từng giao dịch (giữ nguyên "idx"):
+1. "content": Dịch mã máy POS / tên viết tắt ngân hàng / nội dung chuyển khoản sang tiếng Việt tự nhiên, ngắn gọn, dễ hiểu nhất (VD: "PLX_SAI GON" → "Đổ xăng Petrolimex", "ST DIEN MAY NT CHO LON" → "Siêu thị Điện Máy Chợ Lớn", "ANTHROPIC* CLAUDE SUB" → "Đăng ký Claude AI (Anthropic)").
+2. "category": Chọn đúng 1 trong 10 hạng mục: ${categoriesList}. Đối chiếu kỹ với Bộ nhớ lịch sử chi tiêu ở trên.
+3. "person": Chọn đúng 1 trong: ${membersList}. Mặc định hộp thư này là "${defaultOwner || 'Chung'}".
+4. "needs_clarification": true NẾU giao dịch chỉ ghi tên cá nhân nhận chuyển khoản (chưa rõ mua gì), chuyển khoản nội bộ cùng tên chủ tài khoản, mã công ty/POS lạ chưa rõ mục đích, hoặc giao dịch ngoại tệ quy đổi tạm tính; false nếu đã rõ cửa hàng và mục đích.
+5. "unclear_reason": Nếu needs_clarification=true, giải thích ngắn gọn vì sao cần xác nhận.
+6. "ai_question": Nếu needs_clarification=true, đặt 1 câu hỏi tự nhiên, cụ thể hỏi người dùng về đúng giao dịch này.
+7. "suggested_options": Nếu needs_clarification=true, sinh 3-4 lựa chọn gợi ý 1 chạm sát ngữ cảnh & số tiền nhất, mỗi lựa chọn gồm: {"label": "Tên gợi ý ngắn", "category": "Hạng mục", "person": "Thành viên", "note": "Nội dung ghi sổ"}.
+
+Trả về DUY NHẤT JSON thuần (không dùng markdown \`\`\`):
+{"items": [{"idx": 0, "content": "...", "category": "...", "person": "...", "needs_clarification": false, "unclear_reason": null, "ai_question": null, "suggested_options": []}]}`;
+
+  try {
+    const aiResp = await callAIWithDiagnostics(prompt);
+    if (aiResp && aiResp.text) {
+      const parsed = extractJsonFromAiResponse(aiResp.text);
+      if (parsed && Array.isArray(parsed.items)) {
+        const validCats = new Set(DB?.meta?.categories || []);
+        const validMembers = new Set(DB?.meta?.members || []);
+        parsed.items.forEach(aiIt => {
+          if (!aiIt || typeof aiIt.idx !== "number") return;
+          const target = pendingEmails[aiIt.idx];
+          if (!target) return;
+          if (aiIt.content && String(aiIt.content).trim()) {
+            target.content = String(aiIt.content).trim().slice(0, 75);
+          }
+          if (aiIt.category && validCats.has(aiIt.category)) {
+            target.category = aiIt.category;
+          }
+          if (aiIt.person && validMembers.has(aiIt.person)) {
+            target.person = aiIt.person;
+          }
+          if (typeof aiIt.needs_clarification === "boolean") {
+            target.needs_clarification = aiIt.needs_clarification || Boolean(target.is_self_transfer);
+          }
+          if (aiIt.unclear_reason) {
+            target.unclear_reason = String(aiIt.unclear_reason).trim();
+          }
+          if (aiIt.ai_question) {
+            target.ai_question = String(aiIt.ai_question).trim();
+          }
+          if (Array.isArray(aiIt.suggested_options) && aiIt.suggested_options.length > 0) {
+            target.suggested_options = aiIt.suggested_options;
+          }
+          target.resolved_by_ai = !target.needs_clarification;
+          target.reason = `Não AI (${aiResp.model || provider}) phân tích theo lịch sử sổ gia đình`;
+        });
+      }
+    }
+  } catch (e) {
+    console.warn("Claude AI enrichment fallback:", e);
+  } finally {
+    isAiEnrichingEmails = false;
+    renderPendingEmailList();
+    updateCloudBadgeUI(` Đã dùng ${provider} phân tích ${pendingEmails.length} giao dịch`);
+  }
+  return pendingEmails;
+}
+
+async function processBankEmailsWithAI(rawText = null, defaultOwner = "Chung", options = {}) {
   const textarea = document.getElementById("raw-email-textarea");
   let raw = (rawText !== null ? rawText : textarea?.value || "").trim();
 
   if (!raw) {
-    const choice = confirm("Ô nội dung email ngân hàng đang trống.\n\n Bạn có muốn nạp dữ liệu email ngân hàng mẫu (NCB, VPBank, BIDV) để thử Não AI phân tích ngay không?");
+    if (options.silent) return [];
+    const choice = confirm("Ô nội dung email ngân hàng đang trống.\n\n Bạn có muốn nạp dữ liệu email ngân hàng mẫu (NCB, VPBank, BIDV) để thử phân tích ngay không?");
     if (choice) {
       await loadSampleBankEmails();
-      return;
+      return pendingEmails;
     }
-    return;
+    return [];
   }
 
   if (textarea && textarea.value !== raw) {
     textarea.value = raw;
   }
 
+  // BƯỚC 1: Lọc cấu trúc & chống trùng lặp tức thì (bỏ qua các giao dịch đã có trong Sổ để không tốn token AI vô ích)
+  const freshItems = parseEmailContent(defaultOwner, {
+    rawText: raw,
+    autoPopup: options.autoPopup !== undefined ? options.autoPopup : isEmailAutoPopupEnabled()
+  });
+
+  if (freshItems.length === 0) {
+    return [];
+  }
+
+  // BƯỚC 2: Kích hoạt Não AI Claude (nếu đã gắn Key) để đọc hiểu sâu các giao dịch MỚI dựa trên lịch sử gia đình
   const key = getGeminiApiKey();
-  const provider = getAIProviderName(key) || "Não AI";
-
-  // Nếu chưa có API key, hỏi người dùng cài đặt hoặc chạy regex
-  if (!key) {
-    const choice = confirm("Bạn chưa cài đặt Mã Não AI (Claude Sonnet 5.5 / Gemini).\n\n• Bấm OK để mở cài đặt Não AI.\n• Bấm Hủy để bóc tách bằng bộ lọc regex tức thì.");
-    if (choice) {
-      openGeminiSettingsModal();
-      return;
-    } else {
-      parseEmailContent(defaultOwner);
-      return;
-    }
+  if (key && !options.skipAI) {
+    await enrichPendingEmailsWithClaudeAI(defaultOwner);
   }
 
-  // Hiển thị trạng thái đang đọc email bằng AI trực tiếp trên giao diện
-  const listEl = document.getElementById("parsed-email-list");
-  if (listEl) {
-    listEl.innerHTML = `
-      <div style="background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:12px;padding:26px;text-align:center;">
-        <div style="font-size:32px;margin-bottom:8px;"> </div>
-        <div style="font-weight:700;color:var(--accent);font-size:15px;margin-bottom:4px;">
-          Não AI (${provider}) Đang Đọc & Phân Tích Toàn Bộ Hộp Thư...
-        </div>
-        <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
-          Đang tự động bóc tách số tiền, phân loại danh mục, nhận diện Chồng/Vợ và phát hiện các giao dịch cần làm rõ...
-        </div>
-      </div>
-    `;
-  }
-  updateCloudBadgeUI(` ${provider} đang đọc email...`);
-
-  const categoriesList = (DB?.meta?.categories || ["Ăn uống", "Học tập", "Phí tiện ích", "Đồ dùng GĐ", "Nợ", "Làm đẹp", "Y tế", "Vui chơi", "Event", "Công việc", "Chưa phân loại"]).join(", ");
-  const membersList = (DB?.meta?.members || ["Chồng", "Vợ", "Subo", "Sugi", "Chung"]).join(", ");
-
-  const prompt = `Bạn là trợ lý AI kế toán gia đình tài ba. Hãy đọc toàn bộ nội dung email/SMS ngân hàng (VPBank, BIDV, NCB, UOB...) dưới đây và trích xuất TẤT CẢ các giao dịch trừ tiền/chi tiêu hoặc nhận tiền sang định dạng JSON thuần (KHÔNG dùng markdown \`\`\`):
-
-Nội dung email/thông báo ngân hàng:
-${raw}
-
-Yêu cầu bóc tách từng giao dịch:
-1. "bank": Tên ngân hàng ("NCB", "VPBank", "BIDV", "UOB" hoặc ngân hàng ghi trên mail).
-2. "date": Ngày giao dịch định dạng YYYY-MM-DD.
-3. "amount": Số tiền nguyên VND (dương, không dấu chấm phẩy).
-4. "is_income": true nếu là tiền vào / nhận tiền, false nếu là chi tiêu / thanh toán.
-5. "content": Tên tóm tắt ngắn gọn, dễ hiểu nhất của giao dịch (VD: "Đi chợ WinMart", "Thanh toán tiền điện", "Grab chuyển khoản", "Rút tiền ATM", "Chuyển tiền mua sắm").
-6. "raw_content": Toàn bộ nội dung gốc trên thông báo của ngân hàng.
-7. "category": Chọn 1 trong các mục sau: ${categoriesList}. Nếu không rõ, ghi "Chưa phân loại".
-8. "person": Chọn 1 trong: ${membersList}. Mặc định là "${defaultOwner || 'Chung'}". (Nếu NCB thường là Vợ, nếu VPBank/BIDV thường là Chồng).
-9. "needs_clarification": true NẾU giao dịch có nội dung mơ hồ, chỉ có mã số chuyển khoản, mã máy POS lạ, hoặc chưa rõ mua gì/cho ai; false nếu nội dung đã rõ ràng.
-10. "ai_question": Nếu needs_clarification=true, đặt 1 câu hỏi ngắn gọn, thân thiện hỏi người dùng khoản tiền này chi cho việc gì.
-11. "suggested_options": Nếu needs_clarification=true, đưa ra 3-4 lựa chọn gợi ý 1 chạm nhanh. Mỗi lựa chọn gồm: {"label": "icon Tên gợi ý", "category": "Mục", "person": "Người", "note": "Nội dung ngắn"}.
-
-Trả về JSON đúng cấu trúc:
-{"items": [{"bank": "NCB", "date": "2026-10-24", "month": 10, "amount": 350000, "is_income": false, "content": "Tóm tắt giao dịch", "raw_content": "ND gốc từ bank", "category": "Ăn uống", "person": "Vợ", "needs_clarification": false, "ai_question": null, "suggested_options": []}]}`;
-
-  const aiResp = await callAIWithDiagnostics(prompt);
-  if (!aiResp || !aiResp.text) {
-    parseEmailContent(defaultOwner);
-    updateCloudBadgeUI(" AI bận, đã dùng bộ lọc nhanh");
-    return;
-  }
-
-  try {
-    const parsed = extractJsonFromAiResponse(aiResp.text);
-    if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
-      const allMapped = parsed.items.map((it, idx) => {
-        const amt = Number(it.amount || 0);
-        const bank = it.bank || "NCB";
-        const content = it.content || "";
-        const rawContent = it.raw_content || content;
-        const conf = it.confidence || 0.95;
-        const unclearCheck = isUnclearEmailItemJS(content, rawContent, conf);
-
-        const isUnclear = (typeof it.needs_clarification === "boolean")
-          ? (it.needs_clarification || unclearCheck.isUnclear)
-          : unclearCheck.isUnclear;
-
-        return {
-          temp_id: `EMAIL-AI-${idx + 1}-${amt}-${Date.now()}`,
-          bank,
-          source: bank,
-          date: it.date || `2026-10-${String(new Date().getDate()).padStart(2, "0")}`, // taste-skill-ignore
-          month: Number(it.month || (it.date ? parseInt(it.date.split("-")[1], 10) : 10)),
-          amount: amt,
-          is_income: Boolean(it.is_income),
-          content,
-          raw_content: rawContent,
-          category: it.category || "Ăn uống",
-          person: it.person || defaultOwner || "Chung",
-          confidence: conf,
-          reason: it.reason || `Não AI (${provider}) phân tích`,
-          needs_clarification: isUnclear,
-          unclear_reason: it.unclear_reason || unclearCheck.reason || "Nội dung chưa ghi rõ cửa hàng hoặc mục đích chi.",
-          ai_question: it.ai_question || (isUnclear
-            ? `Khoản ${fmtVND(amt)} tại ${bank} ("${content}") chi cho việc gì và của ai trong gia đình?`
-            : null),
-          suggested_options: (Array.isArray(it.suggested_options) && it.suggested_options.length > 0)
-            ? it.suggested_options
-            : (isUnclear ? getSmartClarificationSuggestionsJS(amt, bank, rawContent) : []),
-          resolved_by_ai: !isUnclear
-        };
-      });
-
-      lastParsedEmailItemsAll = allMapped;
-      const minDate = getEmailStartDate();
-      const dateFiltered = allMapped.filter(it => !minDate || !it.date || it.date >= minDate);
-      const freshItems = dateFiltered.filter(it => !isEmailItemAlreadyAdded(it));
-      lastFilteredDuplicateCount = dateFiltered.length - freshItems.length;
-      pendingEmails = freshItems;
-      renderPendingEmailList();
-      updateCloudBadgeUI(` Đã dùng ${provider} đọc xong ${pendingEmails.length} email`);
-      return;
-    }
-  } catch (e) {
-    console.warn("AI parse error:", e);
-  }
-
-  parseEmailContent(defaultOwner);
+  return pendingEmails;
 }
 
 async function fetchGmailRawFromUrl(url) {
@@ -4328,7 +4992,7 @@ async function scanSingleMailboxCloud(mbId) {
   const mbOwner = mb ? mb.owner : "Chung";
 
   if (!targetUrl) {
-    const choice = confirm(`Hộp thư "${mbLabel}" chưa được gắn Link Google Apps Script Web App.\n\n Bạn có muốn nạp dữ liệu email ngân hàng mẫu (NCB, VPBank, BIDV) để thử Não AI phân tích ngay không?\n\n(Bấm OK để nạp mẫu & chạy Não AI ngay, bấm Hủy để mở bảng cấu hình Link Apps Script)`);
+    const choice = confirm(`Hộp thư "${mbLabel}" chưa được gắn Link Google Apps Script Web App.\n\n Bạn có muốn nạp dữ liệu email ngân hàng mẫu (NCB, VPBank, BIDV) để thử phân tích ngay không?\n\n(Bấm OK để nạp mẫu, bấm Hủy để mở bảng cấu hình Link Apps Script)`);
     if (choice) {
       await loadSampleBankEmails();
     } else {
@@ -4337,28 +5001,35 @@ async function scanSingleMailboxCloud(mbId) {
     return;
   }
 
+  isEmailScanInProgress = true;
+  updateTopbarEmailScanPill();
   updateCloudBadgeUI(` Đang quét ${mbLabel}...`);
   const data = await fetchGmailRawFromUrl(targetUrl);
+  isEmailScanInProgress = false;
   if (data && data.ok) {
+    recordEmailScanCompleted();
     if (!data.raw_text || !data.raw_text.trim()) {
-      const choice = confirm(`Không tìm thấy email biến động số dư nào trong "${mbLabel}".\n\n Bạn có muốn nạp dữ liệu email mẫu để thử Não AI phân tích ngay không?`);
-      if (choice) await loadSampleBankEmails();
+      showToast(` Không có email biến động số dư mới trong "${mbLabel}".`, "info", 2800);
     } else {
-      document.getElementById("raw-email-textarea").value = data.raw_text;
-      await processBankEmailsWithAI(data.raw_text, mbOwner);
+      const textarea = document.getElementById("raw-email-textarea");
+      if (textarea) textarea.value = data.raw_text;
+      await processBankEmailsWithAI(data.raw_text, mbOwner, { autoPopup: true });
+      if (pendingEmails.length === 0) {
+        showToast(` Đã quét "${mbLabel}": Tất cả ${lastFilteredDuplicateCount} giao dịch đều đã có trong Sổ (không có khoản mới).`, "success", 3500);
+      }
     }
     updateCloudBadgeUI(" Đã quét hộp thư");
   } else {
-    const choice = confirm(`Không thể kết nối Link Apps Script của "${mbLabel}".\n\n Bạn có muốn nạp dữ liệu email mẫu để thử Não AI phân tích trước không?`);
-    if (choice) {
-      await loadSampleBankEmails();
-    } else {
-      openAddMailboxModal(mbId);
-    }
+    updateTopbarEmailScanPill();
+    showToast(` Không thể kết nối Link Apps Script của "${mbLabel}".`, "warn", 3500);
   }
 }
 
-async function scanGmailViaCloud() {
+async function scanGmailViaCloud(options = {}) {
+  if (isEmailScanInProgress) return;
+  const silent = Boolean(options.silent);
+  const autoPopup = options.autoPopup !== undefined ? Boolean(options.autoPopup) : isEmailAutoPopupEnabled();
+
   const primaryUrl = getCloudScriptUrl();
   const mailboxes = getFamilyMailboxes();
   const urlsToScan = [];
@@ -4372,7 +5043,8 @@ async function scanGmailViaCloud() {
   });
 
   if (urlsToScan.length === 0) {
-    const choice = confirm("Bạn chưa cấu hình Link Google Apps Script để đọc Gmail tự động trên Cloud.\n\n Bạn có muốn nạp dữ liệu email ngân hàng mẫu (NCB, VPBank, BIDV) để thử Não AI phân tích ngay không?\n\n(Bấm OK để nạp mẫu & chạy Não AI ngay, bấm Hủy để mở bảng cấu hình Cloud)");
+    if (silent) return;
+    const choice = confirm("Bạn chưa cấu hình Link Google Apps Script để đọc Gmail tự động trên Cloud.\n\n Bạn có muốn nạp dữ liệu email ngân hàng mẫu (NCB, VPBank, BIDV) để thử ngay không?\n\n(Bấm OK để nạp mẫu, bấm Hủy để mở bảng cấu hình Cloud)");
     if (choice) {
       await loadSampleBankEmails();
     } else {
@@ -4381,7 +5053,13 @@ async function scanGmailViaCloud() {
     return;
   }
 
-  updateCloudBadgeUI(` Đang quét ${urlsToScan.length} hộp thư gia đình trên Cloud...`);
+  isEmailScanInProgress = true;
+  updateTopbarEmailScanPill();
+  if (!silent) {
+    updateCloudBadgeUI(` Đang quét ${urlsToScan.length} hộp thư gia đình trên Cloud...`);
+    showToast(`🔍 Đang quét email chi tiêu mới từ VPBank, BIDV, NCB...`, "info", 2200);
+  }
+
   const combinedTexts = [];
   let anySuccess = false;
 
@@ -4395,24 +5073,66 @@ async function scanGmailViaCloud() {
     }
   }
 
+  isEmailScanInProgress = false;
+
   if (anySuccess) {
+    recordEmailScanCompleted();
     if (combinedTexts.length === 0) {
-      const choice = confirm("Không tìm thấy email biến động số dư mới nào từ VPBank, BIDV, NCB trong hộp thư.\n\n Bạn có muốn nạp dữ liệu email mẫu để thử Não AI phân tích ngay không?");
-      if (choice) await loadSampleBankEmails();
+      if (!silent) {
+        showToast(" Không tìm thấy email biến động số dư mới nào từ VPBank, BIDV, NCB.", "info", 3000);
+      }
     } else {
       const allRaw = combinedTexts.join("\n---\n");
-      document.getElementById("raw-email-textarea").value = allRaw;
-      await processBankEmailsWithAI(allRaw, "Chung");
+      const textarea = document.getElementById("raw-email-textarea");
+      if (textarea) textarea.value = allRaw;
+      await processBankEmailsWithAI(allRaw, "Chung", { silent, autoPopup });
+      if (pendingEmails.length > 0) {
+        showToast(`🔔 Phát hiện ${pendingEmails.length} giao dịch ngân hàng mới cần duyệt!`, "success", 3800);
+      } else if (!silent) {
+        showToast(`✅ Đã quét xong: Đã lọc bỏ ${lastFilteredDuplicateCount} email trùng lặp, không có giao dịch mới bị sót!`, "success", 3500);
+      }
     }
     updateCloudBadgeUI(" Đã quét Gmail Cloud");
   } else {
-    const choice = confirm("Không thể kết nối Link Google Apps Script. Bạn có muốn nạp dữ liệu email mẫu để thử Não AI trước không?");
-    if (choice) {
-      await loadSampleBankEmails();
-    } else {
-      openCloudSettingsModal();
+    updateTopbarEmailScanPill();
+    if (!silent) {
+      showToast("⚠️ Không thể kết nối Link Google Apps Script lúc này. Vui lòng thử lại sau.", "warn", 3500);
     }
   }
+}
+
+function checkAndRunScheduledEmailScan(triggerReason = "timer") {
+  if (!isEmailAutoScanEnabled() || isEmailScanInProgress) return;
+  const pinOverlay = document.getElementById("pin-lock-overlay");
+  if (pinOverlay && pinOverlay.style.display && pinOverlay.style.display !== "none") return;
+
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`; // taste-skill-ignore
+  const lastScanDate = localStorage.getItem(STORAGE_LAST_EMAIL_SCAN_DATE) || "";
+
+  // Nếu hôm nay đã quét tự động rồi thì không quét lặp lại
+  if (lastScanDate === todayStr) return;
+
+  const nowHHMM = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const targetHHMM = getEmailAutoScanTime();
+
+  // Quét khi: (1) Đã đến hoặc qua khung giờ hẹn hàng ngày, HOẶC (2) Lần đầu mở app trong ngày mà chưa từng có lịch sử quét trên trình duyệt
+  if (nowHHMM >= targetHHMM || !lastScanDate) {
+    scanGmailViaCloud({ silent: true, autoPopup: isEmailAutoPopupEnabled(), reason: triggerReason });
+  }
+}
+
+function initEmailAutoScanScheduler() {
+  renderEmailAutoScanSettingsBar();
+  updateTopbarEmailScanPill();
+  if (emailAutoScanTimerId) clearInterval(emailAutoScanTimerId);
+  emailAutoScanTimerId = setInterval(() => {
+    checkAndRunScheduledEmailScan("interval");
+  }, 45000);
+  // Kiểm tra catch-up sau khi mở app 3.5 giây
+  setTimeout(() => {
+    checkAndRunScheduledEmailScan("startup");
+  }, 3500);
 }
 
 async function syncGmailImap() {
@@ -4440,61 +5160,33 @@ async function syncGmailImap() {
   }
 }
 
-function renderPendingEmailList() {
-  const countEl = document.getElementById("pending-email-count");
-  if (countEl) countEl.textContent = pendingEmails.length;
-  try { updateMobileNavBadges(); } catch (e) {}
-  const box = document.getElementById("parsed-email-list");
-  if (!box) return;
-
-  const dupBanner = lastFilteredDuplicateCount > 0
-    ? `<div style="background:var(--positive-soft);border:1px solid var(--positive-soft);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--positive);margin-bottom:8px;">
-          <b>Chống trùng lặp tự động:</b> Đã lọc bỏ <b>${lastFilteredDuplicateCount}</b> email giao dịch vì đã được thêm vào Sổ chi tiêu trước đó.
-       </div>`
-    : "";
-
-  const unclearCount = pendingEmails.filter(i => i.needs_clarification).length;
-  const unclearBanner = unclearCount > 0
-    ? `<div style="background:var(--warning-soft);border:1px solid var(--warning-soft);border-radius:8px;padding:9px 12px;font-size:13px;color:var(--warning);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-         <span> Có <b>${unclearCount}</b> giao dịch nội dung chưa rõ (chỉ có mã POS/chuyển khoản). Bạn có thể bấm gợi ý nhanh hoặc gõ câu trả lời để AI hoàn thiện!</span>
-         <button class="btn btn-ghost" style="padding:4px 9px;font-size:13px;color:var(--warning);border-color:var(--warning-soft);" onclick="autoClarifyUnclearEmails()">
-            Tự động rà soát (${unclearCount})
-         </button>
-       </div>`
-    : "";
-
-  if (pendingEmails.length === 0) {
-    box.innerHTML = `
-      ${dupBanner}
-      <div style="padding:30px;text-align:center;color:var(--text-secondary);">
-         Không có giao dịch email mới nào chờ duyệt!<br/>
-        <span style="font-size:13px;color:var(--text-muted);">Bấm " Quét Tất Cả Hộp Thư Cloud" ở cột trái để kiểm tra email mới từ nnt472@gmail.com & NCB.</span>
-      </div>`;
-    return;
-  }
-
+function buildEmailStagingCardsHTML(idPrefix = "clarify-inp") {
   const bankOptions = ALL_PAYMENT_SOURCES;
   const activeAiKey = getGeminiApiKey();
   const aiProviderName = getAIProviderName(activeAiKey) || "Claude Sonnet 5.5";
 
-  box.innerHTML = dupBanner + unclearBanner + pendingEmails.map((item, idx) => {
+  return pendingEmails.map((item, idx) => {
     const isUnclear = Boolean(item.needs_clarification);
     const isResolved = Boolean(item.resolved_by_ai);
     const cardClass = isUnclear ? "email-clarify-card" : "";
     const cleanReason = (item.reason || "").replace(/Gemini AI/gi, aiProviderName);
+    const txCodeBadge = item.tx_code
+      ? `<span class="chip" style="background:var(--surface);border:1px solid var(--border);color:var(--text-secondary);font-family:var(--font-mono);font-size:11px;" title="Mã giao dịch ngân hàng (chống trùng lặp tuyệt đối)">#${escapeHtml(String(item.tx_code).slice(0, 16))}</span>`
+      : "";
 
     return `
     <div class="${cardClass}" style="background:var(--raised);border:1px solid var(--border-subtle);border-radius:12px;padding:14px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px;">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          <span class="chip chip-bank"> ${item.source || item.bank}</span>
-          <span style="font-size:13px;color:var(--text-secondary);"> ${item.date} (Tháng ${item.month})</span>
+          <span class="chip chip-bank"> ${escapeHtml(item.source || item.bank)}</span>
+          <span style="font-size:13px;color:var(--text-secondary);"> ${escapeHtml(item.date)} (Tháng ${item.month})</span>
+          ${txCodeBadge}
           ${isUnclear
             ? `<span class="clarify-badge"> Cần làm rõ (Chưa rõ nội dung)</span>`
             : (isResolved ? `<span class="clarify-badge resolved"> Đã làm rõ bởi AI</span>` : '')
           }
         </div>
-        <div style="font-size:17px;font-weight:800;color:var(--positive);">${fmtVND(item.amount)}</div>
+        <div style="font-size:17px;font-weight:800;color:var(--positive);font-variant-numeric:tabular-nums;">${fmtVND(item.amount)}</div>
       </div>
 
       <div style="font-size:13px;color:var(--text-muted);margin-bottom:8px;">
@@ -4504,18 +5196,18 @@ function renderPendingEmailList() {
       ${isUnclear ? `
         <div class="clarify-prompt-box">
           <div style="font-size:13px;color:var(--warning);font-weight:700;">
-             AI hỏi: ${item.ai_question || `Giao dịch ${fmtVND(item.amount)} này dùng cho mục đích gì và của ai trong gia đình?`}
+             Cần xác nhận: ${escapeHtml(item.ai_question || `Giao dịch ${fmtVND(item.amount)} này dùng cho mục đích gì và của ai trong gia đình?`)}
           </div>
           <div style="font-size:13px;color:var(--text-secondary);margin-top:2px;">
             ${escapeHtml(item.unclear_reason || "Chưa có tên cửa hàng hay mục đích chi tiết.")}
           </div>
 
           <div style="margin-top:8px;">
-            <div style="font-size:13px;color:var(--text);font-weight:600;"> Chọn nhanh 1 chạm để AI điền tự động:</div>
+            <div style="font-size:13px;color:var(--text);font-weight:600;"> Chọn nhanh 1 chạm để điền tự động:</div>
             <div class="clarify-pills">
               ${(item.suggested_options || getSmartClarificationSuggestionsJS(item.amount, item.bank, item.raw_content)).map(opt => `
                 <button type="button" class="clarify-pill" onclick="applyClarificationOption(${idx}, '${escapeHtml(opt.category)}', '${escapeHtml(opt.person)}', '${escapeHtml(opt.note)}')">
-                  ${opt.label}
+                  ${escapeHtml(opt.label)}
                 </button>
               `).join("")}
             </div>
@@ -4524,13 +5216,13 @@ function renderPendingEmailList() {
           <div class="clarify-input-row">
             <input
               type="text"
-              id="clarify-inp-${idx}"
+              id="${idPrefix}-${idx}"
               class="input-control"
               style="flex:1;padding:6px 10px;font-size:13px;"
               placeholder="Hoặc gõ nhanh câu trả lời (VD: 'mua tã dán cho Sugi', 'tiền xăng Chồng', 'ăn trưa')..."
-              onkeydown="if(event.key==='Enter') submitManualClarification(${idx})"
+              onkeydown="if(event.key==='Enter') submitManualClarification(${idx}, '${idPrefix}')"
             />
-            <button class="btn btn-primary" style="padding:6px 12px;font-size:13px;" onclick="submitManualClarification(${idx})">
+            <button class="btn btn-primary" style="padding:6px 12px;font-size:13px;" onclick="submitManualClarification(${idx}, '${idPrefix}')">
                Xác Nhận
             </button>
             <button class="btn btn-ghost" style="padding:6px 10px;font-size:13px;color:var(--accent);border-color:var(--accent-soft);" onclick="clarifySingleEmailWithAI(${idx})" title="Dùng Não AI (${aiProviderName}) phân tích sâu email này">
@@ -4555,16 +5247,196 @@ function renderPendingEmailList() {
             ${bankOptions.map(b => `<option value="${b}" ${b === (item.source || item.bank) ? 'selected' : ''}>${b}</option>`).join("")}
           </select>
           <button class="btn btn-primary" style="padding:7px 12px;font-size:13px;white-space:nowrap;" onclick="approveSingleEmail(${idx})" title="Duyệt vào sổ chi tiêu">
-            • Duyệt
+            ✓ Duyệt
           </button>
           <button class="btn btn-ghost" style="padding:7px 10px;font-size:13px;color:var(--negative);white-space:nowrap;" onclick="dismissSingleEmail(${idx})" title="Bỏ qua và không hiện lại">
             ×
           </button>
         </div>
       </div>
-      <div style="font-size:13px;color:var(--accent);margin-top:6px;"> Phân tích: ${escapeHtml(cleanReason)}</div>
+      <div style="font-size:12px;color:var(--accent);margin-top:6px;"> Phân tích: ${escapeHtml(cleanReason)}</div>
     </div>
-  `}).join("");
+  `;
+  }).join("");
+}
+
+function renderPendingEmailList() {
+  const countEl = document.getElementById("pending-email-count");
+  if (countEl) countEl.textContent = pendingEmails.length;
+  try { updateMobileNavBadges(); } catch (e) {}
+  try { updateTopbarEmailScanPill(); } catch (e) {}
+
+  if (isEmailReviewPopupOpen()) {
+    if (pendingEmails.length === 0) {
+      closeEmailReviewPopupModal();
+    } else {
+      renderEmailReviewPopupModal();
+    }
+  }
+
+  const box = document.getElementById("parsed-email-list");
+  if (!box) return;
+
+  const activeAiKey = getGeminiApiKey();
+  const aiProvider = getAIProviderName(activeAiKey) || "Claude Sonnet 5.5";
+  const aiThinkingBanner = isAiEnrichingEmails
+    ? `<div style="background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:9px 12px;font-size:13px;color:var(--accent);margin-bottom:8px;display:flex;align-items:center;gap:8px;">
+         <span>🧠 <b>Não AI (${escapeHtml(aiProvider)}) đang đọc hiểu sâu ${pendingEmails.length} giao dịch mới</b> & đối chiếu lịch sử sổ chi tiêu gia đình...</span>
+       </div>`
+    : "";
+
+  const skippedInfo = lastSkippedNonExpenseCount > 0
+    ? ` (đồng thời bỏ qua <b>${lastSkippedNonExpenseCount}</b> email thông báo hạn mức/sao kê/hoàn tiền)`
+    : "";
+  const dupBanner = (lastFilteredDuplicateCount > 0 || lastSkippedNonExpenseCount > 0)
+    ? `<div style="background:var(--positive-soft);border:1px solid var(--positive-soft);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--positive);margin-bottom:8px;">
+          <b>Chống trùng lặp & Lọc thông minh:</b> Đã lọc bỏ <b>${lastFilteredDuplicateCount}</b> giao dịch đã có trong Sổ chi tiêu${skippedInfo}.
+       </div>`
+    : "";
+
+  const unclearCount = pendingEmails.filter(i => i.needs_clarification).length;
+  const unclearBanner = unclearCount > 0
+    ? `<div style="background:var(--warning-soft);border:1px solid var(--warning-soft);border-radius:8px;padding:9px 12px;font-size:13px;color:var(--warning);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+         <span> Có <b>${unclearCount}</b> giao dịch nội dung chưa rõ (chuyển khoản cá nhân / mã POS). Bạn có thể bấm gợi ý 1 chạm hoặc gõ câu trả lời!</span>
+         <button class="btn btn-ghost" style="padding:4px 9px;font-size:13px;color:var(--warning);border-color:var(--warning-soft);" onclick="autoClarifyUnclearEmails()">
+            🧠 AI Tự động giải mã (${unclearCount})
+         </button>
+       </div>`
+    : "";
+
+  if (pendingEmails.length === 0) {
+    box.innerHTML = `
+      ${dupBanner}
+      <div style="padding:30px;text-align:center;color:var(--text-secondary);">
+         Không có giao dịch email mới nào chờ duyệt!<br/>
+        <span style="font-size:13px;color:var(--text-muted);">Bấm "Quét Tất Cả Hộp Thư Cloud" ở cột trái hoặc nút "Quét Email Mới" trên thanh trên cùng để kiểm tra email mới từ VPBank, BIDV, NCB.</span>
+      </div>`;
+    return;
+  }
+
+  box.innerHTML = aiThinkingBanner + dupBanner + unclearBanner + buildEmailStagingCardsHTML("clarify-inp");
+}
+
+function ensureEmailPopupModalOverlay() {
+  let overlay = document.getElementById("email-popup-modal-overlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "email-popup-modal-overlay";
+    overlay.className = "modal-overlay";
+    overlay.style.display = "none";
+    overlay.style.zIndex = "1400";
+    overlay.addEventListener("click", (ev) => {
+      if (ev.target === overlay) closeEmailReviewPopupModal();
+    });
+    overlay.innerHTML = `
+      <div id="email-popup-modal-content" class="modal-card email-popup-modal-card" onclick="event.stopPropagation()"></div>
+    `;
+    document.body.appendChild(overlay);
+  }
+  return overlay;
+}
+
+function isEmailReviewPopupOpen() {
+  const overlay = document.getElementById("email-popup-modal-overlay");
+  return Boolean(overlay && overlay.style.display && overlay.style.display !== "none");
+}
+
+function closeEmailReviewPopupModal() {
+  const overlay = document.getElementById("email-popup-modal-overlay");
+  if (overlay) overlay.style.display = "none";
+}
+
+function openEmailReviewPopupModal() {
+  if (!Array.isArray(pendingEmails) || pendingEmails.length === 0) {
+    showToast("Hiện không có email chi tiêu mới nào chờ duyệt!", "info", 2200);
+    return;
+  }
+  const overlay = ensureEmailPopupModalOverlay();
+  renderEmailReviewPopupModal();
+  overlay.style.display = "flex";
+}
+
+function renderEmailReviewPopupModal() {
+  const overlay = ensureEmailPopupModalOverlay();
+  const content = document.getElementById("email-popup-modal-content");
+  if (!content) return;
+
+  const totalPendingAmt = pendingEmails.reduce((s, it) => s + Number(it.amount || 0), 0);
+  const unclearCount = pendingEmails.filter(it => it.needs_clarification).length;
+  const clearCount = pendingEmails.length - unclearCount;
+
+  const activeAiKey = getGeminiApiKey();
+  const aiProvider = getAIProviderName(activeAiKey) || "Claude Sonnet 5.5";
+  const popupAiBanner = isAiEnrichingEmails
+    ? `<div style="background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:8px 12px;font-size:12.5px;color:var(--accent);display:flex;align-items:center;gap:8px;">
+         <span>🧠 <b>Não AI (${escapeHtml(aiProvider)}) đang phân tích sâu ${pendingEmails.length} giao dịch</b> theo lịch sử chi tiêu gia đình...</span>
+       </div>`
+    : "";
+
+  const dupSummary = (lastFilteredDuplicateCount > 0 || lastSkippedNonExpenseCount > 0)
+    ? `<div style="background:var(--positive-soft);border:1px solid rgba(21,128,61,0.22);border-radius:8px;padding:8px 12px;font-size:12.5px;color:var(--positive);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+         <span>🛡️ <b>Chống trùng tự động:</b> Đã bỏ qua <b>${lastFilteredDuplicateCount}</b> giao dịch đã nhập trước đó${lastSkippedNonExpenseCount > 0 ? ` và <b>${lastSkippedNonExpenseCount}</b> mail thông báo hạn mức/hoàn tiền` : ""}.</span>
+         <span style="font-family:var(--font-mono);font-size:11.5px;">${escapeHtml(getLastEmailScanHumanLabel())}</span>
+       </div>`
+    : "";
+
+  content.innerHTML = `
+    <div class="card-header" style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border-subtle);">
+      <div>
+        <div class="card-title" style="font-size:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span>🔔 Phát Hiện <b>${pendingEmails.length}</b> Email Chi Tiêu Mới Cần Duyệt</span>
+          <span class="chip chip-emerald" style="font-size:12px;">Tổng: ${fmtVND(totalPendingAmt)}</span>
+          ${unclearCount > 0 ? `<span class="chip" style="background:var(--warning-soft);color:var(--warning);font-size:12px;">${unclearCount} khoản cần hỏi</span>` : `<span class="chip chip-emerald" style="font-size:12px;">Đã rõ ${clearCount}/${pendingEmails.length}</span>`}
+        </div>
+        <div class="card-subtitle" style="margin-top:3px;">
+          Kiểm tra nhanh nội dung, bấm chọn 1 chạm cho các khoản chuyển khoản chưa rõ và duyệt ngay vào Sổ chi tiêu để không bị sót!
+        </div>
+      </div>
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:16px;" onclick="closeEmailReviewPopupModal()" title="Đóng cửa sổ (vẫn giữ danh sách trong Tab Email)">×</button>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      ${popupAiBanner}
+      ${dupSummary}
+
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surface);padding:9px 12px;border-radius:10px;border:1px solid var(--border);">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <button class="btn btn-emerald" style="padding:8px 14px;font-size:13px;" onclick="approveAllEmailItems()">
+            ✅ Duyệt Tất Cả Vào Sổ (${pendingEmails.length} khoản)
+          </button>
+          ${unclearCount > 0 ? `
+            <button class="btn btn-ghost" style="padding:7px 12px;font-size:13px;color:var(--warning);border-color:var(--warning-soft);" onclick="autoClarifyUnclearEmails()">
+              ✨ Tự động điền ${unclearCount} khoản chưa rõ
+            </button>
+          ` : ""}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+          <button class="btn btn-ghost" style="padding:7px 11px;font-size:12.5px;color:var(--negative);" onclick="dismissAllPendingEmails()" title="Đánh dấu đã xử lý để không hỏi lại đợt này">
+            Bỏ qua đợt này
+          </button>
+          <button class="btn btn-ghost" style="padding:7px 11px;font-size:12.5px;" onclick="closeEmailReviewPopupModal();switchTab('email', true);">
+            Mở Tab Email →
+          </button>
+        </div>
+      </div>
+
+      <div id="email-popup-cards-list" style="display:flex;flex-direction:column;gap:10px;max-height:60vh;overflow-y:auto;padding-right:4px;">
+        ${buildEmailStagingCardsHTML("popup-clarify-inp")}
+      </div>
+    </div>
+  `;
+}
+
+async function dismissAllPendingEmails() {
+  if (!Array.isArray(pendingEmails) || pendingEmails.length === 0) return;
+  const confirmSkip = confirm(`Bạn có muốn bỏ qua toàn bộ ${pendingEmails.length} email đang chờ này không?\n(App sẽ nhớ mã giao dịch để không hiện pop-up hỏi lại các email này nữa)`);
+  if (!confirmSkip) return;
+  pendingEmails.forEach(item => addProcessedEmailSigForItem(item));
+  pendingEmails = [];
+  renderPendingEmailList();
+  closeEmailReviewPopupModal();
+  await persistAndSync({ action: "dismiss_email_batch" });
+  showToast("Đã bỏ qua và đánh dấu chống trùng cho đợt email này.", "info", 2500);
 }
 
 function applyClarificationOption(idx, category, person, note) {
@@ -4575,21 +5447,23 @@ function applyClarificationOption(idx, category, person, note) {
   item.content = note;
   item.needs_clarification = false;
   item.resolved_by_ai = true;
-  item.reason = `Đã làm rõ qua gợi ý AI: ${category} • ${person} ("${note}")`;
+  item.reason = `Đã làm rõ qua gợi ý: ${category} • ${person} ("${note}")`;
   renderPendingEmailList();
 }
 
-function submitManualClarification(idx) {
+async function submitManualClarification(idx, inputPrefix = "clarify-inp") {
   const item = pendingEmails[idx];
   if (!item) return;
-  const inp = document.getElementById(`clarify-inp-${idx}`);
-  const userText = (inp?.value || "").trim();
+  const inpPrimary = document.getElementById(`${inputPrefix}-${idx}`);
+  const inpFallback = document.getElementById(`clarify-inp-${idx}`) || document.getElementById(`popup-clarify-inp-${idx}`);
+  const userText = ((inpPrimary && inpPrimary.value) || (inpFallback && inpFallback.value) || "").trim();
   if (!userText) {
     alert("Vui lòng nhập nội dung làm rõ (VD: 'mua tã cho Sugi', 'tiền xăng Chồng')!");
     return;
   }
 
-  const { cat, person, reason } = classifyTransactionTextJS(item.raw_content + " " + userText);
+  // Cập nhật tức thì trên giao diện trước, sau đó dùng Não AI Claude tinh chỉnh nếu đã gắn Key
+  const { cat, person } = classifyTransactionTextJS(item.raw_content + " " + userText);
   item.content = userText;
   item.category = cat;
   item.person = person;
@@ -4597,6 +5471,35 @@ function submitManualClarification(idx) {
   item.resolved_by_ai = true;
   item.reason = `Đã làm rõ theo câu trả lời: "${userText}" → ${cat} • ${person}`;
   renderPendingEmailList();
+
+  const key = getGeminiApiKey();
+  if (key) {
+    const provider = getAIProviderName(key) || "Claude Sonnet 5.5";
+    const familyMemory = buildFamilyHistoryPromptForAI(3);
+    const promptText = `Bạn là Não AI (${provider}) kế toán gia đình.
+Lịch sử chi tiêu thực tế của gia đình:
+${familyMemory}
+
+Người dùng vừa giải thích cho giao dịch ngân hàng:
+- Ngân hàng: ${item.bank} | Số tiền: ${item.amount} VNĐ
+- Nội dung gốc từ Bank: "${item.raw_content}"
+- Giải thích của người dùng: "${userText}"
+
+Hãy chuẩn hóa tên khoản chi và chọn đúng Hạng mục (${(DB?.meta?.categories || []).join(", ")}) + Thành viên (${(DB?.meta?.members || []).join(", ")}).
+Trả về DUY NHẤT JSON thuần:
+{"content": "tên khoản chi ngắn gọn", "category": "...", "person": "...", "reason": "giải thích ngắn"}`;
+    try {
+      const aiResp = await callGeminiFreeAPI(promptText);
+      const parsed = extractJsonFromAiResponse(aiResp);
+      if (parsed && typeof parsed === "object") {
+        if (parsed.content) item.content = String(parsed.content).trim();
+        if (parsed.category && DB.meta.categories.includes(parsed.category)) item.category = parsed.category;
+        if (parsed.person && DB.meta.members.includes(parsed.person)) item.person = parsed.person;
+        item.reason = `Não AI (${provider}) chuẩn hóa từ "${userText}": ${parsed.reason || `${item.category} • ${item.person}`}`;
+        renderPendingEmailList();
+      }
+    } catch (e) {}
+  }
 }
 
 async function clarifySingleEmailWithAI(idx) {
@@ -4605,9 +5508,8 @@ async function clarifySingleEmailWithAI(idx) {
 
   const key = getGeminiApiKey();
   if (!key) {
-    // If no Gemini key, prompt smartly
     const fallbackAns = prompt(
-      `AI cần bạn làm rõ giao dịch ${fmtVND(item.amount)} tại ${item.bank}:\n"${item.raw_content}"\n\nHãy nhập nội dung chi tiêu (VD: 'mua sữa cho Sugi', 'ăn trưa Chồng'):`,
+      `Làm rõ giao dịch ${fmtVND(item.amount)} tại ${item.bank}:\n"${item.raw_content}"\n\nHãy nhập nội dung chi tiêu (VD: 'mua sữa cho Sugi', 'ăn trưa Chồng'):`,
       item.content
     );
     if (fallbackAns && fallbackAns.trim()) {
@@ -4623,28 +5525,39 @@ async function clarifySingleEmailWithAI(idx) {
     return;
   }
 
-  const promptText = `Bạn là trợ lý AI tài chính gia đình năm 2026.
-Phân tích thông tin giao dịch ngân hàng sau đây và giúp làm rõ mục đích mua sắm:
+  const provider = getAIProviderName(key) || "Claude Sonnet 5.5";
+  const familyMemory = buildFamilyHistoryPromptForAI(4);
+  item.reason = `🧠 Não AI (${provider}) đang phân tích sâu giao dịch này...`;
+  renderPendingEmailList();
+
+  const promptText = `Bạn là Não AI (${provider}) quản lý chi tiêu gia đình năm 2026.
+Bộ nhớ lịch sử chi tiêu thực tế của gia đình:
+${familyMemory}
+
+Hãy phân tích sâu giao dịch ngân hàng sau đây và suy luận mục đích mua sắm hợp lý nhất:
 - Ngân hàng: ${item.bank}
 - Số tiền: ${item.amount} VNĐ
-- Nội dung gốc: "${item.raw_content}"
-- Thành viên gia đình: Chồng, Vợ, Subo (con lớn, đi học), Sugi (bé nhỏ, bỉm sữa).
-- 10 hạng mục: Ăn uống, Đồ dùng GĐ, Phí tiện ích, Học tập, Y tế, Vui chơi, Làm đẹp, Công việc, Event, Nợ.
+- Ngày: ${item.date}
+- Nội dung gốc từ Bank: "${item.raw_content}"
+- Thành viên gia đình: Chồng, Vợ, Subo (con lớn, đi học), Sugi (bé nhỏ, bỉm sữa), Chung.
+- 10 hạng mục: ${(DB?.meta?.categories || []).join(", ")}.
 
 Hãy trả về DUY NHẤT một chuỗi JSON thuần (không dùng markdown):
-{"content": "tên món hàng/dịch vụ ngắn gọn dễ hiểu", "category": "1 trong 10 hạng mục trên", "person": "Chồng|Vợ|Subo|Sugi|Chung", "reason": "giải thích ngắn gọn"}`;
+{"content": "tên món hàng/dịch vụ ngắn gọn dễ hiểu bằng tiếng Việt", "category": "1 trong 10 hạng mục trên", "person": "Chồng|Vợ|Subo|Sugi|Chung", "reason": "giải thích ngắn gọn dựa trên lịch sử gia đình", "suggested_options": [{"label": "Gợi ý 1", "category": "...", "person": "...", "note": "..."}]}`;
 
   const aiResp = await callGeminiFreeAPI(promptText);
   if (aiResp) {
     try {
-      const parsed = extractJsonFromAiResponse(aiResp) || JSON.parse(aiResp.replace(/```(?:json)?|```/g, "").trim());
+      const parsed = extractJsonFromAiResponse(aiResp);
       if (parsed && typeof parsed === "object") {
         if (parsed.content) item.content = parsed.content;
         if (parsed.category && DB.meta.categories.includes(parsed.category)) item.category = parsed.category;
         if (parsed.person && DB.meta.members.includes(parsed.person)) item.person = parsed.person;
+        if (Array.isArray(parsed.suggested_options) && parsed.suggested_options.length > 0) {
+          item.suggested_options = parsed.suggested_options;
+        }
         item.needs_clarification = false;
         item.resolved_by_ai = true;
-        const provider = getAIProviderName(key) || "Claude Sonnet 5.5";
         item.reason = `Não AI (${provider}) đã phân tích: ${parsed.reason || parsed.category}`;
         renderPendingEmailList();
         return;
@@ -4652,7 +5565,6 @@ Hãy trả về DUY NHẤT một chuỗi JSON thuần (không dùng markdown):
     } catch (e) {}
   }
 
-  // Fallback
   item.needs_clarification = false;
   item.resolved_by_ai = true;
   renderPendingEmailList();
@@ -4668,19 +5580,22 @@ async function autoClarifyUnclearEmails() {
   const key = getGeminiApiKey();
   const provider = getAIProviderName(key) || "Claude Sonnet 5.5";
   if (key) {
-    for (let i = 0; i < pendingEmails.length; i++) {
-      if (pendingEmails[i].needs_clarification) {
-        await clarifySingleEmailWithAI(i);
-      }
-    }
-    showToast(` Não AI (${provider}) đã rà soát và tự động làm rõ ${unclearItems.length} giao dịch ngân hàng!`, "success");
-  } else {
-    // Smart heuristic auto-assignment
+    await enrichPendingEmailsWithClaudeAI("Chung");
+    // Sau khi AI phân tích sâu toàn bộ batch, đánh dấu các khoản còn lại đã được AI gợi ý phương án tốt nhất
     pendingEmails.forEach(it => {
       if (it.needs_clarification) {
         it.needs_clarification = false;
         it.resolved_by_ai = true;
-        it.reason = "AI đã gán tự động theo thói quen chi tiêu gia đình";
+      }
+    });
+    renderPendingEmailList();
+    showToast(`🧠 Não AI (${provider}) đã phân tích sâu và điền tự động ${unclearItems.length} giao dịch theo lịch sử gia đình!`, "success");
+  } else {
+    pendingEmails.forEach(it => {
+      if (it.needs_clarification) {
+        it.needs_clarification = false;
+        it.resolved_by_ai = true;
+        it.reason = "Đã gán tự động theo bộ nhớ lịch sử chi tiêu gia đình";
       }
     });
     renderPendingEmailList();
@@ -4691,7 +5606,7 @@ async function autoClarifyUnclearEmails() {
 async function dismissSingleEmail(idx) {
   const item = pendingEmails[idx];
   if (!item) return;
-  addProcessedEmailSig(makeEmailItemSignature(item));
+  addProcessedEmailSigForItem(item);
   pendingEmails.splice(idx, 1);
   renderPendingEmailList();
   await persistAndSync({ action: "dismiss_email" });
@@ -4704,7 +5619,7 @@ async function approveSingleEmail(idx) {
     const confirmApprove = confirm(`Giao dịch này ("${item.content}") chưa được làm rõ nội dung chi tiết. Bạn có chắc muốn duyệt luôn vào Sổ chi tiêu không?`);
     if (!confirmApprove) return;
   }
-  addProcessedEmailSig(makeEmailItemSignature(item));
+  addProcessedEmailSigForItem(item);
   pendingEmails.splice(idx, 1);
   renderPendingEmailList();
   await addTransactionToState({
@@ -4714,6 +5629,7 @@ async function approveSingleEmail(idx) {
     category: item.category,
     person: item.person,
     amount: item.amount,
+    bank_tx_code: item.tx_code || null,
     source: normalizePaymentSource(item.source || item.bank || "VPBank Step Up")
   });
 }
@@ -4724,7 +5640,7 @@ async function approveAllEmailItems() {
   const unclearCount = pendingEmails.filter(it => it.needs_clarification).length;
   if (unclearCount > 0) {
     const userChoice = confirm(
-      ` Có ${unclearCount} email giao dịch nội dung chưa rõ (đang để tạm mặc định).\n\nBấm [OK] để DUYỆT TẤT CẢ luôn.\nBấm [Cancel] để ở lại xác nhận nhanh cùng AI.`
+      ` Có ${unclearCount} email giao dịch nội dung chưa rõ (đang để tạm mặc định).\n\nBấm [OK] để DUYỆT TẤT CẢ luôn.\nBấm [Cancel] để ở lại xác nhận nhanh.`
     );
     if (!userChoice) return;
   }
@@ -4732,7 +5648,7 @@ async function approveAllEmailItems() {
   const itemsToApprove = [...pendingEmails].filter(it => !isEmailItemAlreadyAdded(it));
   const addedTxs = [];
   itemsToApprove.forEach((item, idx) => {
-    addProcessedEmailSig(makeEmailItemSignature(item));
+    addProcessedEmailSigForItem(item);
     const tx = {
       id: makeTxId(`EM${idx}`),
       month: Number(item.month || activeInputMonth()),
@@ -4743,6 +5659,7 @@ async function approveAllEmailItems() {
       person: item.person || "Chung",
       amount: Number(item.amount || 0),
       source: normalizePaymentSource(item.source || item.bank || "VPBank Step Up"),
+      bank_tx_code: item.tx_code || null,
       was_unmatched_in_excel: false,
       issue_note: null,
       is_cloud_added: true
@@ -4753,6 +5670,7 @@ async function approveAllEmailItems() {
 
   pendingEmails = [];
   renderPendingEmailList();
+  closeEmailReviewPopupModal();
   renderAll();
 
   fetch("/api/transactions/batch", {
@@ -5367,11 +6285,13 @@ async function callAnthropicClaudeAPI(apiKey, promptText, imageBase64 = null, mi
 
   const defaultModels = [
     "claude-sonnet-5-5",
-    "claude-haiku-5-5",
-    "claude-opus-5-5",
+    "claude-sonnet-4-5-20250929",
+    "claude-sonnet-4-20250514",
     "claude-3-7-sonnet-20250219",
     "claude-3-5-sonnet-20241022",
+    "claude-haiku-5-5",
     "claude-3-5-haiku-20241022",
+    "claude-opus-5-5",
     "claude-3-haiku-20240307"
   ];
 
@@ -5579,8 +6499,9 @@ async function callAIWithDiagnostics(promptText, imageBase64 = null, mimeType = 
 
   let firstRealError = "";
 
-  // 1. ANTHROPIC CLAUDE HOẶC NGƯỜI DÙNG CẤU HÌNH CLAUDE / PROXY
-  const isClaudeKey = apiKey.startsWith("sk-ant-");
+  // 1. ANTHROPIC CLAUDE HOẶC NGƯỜI DÙNG CẤU HÌNH CLAUDE / PROXY / SERVER KEY
+  const isServerConfiguredKey = apiKey === "(server-configured)";
+  const isClaudeKey = apiKey.startsWith("sk-ant-") || isServerConfiguredKey;
   const isClaudeModel = /claude|sonnet|haiku|opus/i.test(selectedModel);
   const hasCustomProxy = !!customBaseUrl;
 
@@ -5924,9 +6845,14 @@ async function analyzeQuickInputWithGemini() {
 
   const defaultSrc = document.getElementById("quick-default-source")?.value || localStorage.getItem(STORAGE_DEFAULT_SOURCE_KEY) || "Tiền mặt";
   const defaultPerson = document.getElementById("quick-default-person")?.value || "AUTO";
+  const familyMemory = buildFamilyHistoryPromptForAI(3);
 
   const prompt = `Phân tích câu ghi chép chi tiêu gia đình sau thành danh sách các giao dịch JSON thuần (không dùng markdown \`\`\`):
 Câu: "${raw}"
+
+Bộ nhớ lịch sử chi tiêu thực tế của gia đình:
+${familyMemory}
+
 Quy tắc:
 - Nếu câu có nhiều món cùng 1 lần mua và chỉ có 1 tổng tiền (VD: "cá, ốc 570k") -> Trả về 1 giao dịch có content="cá, ốc", amount=570000.
 - Nếu câu liệt kê nhiều khoản có số tiền riêng hoặc nguồn tiền khác nhau (VD: "mua cá 200k tiền mặt, bỉm sugi 420k ncb") -> Tách thành nhiều giao dịch.

@@ -18,10 +18,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css?v=8.0.1" />
+  <link rel="stylesheet" href="./styles.css?v=9.0.0" />
   <script>
     (function() {
-      var VER = "v8.0.1-current-month-active";
+      var VER = "v9.0.0-executive-wow";
       if (localStorage.getItem("FAMILY_BUILD_VER_ACTIVE") !== VER) {
         localStorage.setItem("FAMILY_BUILD_VER_ACTIVE", VER);
         if ("caches" in window) {
@@ -93,9 +93,10 @@
       </div>
 
       <nav class="nav-menu">
+        <div class="nav-group-label">SỔ CÁI &amp; DÒNG TIỀN</div>
         <button class="nav-btn active" onclick="switchTab('dashboard')" id="nav-dashboard">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
-          <span>Tổng Quan & Cảnh Báo</span>
+          <span>Tổng Quan &amp; Cảnh Báo</span>
         </button>
         <button class="nav-btn" onclick="switchTab('transactions')" id="nav-transactions">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
@@ -103,61 +104,47 @@
         </button>
         <button class="nav-btn" onclick="switchTab('email')" id="nav-email">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
-          <span>Tự Động Đọc Email Bank</span>
+          <span>Email Ngân Hàng</span>
           <span class="nav-badge" style="background:var(--positive-soft);color:var(--positive);border-color:var(--positive-border);">AI</span>
         </button>
+
+        <div class="nav-group-label" style="margin-top:10px;">TÀI SẢN &amp; TRÍ TUỆ AI</div>
         <button class="nav-btn" onclick="switchTab('investment')" id="nav-investment">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-          <span>Đầu Tư ETF / Quỹ & Nợ</span>
+          <span>Đầu Tư ETF &amp; Công Nợ</span>
         </button>
         <button class="nav-btn" onclick="switchTab('ai')" id="nav-ai">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          <span>Hỏi Đáp AI Gia Đình</span>
+          <span>Cố Vấn AI Gia Đình</span>
         </button>
         <button class="nav-btn" onclick="switchTab('audit')" id="nav-audit">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          <span>Kiểm Toán & Cloud Sync</span>
+          <span>Kiểm Toán &amp; Cloud</span>
           <span class="nav-badge" id="nav-audit-badge">7 lỗi</span>
         </button>
       </nav>
 
       <div class="sidebar-footer">
-        <div class="sync-status" id="sidebar-sync-status" onclick="openCloudSettingsModal()" style="cursor:pointer;">
+        <div class="sidebar-status-row" id="sidebar-sync-status" onclick="openCloudSettingsModal()" title="Bấm để cấu hình Cloud Sync 2 chiều">
           <span class="pulse-dot" id="sidebar-sync-dot"></span>
           <span id="sidebar-sync-text">Cloud Active (24/7)</span>
         </div>
-        <div style="font-size:13px;color:var(--muted);">
-          VPBank (Step Up / Shopee) • BIDV • NCB • UOB
-        </div>
-        <button class="btn btn-primary" id="sidebar-gemini-btn" style="width:100%;" onclick="openGeminiSettingsModal()">
+        <button class="btn btn-primary" id="sidebar-gemini-btn" style="width:100%;font-size:12.5px;padding:8px 10px;" onclick="openGeminiSettingsModal()">
           Cài Đặt Não AI (Claude / Gemini)
         </button>
-        <button class="btn btn-emerald" style="width:100%;" onclick="openIncomeModal()">
-          Sửa Thu Nhập & ETF Tháng
+        <button class="btn btn-emerald" style="width:100%;font-size:12.5px;padding:8px 10px;" onclick="openIncomeModal()">
+          + Thu Nhập &amp; Kế Hoạch ETF
         </button>
-        <button class="btn btn-ghost" style="width:100%;" onclick="openCloudSettingsModal()">
-          Đồng Bộ Cloud 2 Vợ Chồng
-        </button>
-        <button class="btn btn-ghost" style="width:100%;color:var(--accent);border-color:var(--accent-soft);" onclick="openMobileSyncModal()">
-          📱 Cài App Vào Điện Thoại
-        </button>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-          <button class="btn btn-ghost" onclick="openPinSettingsModal()">
-            Đổi PIN
-          </button>
-          <button class="btn btn-ghost" onclick="lockAppNow()">
-            Khóa Sổ
-          </button>
+        <div class="sidebar-utility-dock">
+          <button class="dock-btn" onclick="openMobileSyncModal()" title="Đồng bộ sang điện thoại">📱 ĐT</button>
+          <button class="dock-btn" onclick="exportLatestExcelFile()" title="Tải file Excel chuẩn hóa mới nhất">📊 Excel</button>
+          <button class="dock-btn" onclick="openPinSettingsModal()" title="Đổi mã PIN gia đình">🔑 PIN</button>
+          <button class="dock-btn" onclick="lockAppNow()" title="Khóa sổ tức thì">🔒 Khóa</button>
         </div>
-        <button onclick="exportLatestExcelFile()" class="btn btn-ghost" style="width:100%;color:var(--positive);border-color:var(--positive-border);">
-          Tải Excel Mới Nhất
-        </button>
-        <button onclick="forceUpdateAppVersion()" class="btn btn-ghost" style="width:100%;color:var(--accent);border-color:var(--accent-border);">
-          Cập Nhật App Mới Nhất
-        </button>
-        <a href="https://docs.google.com/spreadsheets/d/1FtjpyD-DP4HS8z7uJoYDw9TKwBh3qSCwdXqy1eaQEEk/edit" target="_blank" class="btn btn-ghost" style="width:100%;">
-          Mở Google Sheet Gốc
-        </a>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11.5px;padding-top:2px;">
+          <a href="https://docs.google.com/spreadsheets/d/1FtjpyD-DP4HS8z7uJoYDw9TKwBh3qSCwdXqy1eaQEEk/edit" target="_blank" style="color:var(--muted);font-weight:600;">↗ Google Sheet Gốc</a>
+          <button type="button" onclick="forceUpdateAppVersion()" style="background:none;border:none;color:var(--accent);font-weight:600;cursor:pointer;font-size:11.5px;">↻ Làm mới</button>
+        </div>
       </div>
     </aside>
 
@@ -165,27 +152,30 @@
     <main class="main-area">
       <!-- TOP BAR -->
       <header class="topbar">
-        <div class="topbar-left">
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div class="topbar-header-row">
+          <div class="topbar-left">
             <h1 id="page-heading">Bảng Điều Khiển Tài Chính Gia Đình 2026</h1>
-            <button class="cloud-pill" onclick="openCloudSettingsModal()" id="topbar-cloud-pill">
-              <span class="pulse-dot" style="width:7px;height:7px;"></span>
-              <span id="topbar-cloud-label">Cloud 24/7</span>
+            <p id="page-subheading">Đồng bộ 2 vợ chồng • Quét Email VPBank/BIDV/NCB tự động bằng Não AI Claude Sonnet 5.5</p>
+          </div>
+          <div class="topbar-status-cluster">
+            <button class="cloud-pill pill-scan" onclick="onTopbarEmailPillClick()" id="topbar-email-scan-pill" title="Quét email chi tiêu mới từ VPBank/BIDV/NCB hoặc mở Pop-up duyệt nhanh">
+              <span>🔔</span>
+              <span id="topbar-email-scan-label">Quét Email Mới</span>
             </button>
             <button class="cloud-pill" onclick="openGeminiSettingsModal()" id="topbar-gemini-pill" style="background:var(--accent-soft);border-color:var(--accent-border);color:var(--accent);">
               <span id="topbar-gemini-label">Não AI (Claude / Gemini)</span>
             </button>
-            <button class="cloud-pill" onclick="openMobileSyncModal()" id="topbar-mobile-pill" style="background:var(--positive-soft);border-color:var(--positive-soft);color:var(--positive);" title="Đồng bộ sang điện thoại & Thêm ra màn hình chính">
-              <span>📱 Thêm Ra Điện Thoại</span>
+            <button class="cloud-pill" onclick="openCloudSettingsModal()" id="topbar-cloud-pill">
+              <span class="pulse-dot" style="width:7px;height:7px;"></span>
+              <span id="topbar-cloud-label">Cloud 24/7</span>
             </button>
-            <button class="btn btn-ghost" style="padding:6px 12px;font-size:13px;" onclick="lockAppNow()" title="Khóa màn hình bằng mã PIN">
-              Khóa PIN
+            <button class="cloud-pill pill-icon-only" onclick="openMobileSyncModal()" id="topbar-mobile-pill" title="Đồng bộ sang điện thoại & Thêm ra màn hình chính">
+              <span>📱</span>
             </button>
-            <button class="btn btn-ghost" style="padding:6px 12px;font-size:13px;color:var(--accent);border-color:var(--accent-border);" onclick="forceUpdateAppVersion()" title="Tải phiên bản mới nhất từ Cloud (Xóa sạch cache cũ)">
-              Tải Bản Mới
+            <button class="cloud-pill pill-icon-only" onclick="lockAppNow()" title="Khóa sổ tức thì bằng mã PIN">
+              <span>🔒</span>
             </button>
           </div>
-          <p id="page-subheading">Đồng bộ 2 vợ chồng • Hỗ trợ Não AI Claude & Gemini Vision • Đọc Bill siêu thị, Email NCB/VPBank/BIDV & Sửa mọi nơi</p>
         </div>
         <div class="topbar-actions">
           <div class="month-pills" id="month-selector">
@@ -194,7 +184,7 @@
         </div>
       </header>
 
-      <!-- ZERO-FRICTION 1-LINE AI QUICK INPUT / MOBILE BOTTOM SHEET CONTAINER -->
+      <!-- ZERO-FRICTION SPOTLIGHT AI OMNIBAR / MOBILE BOTTOM SHEET CONTAINER -->
       <div id="quick-entry-container" class="quick-entry-container">
         <div class="quick-sheet-backdrop" onclick="closeQuickAddBottomSheet()"></div>
         <section class="quick-hero" id="quick-hero-section">
@@ -212,77 +202,72 @@
 
           <div class="quick-hero-top">
             <div class="quick-input-wrap">
-              <span class="quick-icon">AI</span>
+              <span class="quick-icon">✨ AI</span>
               <input
                 type="text"
                 id="quick-add-input"
-                placeholder="Gõ hoặc bấm Ghi âm nói: 'cá, ốc 570k', 'winmart 385k', 'bỉm sugi 420k ncb'..."
+                placeholder="Nhập nhanh hoặc nói: 'cá, ốc 570k', 'grab 145k', 'bỉm sugi 420k ncb'..."
                 oninput="onQuickInputChange(this.value)"
                 onkeydown="if(event.key==='Enter') submitQuickAdd()"
               />
             </div>
-            <button class="btn btn-ghost" id="btn-voice-input" onclick="toggleVoiceInput()" title="Ghi âm giọng nói tiếng Việt" style="border-color:var(--negative-border);color:var(--negative);">
-              Ghi âm
-            </button>
-            <button class="btn btn-ghost" onclick="openReceiptScannerModal()" title="Chụp ảnh hoặc tải ảnh hóa đơn siêu thị / bill chuyển khoản (Có Gemini Vision AI)" style="border-color:var(--positive-border);color:var(--positive);">
-              Quét Bill
-            </button>
-            <button class="btn btn-ghost" onclick="analyzeQuickInputWithGemini()" title="Dùng AI tách câu phức tạp hoặc nhiều món" style="border-color:var(--accent-border);color:var(--accent);">
-              AI Tách Món
-            </button>
-            <button class="btn btn-ghost" onclick="openManualAddModal()" title="Mở biểu mẫu nhập tay chọn ngày/tháng bất kỳ">
-              Nhập Tay
-            </button>
-            <button class="btn btn-primary" onclick="submitQuickAdd()">
-              + Lưu Ngay
-            </button>
+            <div class="quick-omnibar-actions">
+              <button class="btn btn-ghost btn-omni" id="btn-voice-input" onclick="toggleVoiceInput()" title="Ghi âm giọng nói tiếng Việt">
+                🎤 Ghi âm
+              </button>
+              <button class="btn btn-ghost btn-omni" onclick="openReceiptScannerModal()" title="Chụp ảnh hoặc tải ảnh hóa đơn siêu thị / bill chuyển khoản (Claude Vision AI)">
+                📸 Quét Bill
+              </button>
+              <button class="btn btn-ghost btn-omni" onclick="analyzeQuickInputWithGemini()" title="Dùng Não AI Claude tách câu phức tạp hoặc nhiều món">
+                🧠 AI Tách Món
+              </button>
+              <button class="btn btn-ghost btn-omni" onclick="openManualAddModal()" title="Mở biểu mẫu nhập tay chọn ngày/tháng bất kỳ">
+                ✍️ Nhập Tay
+              </button>
+              <button class="btn btn-primary btn-omni-submit" onclick="submitQuickAdd()">
+                + Lưu Ngay
+              </button>
+            </div>
           </div>
 
-          <!-- Thanh chọn nhanh tinh gọn: Nguồn tiền, Người chi, Hạng mục -->
-          <div class="quick-preset-bar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span style="color:var(--muted);font-weight:600;font-size:13px;">Chọn sẵn:</span>
-            <select id="quick-default-source" class="input-control" style="padding:5px 10px;font-size:13px;font-weight:700;color:var(--accent);" onchange="onQuickPresetChange()">
+          <!-- Thanh ngữ cảnh 1 dòng siêu gọn: Nguồn tiền • Người chi • Hạng mục -->
+          <div class="quick-preset-bar">
+            <span class="preset-label">Mặc định khi nhập:</span>
+            <select id="quick-default-source" class="preset-pill-select" onchange="onQuickPresetChange()" title="Nguồn tiền mặc định">
               <option value="VPBank Step Up">💳 VPBank Step Up</option>
               <option value="VPBank Shopee">🛍️ VPBank Shopee</option>
               <option value="Tiền mặt">💵 Tiền mặt</option>
               <option value="Chuyển khoản">🏦 Chuyển khoản</option>
               <option value="Tiền mặt / Chuyển khoản">Tiền mặt / CK</option>
-              <option value="BIDV">BIDV</option>
-              <option value="NCB">NCB</option>
-              <option value="UOB">UOB</option>
+              <option value="BIDV">🏦 BIDV</option>
+              <option value="NCB">🏦 NCB</option>
+              <option value="UOB">💳 UOB</option>
             </select>
-            <div style="display:inline-flex;gap:4px;flex-wrap:wrap;">
-              <button type="button" class="btn btn-ghost" style="padding:3px 8px;font-size:11.5px;font-weight:700;border-radius:12px;" onclick="setQuickSourcePreset('VPBank Step Up')" title="Chuyển nhanh sang thẻ VPBank Step Up">💳 Step Up</button>
-              <button type="button" class="btn btn-ghost" style="padding:3px 8px;font-size:11.5px;font-weight:700;border-radius:12px;" onclick="setQuickSourcePreset('VPBank Shopee')" title="Chuyển nhanh sang thẻ VPBank Shopee">🛍️ Shopee</button>
-              <button type="button" class="btn btn-ghost" style="padding:3px 8px;font-size:11.5px;font-weight:700;border-radius:12px;" onclick="setQuickSourcePreset('Tiền mặt')" title="Chuyển nhanh sang Tiền mặt">💵 Tiền mặt</button>
-              <button type="button" class="btn btn-ghost" style="padding:3px 8px;font-size:11.5px;font-weight:700;border-radius:12px;" onclick="setQuickSourcePreset('NCB')" title="Chuyển nhanh sang NCB">🏦 NCB</button>
-            </div>
-            <select id="quick-default-person" class="input-control" style="padding:5px 10px;font-size:13px;font-weight:700;" onchange="onQuickPresetChange()">
-              <option value="AUTO">Người chi: Tự động</option>
-              <option value="Vợ">Vợ</option>
-              <option value="Chồng">Chồng</option>
-              <option value="Chung">Chung</option>
-              <option value="Subo">Subo</option>
-              <option value="Sugi">Sugi</option>
+            <select id="quick-default-person" class="preset-pill-select" onchange="onQuickPresetChange()" title="Người chi mặc định">
+              <option value="AUTO">👤 Người chi: Tự động AI</option>
+              <option value="Vợ">👩 Vợ</option>
+              <option value="Chồng">👨 Chồng</option>
+              <option value="Chung">👨‍👩‍👧‍👦 Chung</option>
+              <option value="Subo">👦 Subo</option>
+              <option value="Sugi">👶 Sugi</option>
             </select>
-            <select id="quick-default-cat" class="input-control" style="padding:5px 10px;font-size:13px;" onchange="onQuickPresetChange()">
-              <option value="AUTO">Hạng mục: Tự động AI</option>
-              <option value="Ăn uống">Ăn uống</option>
-              <option value="Đồ dùng GĐ">Đồ dùng GĐ</option>
-              <option value="Phí tiện ích">Phí tiện ích</option>
-              <option value="Học tập">Học tập</option>
-              <option value="Y tế">Y tế</option>
-              <option value="Vui chơi">Vui chơi</option>
-              <option value="Làm đẹp">Làm đẹp</option>
-              <option value="Công việc">Công việc</option>
-              <option value="Event">Event</option>
-              <option value="Nợ">Nợ</option>
+            <select id="quick-default-cat" class="preset-pill-select" onchange="onQuickPresetChange()" title="Hạng mục mặc định">
+              <option value="AUTO">🏷️ Hạng mục: Tự động AI</option>
+              <option value="Ăn uống">🍜 Ăn uống</option>
+              <option value="Đồ dùng GĐ">🏠 Đồ dùng GĐ</option>
+              <option value="Phí tiện ích">⚡ Phí tiện ích</option>
+              <option value="Học tập">📚 Học tập</option>
+              <option value="Y tế">💊 Y tế</option>
+              <option value="Vui chơi">🎡 Vui chơi</option>
+              <option value="Làm đẹp">💄 Làm đẹp</option>
+              <option value="Công việc">💼 Công việc</option>
+              <option value="Event">🎁 Event</option>
+              <option value="Nợ">💳 Nợ</option>
             </select>
-            <span style="color:var(--muted);font-size:13px;margin-left:auto;">Có thể sửa trực tiếp mọi lúc trên Sổ Chi Tiêu</span>
           </div>
 
-          <div class="quick-preview" id="quick-preview-bar">
-            <!-- Live preview populated by JS -->
+          <div class="quick-preview" id="quick-preview-bar" style="display:none;">
+            <!-- Live preview populated by JS only when typing or after saving -->
           </div>
         </section>
       </div>
@@ -475,10 +460,35 @@
               Theo dõi biến động số dư từ <b>nhiều email khác nhau</b> (VD: Email Chồng nhận <b>VPBank, BIDV</b>; Email Vợ nhận <b>NCB</b>) hoặc chụp ảnh Bill / dán tin nhắn SMS ngân hàng.
             </p>
 
-            <div style="display:flex;align-items:center;gap:10px;background:var(--raised);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:10px;background:var(--raised);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px;flex-wrap:wrap;">
               <span style="font-size:13px;color:var(--text);font-weight:600;">Bắt đầu lọc email từ ngày:</span>
               <input type="date" id="email-start-date-input" class="input-control" style="padding:5px 10px;font-size:13px;color:var(--accent);font-weight:700;" value="2026-11-01" onchange="updateEmailStartDate(this.value)" />
               <span style="font-size:13px;color:var(--positive);font-weight:600;">Bắt đầu từ 01/11 (Bỏ qua giao dịch cũ T10)</span>
+            </div>
+
+            <!-- Scheduled Daily Auto-Scan & Auto Pop-up Control Bar -->
+            <div style="background:var(--raised);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+                <div style="font-weight:700;font-size:13.5px;color:var(--text);display:flex;align-items:center;gap:6px;">
+                  <span>⏰ Quét Định Kỳ Hàng Ngày & Pop-up Tự Động</span>
+                  <span class="chip chip-emerald" style="font-size:11px;">Chống trùng Mã GD</span>
+                </div>
+                <span id="email-last-scan-status" style="font-size:12px;color:var(--text-secondary);font-family:var(--font-mono);">Chưa quét hôm nay • Khung giờ hẹn: 20:00/ngày</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:13px;">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;color:var(--text);">
+                  <input type="checkbox" id="email-auto-scan-enabled" checked onchange="setEmailAutoScanEnabled(this.checked)" />
+                  <span>Tự quét 1 lần/ngày lúc:</span>
+                </label>
+                <input type="time" id="email-auto-scan-time-input" class="input-control" style="padding:4px 8px;font-size:13px;width:110px;font-weight:700;color:var(--accent);" value="20:00" onchange="setEmailAutoScanTime(this.value)" />
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;color:var(--text);">
+                  <input type="checkbox" id="email-auto-popup-enabled" checked onchange="setEmailAutoPopupEnabled(this.checked)" />
+                  <span>🔔 Tự bật Pop-up hỏi khi có mail mới</span>
+                </label>
+                <button class="btn btn-ghost" style="padding:5px 10px;font-size:12.5px;color:var(--accent);border-color:var(--accent-soft);margin-left:auto;" onclick="openEmailReviewPopupModal()">
+                  Mở Pop-up Duyệt Nhanh
+                </button>
+              </div>
             </div>
 
             <!-- Multi-Mailbox List (Chồng + Vợ + Thêm mới) -->
@@ -817,6 +827,6 @@
     <div class="card" style="width:100%;max-width:620px;border-color:var(--border-strong);max-height:92vh;overflow-y:auto;" id="modal-content"></div>
   </div>
 
-  <script src="./app.js?v=8.0.1"></script>
+  <script src="./app.js?v=9.0.0"></script>
 </body>
 </html>
