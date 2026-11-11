@@ -4650,10 +4650,13 @@ function openAddMailboxModal(editId = null) {
       </div>
 
       <div style="background:var(--positive-soft);border:1px solid var(--positive-soft);border-radius:12px;padding:12px;line-height:1.55;">
-        <div style="font-weight:700;color:var(--positive);margin-bottom:4px;"> 2 Cách để App tự động đọc Email NCB của Vợ (Không cần nhập mật khẩu):</div>
+        <div style="font-weight:700;color:var(--positive);margin-bottom:4px;">💡 2 Cách để App tự động đọc Email Ngân hàng của Vợ:</div>
         <div style="font-size:13px;color:var(--text-secondary);">
-          • <b>Cách 1 (Đơn giản nhất - Tự động gộp về 1 mối):</b> Trong Gmail của Vợ, vào <i>Cài đặt → Bộ lọc và địa chỉ bị chặn</i>, tạo bộ lọc có từ khóa <code>NCB</code> hoặc <code>Biến động số dư</code> → Chọn <b>Chuyển tiếp (Forward) sang Gmail của Chồng</b>. Khi đó chỉ cần 1 Link Cloud duy nhất là đọc được cả 2 vợ chồng!<br/>
-          • <b>Cách 2 (Kết nối trực tiếp Gmail riêng của Vợ):</b> Mở <a href="https://script.new" target="_blank" style="color:var(--accent);text-decoration:underline;">script.new</a> trên Gmail của Vợ, dán mã Apps Script (ở tab Kiểm Toán) và bấm <i>Deploy → Web App</i>, rồi dán Link Web App của Vợ vào ô bên dưới:
+          • <b>Cách 1 (Khuyên dùng - Không cần mở Apps Script lần 2):</b> Trong Gmail của Vợ, vào <i>Cài đặt ⚙️ → Xem tất cả cài đặt → Bộ lọc và địa chỉ bị chặn (hoặc Chuyển tiếp)</i>, tạo bộ lọc có từ khóa <code>NCB OR VPBank OR BIDV OR "biến động số dư"</code> → Chọn <b>Chuyển tiếp (Forward) sang Gmail của Chồng</b>. Khi đó 1 Link Cloud của Chồng sẽ tự động đọc được email của cả 2 vợ chồng!<br/>
+          • <b>Cách 2 (Tạo Link Apps Script riêng trên Gmail của Vợ):</b><br/>
+          &nbsp;&nbsp;1. Bấm nút <button type="button" class="btn btn-ghost" style="padding:2px 8px;font-size:12px;color:var(--accent);border-color:var(--accent-soft);display:inline-flex;align-items:center;" onclick="copyAppsScript()">📋 Copy Mã Apps Script</button> ngay tại đây.<br/>
+          &nbsp;&nbsp;2. Mở <b>Cửa sổ Ẩn danh (Ctrl + Shift + N)</b> (hoặc trình duyệt trên máy của Vợ chỉ đăng nhập <b>1 Gmail duy nhất của Vợ</b> để không bị lỗi <i>"Rất tiếc, không thể mở tệp tại thời điểm này"</i> của Google Drive khi đăng nhập chung nhiều Gmail).<br/>
+          &nbsp;&nbsp;3. Vào <a href="https://script.google.com/home" target="_blank" style="color:var(--accent);text-decoration:underline;font-weight:700;">script.google.com/home</a> → Bấm <b>Dự án mới (New project)</b> → Dán mã vừa copy → Chọn <b>Triển khai (Deploy) → Tùy chọn triển khai mới → Ứng dụng web (Web App) → Quyền truy cập: Bất kỳ ai (Anyone)</b> → Copy link <code>.../exec</code> dán vào ô dưới đây:
         </div>
       </div>
 
@@ -7046,9 +7049,12 @@ function renderAuditTab() {
 
 function copyAppsScript() {
   const box = document.getElementById("apps-script-box");
-  box.select();
-  navigator.clipboard?.writeText(box.value).catch(() => document.execCommand("copy"));
-  showToast(" Đã copy mã Google Apps Script Cloud!", "success");
+  const codeText = (box && box.value) ? box.value : APPS_SCRIPT_CLOUD_CODE;
+  if (box) box.select();
+  navigator.clipboard?.writeText(codeText).catch(() => {
+    try { document.execCommand("copy"); } catch (e) {}
+  });
+  showToast("📋 Đã copy mã Google Apps Script Cloud!", "success");
 }
 
 async function saveCloudUrlFromAuditTab() {
