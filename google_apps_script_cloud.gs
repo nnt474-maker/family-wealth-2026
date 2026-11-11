@@ -43,6 +43,28 @@ function getTargetSpreadsheet() {
 
 function saveCloudStateToProps(stateObj) {
   if (!stateObj) return;
+  const existing = loadCloudStateFromProps().cloud_state;
+  if (existing && typeof existing === "object") {
+    if (Array.isArray(existing.custom_transactions) && Array.isArray(stateObj.custom_transactions)) {
+      const deletedSet = new Set(Array.isArray(stateObj.deleted_tx_ids) ? stateObj.deleted_tx_ids : []);
+      if (Array.isArray(existing.deleted_tx_ids)) {
+        existing.deleted_tx_ids.forEach(function(id) { deletedSet.add(id); });
+      }
+      stateObj.deleted_tx_ids = Array.from(deletedSet);
+      const byId = {};
+      existing.custom_transactions.forEach(function(t) {
+        if (t && t.id && !deletedSet.has(t.id)) byId[t.id] = t;
+      });
+      stateObj.custom_transactions.forEach(function(t) {
+        if (t && t.id && !deletedSet.has(t.id)) byId[t.id] = t;
+      });
+      stateObj.custom_transactions = Object.keys(byId).map(function(k) { return byId[k]; });
+    }
+    if (Array.isArray(existing.processed_email_sigs) && Array.isArray(stateObj.processed_email_sigs)) {
+      const sigSet = new Set(existing.processed_email_sigs.concat(stateObj.processed_email_sigs));
+      stateObj.processed_email_sigs = Array.from(sigSet).slice(-600);
+    }
+  }
   const props = PropertiesService.getScriptProperties();
   const raw = JSON.stringify(stateObj);
   const chunkSize = 8000;

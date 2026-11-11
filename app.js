@@ -327,6 +327,28 @@ function getTargetSpreadsheet() {
 
 function saveCloudStateToProps(stateObj) {
   if (!stateObj) return;
+  const existing = loadCloudStateFromProps().cloud_state;
+  if (existing && typeof existing === "object") {
+    if (Array.isArray(existing.custom_transactions) && Array.isArray(stateObj.custom_transactions)) {
+      const deletedSet = new Set(Array.isArray(stateObj.deleted_tx_ids) ? stateObj.deleted_tx_ids : []);
+      if (Array.isArray(existing.deleted_tx_ids)) {
+        existing.deleted_tx_ids.forEach(function(id) { deletedSet.add(id); });
+      }
+      stateObj.deleted_tx_ids = Array.from(deletedSet);
+      const byId = {};
+      existing.custom_transactions.forEach(function(t) {
+        if (t && t.id && !deletedSet.has(t.id)) byId[t.id] = t;
+      });
+      stateObj.custom_transactions.forEach(function(t) {
+        if (t && t.id && !deletedSet.has(t.id)) byId[t.id] = t;
+      });
+      stateObj.custom_transactions = Object.keys(byId).map(function(k) { return byId[k]; });
+    }
+    if (Array.isArray(existing.processed_email_sigs) && Array.isArray(stateObj.processed_email_sigs)) {
+      const sigSet = new Set(existing.processed_email_sigs.concat(stateObj.processed_email_sigs));
+      stateObj.processed_email_sigs = Array.from(sigSet).slice(-600);
+    }
+  }
   const props = PropertiesService.getScriptProperties();
   const raw = JSON.stringify(stateObj);
   const chunkSize = 8000;
@@ -1303,9 +1325,9 @@ function parseBankEmailsJS(rawEmailText) {
         }
       }
 
-      const mCcContent = block.match(/(?:\r?\n|^)\s*\*?([^\r\n*]+?)\*?\s*\r?\n\s*Nội dung\s*\/\s*\*?Transaction Content\*?/i);
+      const mCcContent = block.match(/(?:\r?\n|^)\s*\*?([^\r\n]+?)\*?\s*\r?\n\s*Nội dung\s*\/\s*\*?Transaction Content\*?/i);
       if (mCcContent) {
-        contentExtracted = mCcContent[1].trim();
+        contentExtracted = mCcContent[1].replace(/^\*+|\*+$/g, "").trim();
       }
       const mCcDate = block.match(/(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})(?:[\s\d:]*)?\*?\s*\r?\n\s*Thời gian\s*\/\s*\*?Time\*?/i);
       if (mCcDate) {
@@ -1956,13 +1978,18 @@ function isEmailItemAlreadyAdded(item) {
   const m = Number(item.month || 10);
   const itemDate = (item.date || "").trim();
   const itemTxCode = item.tx_code ? String(item.tx_code).trim().toUpperCase() : null;
+  const stopWords = new Set([
+    "thanh", "toan", "chuyen", "khoan", "mua", "tai", "cho", "vnd", "bidv", "vpbank",
+    "tien", "phi", "cua", "voi", "nam", "ngay", "thang", "con", "nha", "noi", "ngoai",
+    "chong", "sugi", "subo", "chung", "ncb", "uob", "step", "card"
+  ]);
   const itemWords = foldVN(`${item.content || ""} ${item.raw_content || ""}`)
     .split(/\s+/)
-    .filter(w => w.length >= 3 && !["thanh", "toan", "chuyen", "khoan", "mua", "tai", "cho", "vnd", "bidv", "vpbank"].includes(w));
+    .filter(w => w.length >= 3 && !stopWords.has(w));
 
   return DB.transactions.some(tx => {
-    if (itemTxCode && tx.bank_tx_code && String(tx.bank_tx_code).trim().toUpperCase() === itemTxCode) {
-      return true;
+    if (itemTxCode && tx.bank_tx_code) {
+      return String(tx.bank_tx_code).trim().toUpperCase() === itemTxCode;
     }
     if (Number(tx.month) !== m) return false;
     if (Math.round(Number(tx.amount)) !== amt) return false;
@@ -1970,7 +1997,7 @@ function isEmailItemAlreadyAdded(item) {
     if (itemDate && tx.date && itemDate !== String(tx.date).trim()) return false;
     const txFold = foldVN(tx.content || "");
     if (txFold === foldVN(item.content || "") || txFold === foldVN(item.raw_content || "")) return true;
-    // If same month + same date + exact same amount + shares at least 1 meaningful keyword (e.g. "coopmart", "sugi", "petrolimex", "shopee", "long chau")
+    // If same month + same date + exact same amount + shares at least 1 meaningful keyword (e.g. "coopmart", "petrolimex", "shopee", "long chau")
     if (itemWords.length > 0 && itemWords.some(w => txFold.includes(w))) return true;
     return false;
   });
@@ -2451,7 +2478,7 @@ async function persistAndSync(extraPayload = {}) {
   }).catch(() => {});
 
   const cloudUrl = getCloudScriptUrl();
-  if (cloudUrl) {
+  if (cloudUrl && !extraPayload.localOnly && extraPayload.action !== "init_merge") {
     updateCloudBadgeUI(" Đang đồng bộ Google Sheet...");
     const tx = extraPayload.transaction || null;
     const payload = {
@@ -2515,8 +2542,12 @@ async function pullFromGoogleSheetCloud(silent = true) {
   if (data && data.ok) {
     if (data.cloud_state) {
       applyCompactCloudState(data.cloud_state);
+      recomputeMonthsJS(DB);
       localStorage.setItem(STORAGE_DB_KEY, JSON.stringify(DB));
       renderAll();
+      if (isLocalServerConnected) {
+        persistAndSync({ action: "cloud_pull_merge", localOnly: true });
+      }
     }
     updateCloudBadgeUI(" Đã đồng bộ 2 Vợ Chồng");
     if (!silent) {
@@ -2534,7 +2565,7 @@ async function pullFromGoogleSheetCloud(silent = true) {
 
 async function initApp() {
   // Tự động kiểm tra phiên bản & thanh tẩy cache cũ trên máy đã cài PWA
-  const APP_BUILD_TAG = "v8.0.1-family-wealth-current-month-2026";
+  const APP_BUILD_TAG = "v9.0.2-family-wealth-email-approval-fix";
   if (localStorage.getItem("FAMILY_BUILD_TAG") !== APP_BUILD_TAG) {
     localStorage.setItem("FAMILY_BUILD_TAG", APP_BUILD_TAG);
     if ("caches" in window) {
@@ -2544,7 +2575,7 @@ async function initApp() {
 
   // Register PWA Service Worker với cơ chế Network-First
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("./sw.js?v=8.0.1").then(reg => {
+    navigator.serviceWorker.register("./sw.js?v=9.0.2").then(reg => {
       reg.addEventListener("updatefound", () => {
         const newWorker = reg.installing;
         if (newWorker) {
@@ -2739,11 +2770,11 @@ async function initApp() {
 
   // Pull latest shared state from Google Sheet Cloud if configured
   if (getCloudScriptUrl()) {
-    pullFromGoogleSheetCloud(true);
+    await pullFromGoogleSheetCloud(true);
   }
   // Also sync merged state back to local server if connected
   if (isLocalServerConnected) {
-    persistAndSync({ action: "init_merge" });
+    persistAndSync({ action: "init_merge", localOnly: true });
   }
 
   // Real-time multi-tab sync via BroadcastChannel & storage event
@@ -2854,6 +2885,7 @@ function setQuickSourcePreset(src) {
 
 function renderAll() {
   if (!DB) return;
+  recomputeMonthsJS(DB);
   document.getElementById("nav-tx-count").textContent = DB.transactions.length;
   document.getElementById("nav-audit-badge").textContent = `${DB.audit.formula_bugs.length} lỗi`;
 
@@ -3231,9 +3263,11 @@ async function addTransactionToState(payload) {
     bank_tx_code: payload.bank_tx_code || null,
     was_unmatched_in_excel: false,
     issue_note: null,
-    is_cloud_added: true
+    is_cloud_added: true,
+    just_added_ts: Date.now()
   };
   DB.transactions.unshift(tx);
+  recomputeMonthsJS(DB);
   if (selectedMonth !== 0 && selectedMonth !== finalMonth) {
     selectedMonth = finalMonth;
     sessionStorage.setItem("FAMILY_WEALTH_SELECTED_MONTH", String(selectedMonth));
@@ -4852,6 +4886,7 @@ async function enrichPendingEmailsWithClaudeAI(defaultOwner = "Chung") {
 
   const itemsPayload = pendingEmails.map((it, idx) => ({
     idx,
+    temp_id: it.temp_id || `IDX-${idx}`,
     bank: it.bank,
     date: it.date,
     amount: it.amount,
@@ -4867,7 +4902,7 @@ ${familyMemory}
 Hãy phân tích thông minh danh sách ${itemsPayload.length} giao dịch ngân hàng MỚI chưa có trong sổ dưới đây:
 ${JSON.stringify(itemsPayload, null, 2)}
 
-Yêu cầu cho từng giao dịch (giữ nguyên "idx"):
+Yêu cầu cho từng giao dịch (giữ nguyên "idx" và "temp_id"):
 1. "content": Dịch mã máy POS / tên viết tắt ngân hàng / nội dung chuyển khoản sang tiếng Việt tự nhiên, ngắn gọn, dễ hiểu nhất (VD: "PLX_SAI GON" → "Đổ xăng Petrolimex", "ST DIEN MAY NT CHO LON" → "Siêu thị Điện Máy Chợ Lớn", "ANTHROPIC* CLAUDE SUB" → "Đăng ký Claude AI (Anthropic)").
 2. "category": Chọn đúng 1 trong 10 hạng mục: ${categoriesList}. Đối chiếu kỹ với Bộ nhớ lịch sử chi tiêu ở trên.
 3. "person": Chọn đúng 1 trong: ${membersList}. Mặc định hộp thư này là "${defaultOwner || 'Chung'}".
@@ -4877,7 +4912,7 @@ Yêu cầu cho từng giao dịch (giữ nguyên "idx"):
 7. "suggested_options": Nếu needs_clarification=true, sinh 3-4 lựa chọn gợi ý 1 chạm sát ngữ cảnh & số tiền nhất, mỗi lựa chọn gồm: {"label": "Tên gợi ý ngắn", "category": "Hạng mục", "person": "Thành viên", "note": "Nội dung ghi sổ"}.
 
 Trả về DUY NHẤT JSON thuần (không dùng markdown \`\`\`):
-{"items": [{"idx": 0, "content": "...", "category": "...", "person": "...", "needs_clarification": false, "unclear_reason": null, "ai_question": null, "suggested_options": []}]}`;
+{"items": [{"idx": 0, "temp_id": "...", "content": "...", "category": "...", "person": "...", "needs_clarification": false, "unclear_reason": null, "ai_question": null, "suggested_options": []}]}`;
 
   try {
     const aiResp = await callAIWithDiagnostics(prompt);
@@ -4887,9 +4922,17 @@ Trả về DUY NHẤT JSON thuần (không dùng markdown \`\`\`):
         const validCats = new Set(DB?.meta?.categories || []);
         const validMembers = new Set(DB?.meta?.members || []);
         parsed.items.forEach(aiIt => {
-          if (!aiIt || typeof aiIt.idx !== "number") return;
-          const target = pendingEmails[aiIt.idx];
-          if (!target) return;
+          if (!aiIt) return;
+          let target = aiIt.temp_id ? pendingEmails.find(p => p.temp_id === aiIt.temp_id) : null;
+          if (!target && typeof aiIt.idx === "number") {
+            const origTempId = itemsPayload[aiIt.idx]?.temp_id;
+            if (origTempId) {
+              target = pendingEmails.find(p => p.temp_id === origTempId);
+            } else {
+              target = pendingEmails[aiIt.idx];
+            }
+          }
+          if (!target || target.user_edited) return;
           if (aiIt.content && String(aiIt.content).trim()) {
             target.content = String(aiIt.content).trim().slice(0, 75);
           }
@@ -4920,7 +4963,17 @@ Trả về DUY NHẤT JSON thuần (không dùng markdown \`\`\`):
     console.warn("Claude AI enrichment fallback:", e);
   } finally {
     isAiEnrichingEmails = false;
+    const activeEl = document.activeElement;
+    const activeId = activeEl && activeEl.id ? activeEl.id : null;
+    const activeVal = activeEl && typeof activeEl.value === "string" ? activeEl.value : null;
     renderPendingEmailList();
+    if (activeId) {
+      const restored = document.getElementById(activeId);
+      if (restored) {
+        if (activeVal !== null) restored.value = activeVal;
+        try { restored.focus(); } catch (e) {}
+      }
+    }
     updateCloudBadgeUI(` Đã dùng ${provider} phân tích ${pendingEmails.length} giao dịch`);
   }
   return pendingEmails;
@@ -5162,6 +5215,61 @@ async function syncGmailImap() {
   }
 }
 
+function syncPendingEmailFromDOM(idx) {
+  const item = pendingEmails[idx];
+  if (!item) return;
+
+  const popupOpen = isEmailReviewPopupOpen();
+  const prefixes = popupOpen ? ["popup-clarify-inp", "clarify-inp"] : ["clarify-inp", "popup-clarify-inp"];
+
+  for (const pfx of prefixes) {
+    const contentEl = document.getElementById(`${pfx}-content-${idx}`);
+    if (contentEl && typeof contentEl.value === "string" && contentEl.value.trim()) {
+      item.content = contentEl.value.trim();
+    }
+    const catEl = document.getElementById(`${pfx}-cat-${idx}`);
+    if (catEl && catEl.value) {
+      item.category = catEl.value;
+    }
+    const personEl = document.getElementById(`${pfx}-person-${idx}`);
+    if (personEl && personEl.value) {
+      item.person = personEl.value;
+    }
+    const srcEl = document.getElementById(`${pfx}-source-${idx}`);
+    if (srcEl && srcEl.value) {
+      item.source = srcEl.value;
+      item.bank = srcEl.value;
+    }
+    break;
+  }
+
+  let typedClarify = (item.draft_clarification || "").trim();
+  for (const pfx of prefixes) {
+    const clEl = document.getElementById(`${pfx}-${idx}`);
+    if (clEl && typeof clEl.value === "string" && clEl.value.trim()) {
+      typedClarify = clEl.value.trim();
+      break;
+    }
+  }
+  if (typedClarify) {
+    const { cat, person } = classifyTransactionTextJS((item.raw_content || "") + " " + typedClarify);
+    item.content = typedClarify;
+    if (!item.user_edited_cat && cat) item.category = cat;
+    if (!item.user_edited_person && person) item.person = person;
+    item.needs_clarification = false;
+    item.resolved_by_ai = true;
+    item.user_edited = true;
+    item.draft_clarification = "";
+  }
+}
+
+function syncAllPendingEmailsFromDOM() {
+  if (!Array.isArray(pendingEmails)) return;
+  for (let i = 0; i < pendingEmails.length; i++) {
+    syncPendingEmailFromDOM(i);
+  }
+}
+
 function buildEmailStagingCardsHTML(idPrefix = "clarify-inp") {
   const bankOptions = ALL_PAYMENT_SOURCES;
   const activeAiKey = getGeminiApiKey();
@@ -5185,7 +5293,7 @@ function buildEmailStagingCardsHTML(idPrefix = "clarify-inp") {
           ${txCodeBadge}
           ${isUnclear
             ? `<span class="clarify-badge"> Cần làm rõ (Chưa rõ nội dung)</span>`
-            : (isResolved ? `<span class="clarify-badge resolved"> Đã làm rõ bởi AI</span>` : '')
+            : (isResolved ? `<span class="clarify-badge resolved"> Đã làm rõ • Sẵn sàng duyệt</span>` : '')
           }
         </div>
         <div style="font-size:17px;font-weight:800;color:var(--positive);font-variant-numeric:tabular-nums;">${fmtVND(item.amount)}</div>
@@ -5219,15 +5327,17 @@ function buildEmailStagingCardsHTML(idPrefix = "clarify-inp") {
             <input
               type="text"
               id="${idPrefix}-${idx}"
+              value="${escapeHtml(item.draft_clarification || '')}"
               class="input-control"
               style="flex:1;padding:6px 10px;font-size:13px;"
               placeholder="Hoặc gõ nhanh câu trả lời (VD: 'mua tã dán cho Sugi', 'tiền xăng Chồng', 'ăn trưa')..."
+              oninput="if(pendingEmails[${idx}]){pendingEmails[${idx}].draft_clarification=this.value;pendingEmails[${idx}].user_edited=true;}"
               onkeydown="if(event.key==='Enter') submitManualClarification(${idx}, '${idPrefix}')"
             />
-            <button class="btn btn-primary" style="padding:6px 12px;font-size:13px;" onclick="submitManualClarification(${idx}, '${idPrefix}')">
-               Xác Nhận
+            <button class="btn btn-primary" style="padding:6px 12px;font-size:13px;white-space:nowrap;" onclick="submitManualClarification(${idx}, '${idPrefix}')" title="Xác nhận nội dung làm rõ và lưu ngay vào Sổ chi tiêu">
+               ✓ Xác Nhận & Duyệt
             </button>
-            <button class="btn btn-ghost" style="padding:6px 10px;font-size:13px;color:var(--accent);border-color:var(--accent-soft);" onclick="clarifySingleEmailWithAI(${idx})" title="Dùng Não AI (${aiProviderName}) phân tích sâu email này">
+            <button class="btn btn-ghost" style="padding:6px 10px;font-size:13px;color:var(--accent);border-color:var(--accent-soft);white-space:nowrap;" onclick="clarifySingleEmailWithAI(${idx})" title="Dùng Não AI (${aiProviderName}) phân tích sâu email này">
                AI Giải Mã
             </button>
           </div>
@@ -5236,16 +5346,16 @@ function buildEmailStagingCardsHTML(idPrefix = "clarify-inp") {
 
       <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px;">
         <div style="display:flex;gap:6px;align-items:center;">
-          <input type="text" class="input-control" style="flex:1;font-size:13px;padding:8px 12px;" value="${escapeHtml(item.content || '')}" onchange="pendingEmails[${idx}].content=this.value" placeholder="Tên tóm tắt nội dung chi tiêu..." title="Nội dung hiển thị trong sổ chi tiêu" />
+          <input type="text" id="${idPrefix}-content-${idx}" class="input-control" style="flex:1;font-size:13px;padding:8px 12px;" value="${escapeHtml(item.content || '')}" oninput="if(pendingEmails[${idx}]){pendingEmails[${idx}].content=this.value;pendingEmails[${idx}].user_edited=true;}" onchange="if(pendingEmails[${idx}]){pendingEmails[${idx}].content=this.value;pendingEmails[${idx}].user_edited=true;}" placeholder="Tên tóm tắt nội dung chi tiêu..." title="Nội dung hiển thị trong sổ chi tiêu" />
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-          <select class="input-control" style="flex:1.2;min-width:110px;padding:7px 10px;font-size:13px;" onchange="pendingEmails[${idx}].category=this.value;pendingEmails[${idx}].needs_clarification=false;renderPendingEmailList();" title="Hạng mục chi tiêu">
+          <select id="${idPrefix}-cat-${idx}" class="input-control" style="flex:1.2;min-width:110px;padding:7px 10px;font-size:13px;" onchange="if(pendingEmails[${idx}]){pendingEmails[${idx}].category=this.value;pendingEmails[${idx}].user_edited=true;pendingEmails[${idx}].user_edited_cat=true;pendingEmails[${idx}].needs_clarification=false;renderPendingEmailList();}" title="Hạng mục chi tiêu">
             ${DB.meta.categories.map(c => `<option value="${c}" ${c === item.category ? 'selected' : ''}>${c}</option>`).join("")}
           </select>
-          <select class="input-control" style="flex:1;min-width:85px;padding:7px 10px;font-size:13px;" onchange="pendingEmails[${idx}].person=this.value;pendingEmails[${idx}].needs_clarification=false;renderPendingEmailList();" title="Người chi / Người thụ hưởng">
+          <select id="${idPrefix}-person-${idx}" class="input-control" style="flex:1;min-width:85px;padding:7px 10px;font-size:13px;" onchange="if(pendingEmails[${idx}]){pendingEmails[${idx}].person=this.value;pendingEmails[${idx}].user_edited=true;pendingEmails[${idx}].user_edited_person=true;pendingEmails[${idx}].needs_clarification=false;renderPendingEmailList();}" title="Người chi / Người thụ hưởng">
             ${DB.meta.members.map(m => `<option value="${m}" ${m === item.person ? 'selected' : ''}>${m}</option>`).join("")}
           </select>
-          <select class="input-control" style="flex:1.1;min-width:95px;padding:7px 10px;font-size:13px;" onchange="pendingEmails[${idx}].source=this.value;pendingEmails[${idx}].bank=this.value;" title="Nguồn tiền / Thẻ / Ngân hàng">
+          <select id="${idPrefix}-source-${idx}" class="input-control" style="flex:1.1;min-width:95px;padding:7px 10px;font-size:13px;" onchange="if(pendingEmails[${idx}]){pendingEmails[${idx}].source=this.value;pendingEmails[${idx}].bank=this.value;pendingEmails[${idx}].user_edited=true;}" title="Nguồn tiền / Thẻ / Ngân hàng">
             ${bankOptions.map(b => `<option value="${b}" ${b === (item.source || item.bank) ? 'selected' : ''}>${b}</option>`).join("")}
           </select>
           <button class="btn btn-primary" style="padding:7px 12px;font-size:13px;white-space:nowrap;" onclick="approveSingleEmail(${idx})" title="Duyệt vào sổ chi tiêu">
@@ -5449,8 +5559,13 @@ function applyClarificationOption(idx, category, person, note) {
   item.content = note;
   item.needs_clarification = false;
   item.resolved_by_ai = true;
+  item.user_edited = true;
+  item.user_edited_cat = true;
+  item.user_edited_person = true;
+  item.draft_clarification = "";
   item.reason = `Đã làm rõ qua gợi ý: ${category} • ${person} ("${note}")`;
   renderPendingEmailList();
+  showToast(`✨ Đã điền "${note}" (${category} • ${person}). Bấm "✓ Duyệt" để lưu vào sổ!`, "info", 2400);
 }
 
 async function submitManualClarification(idx, inputPrefix = "clarify-inp") {
@@ -5458,50 +5573,25 @@ async function submitManualClarification(idx, inputPrefix = "clarify-inp") {
   if (!item) return;
   const inpPrimary = document.getElementById(`${inputPrefix}-${idx}`);
   const inpFallback = document.getElementById(`clarify-inp-${idx}`) || document.getElementById(`popup-clarify-inp-${idx}`);
-  const userText = ((inpPrimary && inpPrimary.value) || (inpFallback && inpFallback.value) || "").trim();
+  const userText = ((inpPrimary && inpPrimary.value) || (inpFallback && inpFallback.value) || item.draft_clarification || "").trim();
   if (!userText) {
     alert("Vui lòng nhập nội dung làm rõ (VD: 'mua tã cho Sugi', 'tiền xăng Chồng')!");
     return;
   }
 
-  // Cập nhật tức thì trên giao diện trước, sau đó dùng Não AI Claude tinh chỉnh nếu đã gắn Key
-  const { cat, person } = classifyTransactionTextJS(item.raw_content + " " + userText);
+  // Cập nhật nội dung & phân loại tự động từ câu trả lời của người dùng
+  const { cat, person } = classifyTransactionTextJS((item.raw_content || "") + " " + userText);
   item.content = userText;
-  item.category = cat;
-  item.person = person;
+  if (!item.user_edited_cat && cat) item.category = cat;
+  if (!item.user_edited_person && person) item.person = person;
   item.needs_clarification = false;
   item.resolved_by_ai = true;
-  item.reason = `Đã làm rõ theo câu trả lời: "${userText}" → ${cat} • ${person}`;
-  renderPendingEmailList();
+  item.user_edited = true;
+  item.draft_clarification = "";
+  item.reason = `Đã làm rõ theo câu trả lời: "${userText}" → ${item.category} • ${item.person}`;
 
-  const key = getGeminiApiKey();
-  if (key) {
-    const provider = getAIProviderName(key) || "Claude Sonnet 5.5";
-    const familyMemory = buildFamilyHistoryPromptForAI(3);
-    const promptText = `Bạn là Não AI (${provider}) kế toán gia đình.
-Lịch sử chi tiêu thực tế của gia đình:
-${familyMemory}
-
-Người dùng vừa giải thích cho giao dịch ngân hàng:
-- Ngân hàng: ${item.bank} | Số tiền: ${item.amount} VNĐ
-- Nội dung gốc từ Bank: "${item.raw_content}"
-- Giải thích của người dùng: "${userText}"
-
-Hãy chuẩn hóa tên khoản chi và chọn đúng Hạng mục (${(DB?.meta?.categories || []).join(", ")}) + Thành viên (${(DB?.meta?.members || []).join(", ")}).
-Trả về DUY NHẤT JSON thuần:
-{"content": "tên khoản chi ngắn gọn", "category": "...", "person": "...", "reason": "giải thích ngắn"}`;
-    try {
-      const aiResp = await callGeminiFreeAPI(promptText);
-      const parsed = extractJsonFromAiResponse(aiResp);
-      if (parsed && typeof parsed === "object") {
-        if (parsed.content) item.content = String(parsed.content).trim();
-        if (parsed.category && DB.meta.categories.includes(parsed.category)) item.category = parsed.category;
-        if (parsed.person && DB.meta.members.includes(parsed.person)) item.person = parsed.person;
-        item.reason = `Não AI (${provider}) chuẩn hóa từ "${userText}": ${parsed.reason || `${item.category} • ${item.person}`}`;
-        renderPendingEmailList();
-      }
-    } catch (e) {}
-  }
+  // Duyệt và lưu ngay giao dịch vào Sổ chi tiêu để người dùng không bị sót!
+  await approveSingleEmail(idx, { skipConfirm: true });
 }
 
 async function clarifySingleEmailWithAI(idx) {
@@ -5614,22 +5704,20 @@ async function dismissSingleEmail(idx) {
   await persistAndSync({ action: "dismiss_email" });
 }
 
-async function approveSingleEmail(idx) {
+async function approveSingleEmail(idx, options = {}) {
+  syncPendingEmailFromDOM(idx);
   const item = pendingEmails[idx];
   if (!item) return;
-  if (item.needs_clarification) {
-    const confirmApprove = confirm(`Giao dịch này ("${item.content}") chưa được làm rõ nội dung chi tiết. Bạn có chắc muốn duyệt luôn vào Sổ chi tiêu không?`);
-    if (!confirmApprove) return;
-  }
+
   addProcessedEmailSigForItem(item);
   pendingEmails.splice(idx, 1);
   renderPendingEmailList();
   await addTransactionToState({
     month: item.month,
     date: item.date,
-    content: item.content,
-    category: item.category,
-    person: item.person,
+    content: (item.content || item.raw_content || "Chi tiêu ngân hàng").trim(),
+    category: item.category || "Ăn uống",
+    person: item.person || "Chung",
     amount: item.amount,
     bank_tx_code: item.tx_code || null,
     source: normalizePaymentSource(item.source || item.bank || "VPBank Step Up")
@@ -5638,17 +5726,22 @@ async function approveSingleEmail(idx) {
 
 async function approveAllEmailItems() {
   if (pendingEmails.length === 0) return;
+  syncAllPendingEmailsFromDOM();
 
-  const unclearCount = pendingEmails.filter(it => it.needs_clarification).length;
-  if (unclearCount > 0) {
-    const userChoice = confirm(
-      ` Có ${unclearCount} email giao dịch nội dung chưa rõ (đang để tạm mặc định).\n\nBấm [OK] để DUYỆT TẤT CẢ luôn.\nBấm [Cancel] để ở lại xác nhận nhanh.`
-    );
-    if (!userChoice) return;
-  }
+  const existingTxCodes = new Set(
+    (DB?.transactions || [])
+      .map(t => t && t.bank_tx_code ? String(t.bank_tx_code).trim().toUpperCase() : null)
+      .filter(Boolean)
+  );
+  const itemsToApprove = [...pendingEmails].filter(it => {
+    if (!it) return false;
+    const code = it.tx_code ? String(it.tx_code).trim().toUpperCase() : null;
+    if (code && existingTxCodes.has(code)) return false;
+    return true;
+  });
 
-  const itemsToApprove = [...pendingEmails].filter(it => !isEmailItemAlreadyAdded(it));
   const addedTxs = [];
+  const nowTs = Date.now();
   itemsToApprove.forEach((item, idx) => {
     addProcessedEmailSigForItem(item);
     const tx = {
@@ -5656,7 +5749,7 @@ async function approveAllEmailItems() {
       month: Number(item.month || activeInputMonth()),
       date: item.date || defaultDateForMonth(item.month || activeInputMonth()),
       row: 0,
-      content: (item.content || "").trim(),
+      content: (item.content || item.raw_content || "Chi tiêu ngân hàng").trim(),
       category: item.category || "Ăn uống",
       person: item.person || "Chung",
       amount: Number(item.amount || 0),
@@ -5664,13 +5757,19 @@ async function approveAllEmailItems() {
       bank_tx_code: item.tx_code || null,
       was_unmatched_in_excel: false,
       issue_note: null,
-      is_cloud_added: true
+      is_cloud_added: true,
+      just_added_ts: nowTs
     };
     DB.transactions.unshift(tx);
     addedTxs.push(tx);
   });
 
   pendingEmails = [];
+  if (addedTxs.length > 0 && selectedMonth !== 0 && selectedMonth !== addedTxs[0].month) {
+    selectedMonth = addedTxs[0].month;
+    sessionStorage.setItem("FAMILY_WEALTH_SELECTED_MONTH", String(selectedMonth));
+  }
+  recomputeMonthsJS(DB);
   renderPendingEmailList();
   closeEmailReviewPopupModal();
   renderAll();
@@ -8255,6 +8354,49 @@ function renderTxActivityFeed(filtered, isSpreadsheet) {
   const sorted = filtered.slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
   const visible = sorted.slice(0, txDisplayLimit);
 
+  const nowTs = Date.now();
+  const topDateKey = visible.length > 0 ? (visible[0].date || "") : "";
+  const justAddedOlderItems = filtered.filter(
+    t => t && t.just_added_ts && (nowTs - Number(t.just_added_ts) < 600000) && t.date !== topDateKey
+  );
+
+  const renderFeedRow = (t, showExplicitDate = false) => {
+    const st = FEED_CATEGORY_STYLE[t.category] || { icon: "💸", bg: "#eef2f6" };
+    const safeId = escapeHtml(t.id);
+    const isJustAdded = Boolean(t.just_added_ts && (nowTs - Number(t.just_added_ts) < 600000));
+    return `
+      <div class="feed-swipe-row" data-id="${safeId}">
+        <div class="feed-swipe-actions">
+          <button type="button" class="swipe-edit" onclick="openEditTransactionModal('${safeId}')"><span>✎</span><span>Sửa</span></button>
+          <button type="button" class="swipe-del" onclick="deleteTransaction('${safeId}')"><span>🗑</span><span>Xoá</span></button>
+        </div>
+        <div class="feed-item-card" onclick="onFeedItemTap(event, '${safeId}')" style="${isJustAdded ? 'border-color:rgba(21,128,61,0.35);background:rgba(21,128,61,0.04);' : ''}">
+          <div class="feed-avatar" style="background:${st.bg};">${st.icon}</div>
+          <div class="feed-body">
+            <div class="feed-title">${escapeHtml(t.content || "(Không có nội dung)")}${isJustAdded ? ' <span style="font-size:10.5px;font-weight:700;color:var(--positive);background:var(--positive-soft);padding:1px 6px;border-radius:99px;margin-left:4px;">MỚI</span>' : ''}</div>
+            <div class="feed-tags">
+              <span class="chip chip-${escapeHtml(t.person)}">${escapeHtml(t.person || "Chung")}</span>
+              <span class="feed-src-badge">${escapeHtml(t.source || "Tiền mặt")}</span>
+              <span class="feed-cat-text">${escapeHtml(t.category || "")}${showExplicitDate && t.date ? ` • Ngày GD: ${escapeHtml(t.date)}` : ""}</span>
+            </div>
+          </div>
+          <div class="feed-right">
+            <div class="feed-amount privacy-blur">-${fmtVND(t.amount)}</div>
+          </div>
+        </div>
+      </div>`;
+  };
+
+  const justAddedTopHtml = justAddedOlderItems.length > 0 ? `
+    <div class="feed-date-group" style="border:1px solid rgba(21,128,61,0.28);border-radius:12px;padding:8px;background:var(--positive-soft);margin-bottom:10px;">
+      <div class="feed-date-header" style="margin-bottom:6px;">
+        <span class="feed-date-title" style="color:var(--positive);font-weight:700;">✨ Vừa mới duyệt vào sổ (${justAddedOlderItems.length} khoản)</span>
+        <span class="feed-date-badge privacy-blur" style="color:var(--positive);">-${fmtShortVND(justAddedOlderItems.reduce((s, x) => s + (Number(x.amount) || 0), 0))}</span>
+      </div>
+      ${justAddedOlderItems.map(t => renderFeedRow(t, true)).join("")}
+    </div>
+  ` : "";
+
   const groups = [];
   const idx = {};
   visible.forEach(t => {
@@ -8267,37 +8409,13 @@ function renderTxActivityFeed(filtered, isSpreadsheet) {
     groups[idx[key]].sum += Number(t.amount) || 0;
   });
 
-  const html = groups.map(g => `
+  const html = justAddedTopHtml + groups.map(g => `
     <div class="feed-date-group">
       <div class="feed-date-header">
         <span class="feed-date-title">${escapeHtml(feedDateLabel(g.key))}</span>
         <span class="feed-date-badge privacy-blur">-${fmtShortVND(g.sum)}</span>
       </div>
-      ${g.items.map(t => {
-        const st = FEED_CATEGORY_STYLE[t.category] || { icon: "💸", bg: "#eef2f6" };
-        const safeId = escapeHtml(t.id);
-        return `
-        <div class="feed-swipe-row" data-id="${safeId}">
-          <div class="feed-swipe-actions">
-            <button type="button" class="swipe-edit" onclick="openEditTransactionModal('${safeId}')"><span>✎</span><span>Sửa</span></button>
-            <button type="button" class="swipe-del" onclick="deleteTransaction('${safeId}')"><span>🗑</span><span>Xoá</span></button>
-          </div>
-          <div class="feed-item-card" onclick="onFeedItemTap(event, '${safeId}')">
-            <div class="feed-avatar" style="background:${st.bg};">${st.icon}</div>
-            <div class="feed-body">
-              <div class="feed-title">${escapeHtml(t.content || "(Không có nội dung)")}</div>
-              <div class="feed-tags">
-                <span class="chip chip-${escapeHtml(t.person)}">${escapeHtml(t.person || "Chung")}</span>
-                <span class="feed-src-badge">${escapeHtml(t.source || "Tiền mặt")}</span>
-                <span class="feed-cat-text">${escapeHtml(t.category || "")}</span>
-              </div>
-            </div>
-            <div class="feed-right">
-              <div class="feed-amount privacy-blur">-${fmtVND(t.amount)}</div>
-            </div>
-          </div>
-        </div>`;
-      }).join("")}
+      ${g.items.map(t => renderFeedRow(t, false)).join("")}
     </div>
   `).join("");
 

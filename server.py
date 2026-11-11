@@ -839,7 +839,7 @@ def parse_bank_emails(raw_email_text, min_date="2026-11-01"):
                     foreign_currency_note = f"{fc_val:g} {curr_s}"
 
             m_cc_nd = re.search(
-                r'\*?([^\r\n*]+)\*?\s*[\r\n]+\s*Nội dung\s*/\s*\*?Transaction Content',
+                r'\*?([^\r\n]+?)\*?\s*[\r\n]+\s*Nội dung\s*/\s*\*?Transaction Content',
                 block,
                 re.IGNORECASE
             )
@@ -1899,6 +1899,7 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
                 "person": body.get("person", "Chung"),
                 "amount": amount,
                 "source": body.get("source", "Tiền mặt"),
+                "bank_tx_code": body.get("bank_tx_code") or None,
                 "was_unmatched_in_excel": False,
                 "issue_note": None,
                 "is_cloud_added": True,
@@ -1979,6 +1980,7 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
                     "person": item.get("person", "Chung"),
                     "amount": safe_float(item.get("amount", 0)),
                     "source": item.get("source", item.get("bank", "Tiền mặt")),
+                    "bank_tx_code": item.get("bank_tx_code") or item.get("tx_code") or None,
                     "was_unmatched_in_excel": False,
                     "issue_note": None,
                     "is_cloud_added": True,
@@ -2073,8 +2075,9 @@ class FamilyAppHandler(SimpleHTTPRequestHandler):
                     existing_ids.add(ct["id"])
 
             # 4. Merge months income & allocation
-            if isinstance(cs.get("months"), list):
-                for cm in cs["months"]:
+            months_payload = cs.get("months") if isinstance(cs.get("months"), list) else cs.get("months_income")
+            if isinstance(months_payload, list):
+                for cm in months_payload:
                     m_obj = next((x for x in db["months"] if x["month"] == cm.get("month")), None)
                     if m_obj:
                         if isinstance(cm.get("income"), dict):

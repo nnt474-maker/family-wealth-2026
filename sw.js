@@ -1,4 +1,4 @@
-const CACHE_NAME = "family-wealth-2026-v9.0.1-executive-wow";
+const CACHE_NAME = "family-wealth-2026-v9.0.2-email-approval-fix";
 const CORE_ASSETS = [
   "./",
   "./index.html",
