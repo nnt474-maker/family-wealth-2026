@@ -2101,8 +2101,10 @@ function updateGeminiBadgeUI() {
     pill.style.color = key ? "var(--positive)" : "var(--accent)";
   }
   if (sideBtn) {
-    sideBtn.textContent = key ? `${provider}: Đã Bật` : "Cài Não AI (Claude / Gemini)";
-    sideBtn.style.background = key ? "var(--positive)" : "var(--accent)";
+    sideBtn.textContent = key ? `🧠 ${provider}: Đã Bật` : "🧠 Cài Não AI (Claude / Gemini)";
+    sideBtn.style.background = key ? "var(--positive-soft)" : "var(--accent-soft)";
+    sideBtn.style.color = key ? "var(--positive)" : "var(--accent)";
+    sideBtn.style.borderColor = key ? "rgba(31, 109, 54, 0.22)" : "rgba(29, 95, 214, 0.22)";
   }
   if (aiTabBtn) {
     if (key) {
